@@ -261,6 +261,23 @@ model Employee {
   basicSalary Float
   status      String   @default("Active")
 
+  // per-employee default amounts, used only to prefill payroll entry inputs
+  allowLiving Float @default(0)
+  allowGas    Float @default(0)
+  allowMotor  Float @default(0)
+  allowLoad   Float @default(0)
+  allowTravel Float @default(0)
+  dedSss              Float @default(0)
+  dedHdmf             Float @default(0)
+  dedPhic             Float @default(0)
+  dedSssSalaryLoan    Float @default(0)
+  dedSssCalamityLoan  Float @default(0)
+  dedHdmfMplLoan      Float @default(0)
+  dedHdmfCalamityLoan Float @default(0)
+  dedSalaryLoan       Float @default(0)
+  dedWithholdingTax   Float @default(0)
+  dedOthers           Float @default(0)
+
   payrollEntries PayrollEntry[]
   evaluations    Evaluation[]
 }

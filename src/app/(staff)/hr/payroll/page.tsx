@@ -4,8 +4,8 @@ import { peso } from "@/lib/format";
 import { ALLOWANCE_FIELDS, DEDUCTION_FIELDS } from "@/lib/payroll";
 import { PageHeader } from "@/components/ui";
 import { PrintButton } from "@/components/print-button";
-import { createPayrollEntry } from "../actions";
 import { HrTabs } from "../hr-tabs";
+import { PayrollEntryForm, type EmployeeComp } from "./entry-form";
 
 export default async function PayrollPage({ searchParams }: { searchParams: { cutoff?: string } }) {
   await requireStaff(["SUPER_ADMIN", "ADMIN"]);
@@ -102,48 +102,7 @@ export default async function PayrollPage({ searchParams }: { searchParams: { cu
         </table>
       </div>
 
-      <form action={createPayrollEntry} className="no-print card max-w-4xl space-y-4">
-        <h2 className="font-semibold">Add Payroll Entry</h2>
-        <div className="grid gap-3 sm:grid-cols-3">
-          <div>
-            <label className="label">Employee</label>
-            <select name="employeeId" className="input">
-              {employees.map((e) => <option key={e.id} value={e.id}>{e.name} — {e.position}</option>)}
-            </select>
-          </div>
-          <div><label className="label">Cutoff</label><input name="cutoff" required className="input" placeholder="Aug 16-31, 2026" defaultValue={selected} /></div>
-          <div><label className="label">Basic Pay (blank = ½ monthly)</label><input name="basicPay" type="number" step="0.01" min="0" className="input" /></div>
-        </div>
-
-        <div>
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-emerald-700">Allowances</p>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-            {ALLOWANCE_FIELDS.map(([key, label]) => (
-              <div key={key}>
-                <label className="label text-xs">{label}</label>
-                <input name={key} type="number" step="0.01" min="0" placeholder="0.00" className="input" />
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div>
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-red-700">Deductions</p>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-            {DEDUCTION_FIELDS.map(([key, label]) => (
-              <div key={key}>
-                <label className="label text-xs">{label}</label>
-                <input name={key} type="number" step="0.01" min="0" placeholder="0.00" className="input" />
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <p className="text-xs text-gray-500">
-          Gross Pay = Basic Pay + all allowances · Net Pay = Gross Pay − all deductions (computed on save)
-        </p>
-        <button className="btn-primary" type="submit">Add Entry</button>
-      </form>
+      <PayrollEntryForm employees={employees as unknown as EmployeeComp[]} defaultCutoff={selected} />
     </div>
   );
 }

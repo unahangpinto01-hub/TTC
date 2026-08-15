@@ -22,6 +22,29 @@ export async function createEmployee(formData: FormData) {
   redirect("/hr");
 }
 
+export async function updateEmployee(formData: FormData) {
+  await requireStaff(["SUPER_ADMIN", "ADMIN"]);
+  const { ALLOWANCE_FIELDS, DEDUCTION_FIELDS } = await import("@/lib/payroll");
+  const id = String(formData.get("id"));
+  const items: Record<string, number> = {};
+  for (const [key] of [...ALLOWANCE_FIELDS, ...DEDUCTION_FIELDS]) {
+    items[key] = round2(Math.max(0, Number(formData.get(key)) || 0));
+  }
+  await prisma.employee.update({
+    where: { id },
+    data: {
+      name: String(formData.get("name")).trim(),
+      position: String(formData.get("position")).trim(),
+      department: String(formData.get("department")).trim(),
+      basicSalary: round2(Number(formData.get("basicSalary")) || 0),
+      status: formData.get("status") === "Inactive" ? "Inactive" : "Active",
+      ...items,
+    },
+  });
+  revalidatePath("/hr");
+  redirect("/hr");
+}
+
 export async function createPayrollEntry(formData: FormData) {
   await requireStaff(["SUPER_ADMIN", "ADMIN"]);
   const { ALLOWANCE_FIELDS, DEDUCTION_FIELDS } = await import("@/lib/payroll");
