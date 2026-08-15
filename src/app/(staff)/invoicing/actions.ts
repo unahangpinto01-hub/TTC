@@ -26,6 +26,7 @@ export async function convertDRtoSR(formData: FormData) {
   const dueDate = new Date(baseDate);
   dueDate.setDate(dueDate.getDate() + termDays);
 
+  const vatApplied = formData.get("applyVat") === "on";
   const srNumber = await nextDocNumber("SR");
   const sr = await prisma.salesReceipt.create({
     data: {
@@ -34,6 +35,7 @@ export async function convertDRtoSR(formData: FormData) {
       customerId: dr.salesOrder.customerId,
       amount,
       term,
+      vatApplied,
       invoiceDate: new Date(),
       dueDate,
       status: "Open",

@@ -40,8 +40,11 @@ export default async function InvoicingQueuePage() {
                 <td className="table-td text-sm">{termLabel(dr.salesOrder.term)}</td>
                 <td className="table-td text-right">{peso(dr.lines.reduce((s, l) => s + l.qty * l.unitPrice, 0))}</td>
                 <td className="table-td text-right">
-                  <form action={convertDRtoSR}>
+                  <form action={convertDRtoSR} className="flex items-center justify-end gap-3">
                     <input type="hidden" name="drId" value={dr.id} />
+                    <label className="flex items-center gap-1.5 whitespace-nowrap text-xs text-gray-600">
+                      <input type="checkbox" name="applyVat" defaultChecked /> Apply 12% VAT
+                    </label>
                     <button className="btn-primary" type="submit">Convert to SR →</button>
                   </form>
                 </td>

@@ -62,8 +62,14 @@ export default async function SRDetailPage({ params, searchParams }: { params: {
             ))}
           </tbody>
           <tfoot className="border-t border-gray-200 bg-gray-50 text-sm">
-            <tr><td colSpan={2} className="px-3 py-1 text-right text-gray-500">VAT-exclusive</td><td colSpan={2} className="px-3 py-1 text-right">{peso(net)}</td></tr>
-            <tr><td colSpan={2} className="px-3 py-1 text-right text-gray-500">VAT 12%</td><td colSpan={2} className="px-3 py-1 text-right">{peso(vat)}</td></tr>
+            {sr.vatApplied ? (
+              <>
+                <tr><td colSpan={2} className="px-3 py-1 text-right text-gray-500">VAT-exclusive</td><td colSpan={2} className="px-3 py-1 text-right">{peso(net)}</td></tr>
+                <tr><td colSpan={2} className="px-3 py-1 text-right text-gray-500">VAT 12%</td><td colSpan={2} className="px-3 py-1 text-right">{peso(vat)}</td></tr>
+              </>
+            ) : (
+              <tr><td colSpan={2} className="px-3 py-1 text-right text-gray-500">VAT-exempt / Non-VAT sale</td><td colSpan={2} className="px-3 py-1 text-right">{peso(sr.amount)}</td></tr>
+            )}
             <tr className="font-bold"><td colSpan={2} className="px-3 py-2 text-right">TOTAL</td><td colSpan={2} className="px-3 py-2 text-right">{peso(sr.amount)}</td></tr>
           </tfoot>
         </table>

@@ -197,6 +197,7 @@ model SalesReceipt {
   customer          Customer        @relation(fields: [customerId], references: [id])
   amount            Float
   term              String
+  vatApplied        Boolean  @default(true) // false = VAT-exempt / non-VAT sale
   invoiceDate       DateTime @default(now())
   dueDate           DateTime
   status            String   @default("Open") // Open | Partial | Paid | Void
