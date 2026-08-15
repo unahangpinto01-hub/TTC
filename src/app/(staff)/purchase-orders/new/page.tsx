@@ -7,7 +7,7 @@ import { POLinePicker } from "./line-picker";
 export default async function NewPOPage() {
   await requireStaff(["SUPER_ADMIN", "ADMIN"]);
   const [suppliers, products] = await Promise.all([
-    prisma.supplier.findMany({ orderBy: { name: "asc" } }),
+    prisma.supplier.findMany({ where: { status: "Active" }, orderBy: { name: "asc" } }),
     prisma.product.findMany({ orderBy: { sku: "asc" }, select: { id: true, sku: true, name: true, unitCost: true, stockQty: true } }),
   ]);
   return (

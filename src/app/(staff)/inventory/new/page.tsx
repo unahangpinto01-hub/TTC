@@ -7,7 +7,7 @@ const CATEGORIES = ["Insecticide", "Herbicide", "Fungicide", "Molluscicide", "Fo
 
 export default async function NewProductPage() {
   await requireStaff(["SUPER_ADMIN", "ADMIN"]);
-  const suppliers = await prisma.supplier.findMany({ orderBy: { name: "asc" } });
+  const suppliers = await prisma.supplier.findMany({ where: { status: "Active" }, orderBy: { name: "asc" } });
   return (
     <div className="max-w-2xl">
       <PageHeader title="New Product" />

@@ -50,6 +50,7 @@ model Supplier {
   name    String
   contact String?
   address String?
+  status  String @default("Active") // Active | Inactive
 
   products       Product[]
   purchaseOrders PurchaseOrder[]
