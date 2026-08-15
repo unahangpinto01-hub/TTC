@@ -23,7 +23,7 @@ export default async function DashboardPage() {
     prisma.deliverySchedule.findMany({ where: { date: { gte: todayStart, lt: todayEnd } }, include: { salesOrder: { include: { customer: true } } } }),
     prisma.incomingOrder.count({ where: { status: "Pending" } }),
     prisma.product.findMany({ where: { stockQty: { lte: 30 } }, orderBy: { stockQty: "asc" }, take: 50 }),
-    prisma.notification.findMany({ orderBy: { createdAt: "desc" }, take: 8 }),
+    prisma.notification.findMany({ where: { OR: [{ userId: user.id }, { role: user.role }] }, orderBy: { createdAt: "desc" }, take: 8 }),
     canFinance ? prisma.salesReceipt.findMany({ where: { status: { not: "Void" }, invoiceDate: { gte: sixMonthsAgo } }, select: { invoiceDate: true, amount: true } }) : Promise.resolve([]),
     canFinance ? prisma.salesReceipt.findMany({ where: { status: { in: ["Open", "Partial"] } }, include: { payments: true } }) : Promise.resolve([]),
     prisma.deliveryReceipt.count({ where: { status: "Delivered", salesReceipt: null } }),
@@ -72,11 +72,19 @@ export default async function DashboardPage() {
           <p className={`text-2xl font-bold ${pendingOrders > 0 ? "text-amber-600" : ""}`}>{pendingOrders}</p>
           <p className="text-xs text-gray-400">need action</p>
         </Link>
-        <Link href="/invoicing" className="card transition-shadow hover:shadow-md">
-          <p className="text-xs text-gray-500">For Invoicing</p>
-          <p className={`text-2xl font-bold ${invoicingQueue > 0 ? "text-purple-700" : ""}`}>{invoicingQueue}</p>
-          <p className="text-xs text-gray-400">delivered DRs waiting</p>
-        </Link>
+        {canFinance ? (
+          <Link href="/invoicing" className="card transition-shadow hover:shadow-md">
+            <p className="text-xs text-gray-500">For Invoicing</p>
+            <p className={`text-2xl font-bold ${invoicingQueue > 0 ? "text-purple-700" : ""}`}>{invoicingQueue}</p>
+            <p className="text-xs text-gray-400">delivered DRs waiting</p>
+          </Link>
+        ) : (
+          <Link href="/inventory?stock=low" className="card transition-shadow hover:shadow-md">
+            <p className="text-xs text-gray-500">Stock Alerts</p>
+            <p className="text-2xl font-bold text-amber-600">{lowItems.length + outItems.length}</p>
+            <p className="text-xs text-gray-400">{outItems.length} out · {lowItems.length} low</p>
+          </Link>
+        )}
         {canFinance ? (
           <Link href="/finance/ar" className="card transition-shadow hover:shadow-md">
             <p className="text-xs text-gray-500">AR Overdue</p>
@@ -84,10 +92,10 @@ export default async function DashboardPage() {
             <p className="text-xs text-gray-400">past due date</p>
           </Link>
         ) : (
-          <Link href="/inventory?stock=low" className="card transition-shadow hover:shadow-md">
-            <p className="text-xs text-gray-500">Stock Alerts</p>
-            <p className="text-2xl font-bold text-amber-600">{lowItems.length + outItems.length}</p>
-            <p className="text-xs text-gray-400">{outItems.length} out · {lowItems.length} low</p>
+          <Link href="/notifications" className="card transition-shadow hover:shadow-md">
+            <p className="text-xs text-gray-500">Notifications</p>
+            <p className="text-2xl font-bold">{notifications.filter((n) => !n.readAt).length}</p>
+            <p className="text-xs text-gray-400">recent unread</p>
           </Link>
         )}
       </div>

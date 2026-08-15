@@ -6,21 +6,25 @@ import { updateScheduleStatus } from "../deliveries/actions";
 
 const TARGET_PER_DAY = 5;
 
+// All board buckets use calendar-date strings (YYYY-MM-DD). Schedule dates are
+// stored as UTC midnights (from <input type="date">), so bucket by UTC date;
+// "today" is computed in Manila local time.
 function dayKey(d: Date) {
   return d.toISOString().slice(0, 10);
 }
 
 export default async function SchedulePage({ searchParams }: { searchParams: { start?: string } }) {
   await requireStaff();
-  const start = searchParams.start ? new Date(searchParams.start) : new Date();
-  start.setHours(0, 0, 0, 0);
+  const todayKey = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila" }).format(new Date());
+  const startStr = /^\d{4}-\d{2}-\d{2}$/.test(searchParams.start || "") ? searchParams.start! : todayKey;
+  const start = new Date(startStr + "T00:00:00Z");
   const days = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(start);
-    d.setDate(d.getDate() + i);
+    d.setUTCDate(d.getUTCDate() + i);
     return d;
   });
   const end = new Date(days[6]);
-  end.setDate(end.getDate() + 1);
+  end.setUTCDate(end.getUTCDate() + 1);
 
   const schedules = await prisma.deliverySchedule.findMany({
     where: { date: { gte: start, lt: end } },
@@ -28,9 +32,8 @@ export default async function SchedulePage({ searchParams }: { searchParams: { s
     orderBy: { date: "asc" },
   });
 
-  const prev = new Date(start); prev.setDate(prev.getDate() - 7);
-  const next = new Date(start); next.setDate(next.getDate() + 7);
-  const todayKey = dayKey(new Date());
+  const prev = new Date(start); prev.setUTCDate(prev.getUTCDate() - 7);
+  const next = new Date(start); next.setUTCDate(next.getUTCDate() + 7);
 
   return (
     <div>
@@ -51,7 +54,7 @@ export default async function SchedulePage({ searchParams }: { searchParams: { s
             <div key={key} className={`rounded-xl border bg-white p-2 ${isToday ? "border-emerald-500 ring-1 ring-emerald-300" : "border-gray-200"}`}>
               <div className="mb-2 flex items-center justify-between">
                 <p className="text-xs font-semibold">
-                  {d.toLocaleDateString("en-PH", { weekday: "short", month: "short", day: "numeric" })}
+                  {d.toLocaleDateString("en-PH", { timeZone: "UTC", weekday: "short", month: "short", day: "numeric" })}
                   {isToday && <span className="ml-1 text-emerald-600">·today</span>}
                 </p>
                 <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${count > TARGET_PER_DAY ? "bg-red-100 text-red-700" : count === TARGET_PER_DAY ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"}`}>

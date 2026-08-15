@@ -191,7 +191,8 @@ async function main() {
     const province = pick(regions[region]);
     const surname = surnames[i % surnames.length];
     const businessName = `${surname} ${pick(suffixes)}${i >= 25 ? " " + province.split(" ")[0] : ""}`;
-    const allowedTerms = pick(termOptions);
+    // first customer backs the demo dealer login — give it every term for the demo script
+    const allowedTerms = i === 0 ? "COD,30,60,90" : pick(termOptions);
     const c = await prisma.customer.create({
       data: {
         businessName,
