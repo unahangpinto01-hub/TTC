@@ -5,9 +5,10 @@ import { ALLOWANCE_FIELDS, DEDUCTION_FIELDS } from "@/lib/payroll";
 import { PageHeader } from "@/components/ui";
 import { PrintButton } from "@/components/print-button";
 import { HrTabs } from "../hr-tabs";
+import { deletePayrollEntry } from "../actions";
 import { PayrollEntryForm, type EmployeeComp } from "./entry-form";
 
-export default async function PayrollPage({ searchParams }: { searchParams: { cutoff?: string } }) {
+export default async function PayrollPage({ searchParams }: { searchParams: { cutoff?: string; error?: string; emp?: string } }) {
   await requireStaff(["SUPER_ADMIN", "ADMIN"]);
   const [entries, employees] = await Promise.all([
     prisma.payrollEntry.findMany({ orderBy: { createdAt: "desc" }, include: { employee: true } }),
@@ -57,6 +58,14 @@ export default async function PayrollPage({ searchParams }: { searchParams: { cu
         <button className="btn-secondary" type="submit">View</button>
       </form>
 
+      {searchParams.error === "duplicate" && (
+        <div className="no-print mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          ⚠ <span className="font-semibold">{searchParams.emp || "This employee"}</span> already has a payroll entry for
+          cutoff <span className="font-semibold">{selected}</span> — duplication is not allowed. Remove the existing
+          entry first if you need to re-enter it.
+        </div>
+      )}
+
       <p className="mb-2 text-sm text-gray-600">Payroll summary · cutoff: <span className="font-semibold">{selected || "—"}</span></p>
       <div className="card mb-4 overflow-x-auto p-0">
         <table className="w-full min-w-[820px]">
@@ -82,7 +91,13 @@ export default async function PayrollPage({ searchParams }: { searchParams: { cu
                 <td className="table-td text-right align-top">{peso(e.allowances)}</td>
                 <td className="table-td text-right align-top font-semibold">{peso(e.grossPay)}</td>
                 <td className="table-td text-right align-top text-red-600">({peso(e.deductions)})</td>
-                <td className="table-td text-right align-top font-bold">{peso(e.netPay)}</td>
+                <td className="table-td text-right align-top font-bold">
+                  {peso(e.netPay)}
+                  <form action={deletePayrollEntry} className="no-print mt-1">
+                    <input type="hidden" name="id" value={e.id} />
+                    <button className="text-[10px] font-normal text-red-500 hover:underline" type="submit">remove</button>
+                  </form>
+                </td>
               </tr>
             ))}
             {!shown.length && <tr><td colSpan={6} className="p-8 text-center text-sm text-gray-500">No entries for this cutoff.</td></tr>}
