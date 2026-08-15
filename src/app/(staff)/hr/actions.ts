@@ -93,6 +93,47 @@ export async function createPayrollEntry(formData: FormData) {
   redirect(`/hr/payroll?cutoff=${encodeURIComponent(cutoff)}`);
 }
 
+export async function updatePayrollEntry(formData: FormData) {
+  await requireStaff(["SUPER_ADMIN", "ADMIN"]);
+  const { ALLOWANCE_FIELDS, DEDUCTION_FIELDS } = await import("@/lib/payroll");
+  const entryId = String(formData.get("entryId"));
+  const cutoff = String(formData.get("cutoff")).trim();
+  const entry = await prisma.payrollEntry.findUniqueOrThrow({ where: { id: entryId }, include: { employee: true } });
+
+  // if the cutoff was changed, the employee must not already have an entry there
+  const clash = await prisma.payrollEntry.findFirst({
+    where: { employeeId: entry.employeeId, cutoff, id: { not: entryId } },
+  });
+  if (clash) {
+    redirect(`/hr/payroll?cutoff=${encodeURIComponent(cutoff)}&error=duplicate&emp=${encodeURIComponent(entry.employee.name)}`);
+  }
+
+  const basicPay = round2(Number(formData.get("basicPay")) || 0);
+  const items: Record<string, number> = {};
+  let allowances = 0;
+  for (const [key] of ALLOWANCE_FIELDS) {
+    const v = round2(Math.max(0, Number(formData.get(key)) || 0));
+    items[key] = v;
+    allowances += v;
+  }
+  let deductions = 0;
+  for (const [key] of DEDUCTION_FIELDS) {
+    const v = round2(Math.max(0, Number(formData.get(key)) || 0));
+    items[key] = v;
+    deductions += v;
+  }
+  allowances = round2(allowances);
+  deductions = round2(deductions);
+  const grossPay = round2(basicPay + allowances);
+
+  await prisma.payrollEntry.update({
+    where: { id: entryId },
+    data: { cutoff, basicPay, ...items, allowances, grossPay, deductions, netPay: round2(grossPay - deductions) },
+  });
+  revalidatePath("/hr/payroll");
+  redirect(`/hr/payroll?cutoff=${encodeURIComponent(cutoff)}`);
+}
+
 export async function deletePayrollEntry(formData: FormData) {
   await requireStaff(["SUPER_ADMIN", "ADMIN"]);
   const id = String(formData.get("id"));

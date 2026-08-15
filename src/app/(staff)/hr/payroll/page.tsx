@@ -6,9 +6,9 @@ import { PageHeader } from "@/components/ui";
 import { PrintButton } from "@/components/print-button";
 import { HrTabs } from "../hr-tabs";
 import { deletePayrollEntry } from "../actions";
-import { PayrollEntryForm, type EmployeeComp } from "./entry-form";
+import { PayrollEntryForm, type EmployeeComp, type EditEntry } from "./entry-form";
 
-export default async function PayrollPage({ searchParams }: { searchParams: { cutoff?: string; error?: string; emp?: string } }) {
+export default async function PayrollPage({ searchParams }: { searchParams: { cutoff?: string; error?: string; emp?: string; entry?: string } }) {
   await requireStaff(["SUPER_ADMIN", "ADMIN"]);
   const [entries, employees] = await Promise.all([
     prisma.payrollEntry.findMany({ orderBy: { createdAt: "desc" }, include: { employee: true } }),
@@ -81,9 +81,11 @@ export default async function PayrollPage({ searchParams }: { searchParams: { cu
           </thead>
           <tbody className="divide-y divide-gray-100">
             {shown.map((e) => (
-              <tr key={e.id}>
+              <tr key={e.id} className={searchParams.entry === e.id ? "bg-emerald-50/60" : ""}>
                 <td className="table-td">
-                  <p className="font-medium">{e.employee.name}</p>
+                  <a href={`/hr/payroll?cutoff=${encodeURIComponent(selected)}&entry=${e.id}#entry-form`} className="font-medium text-emerald-700 hover:underline">
+                    {e.employee.name}
+                  </a>
                   <p className="text-xs text-gray-500">{e.employee.position}</p>
                   {breakdown(e) && <p className="mt-0.5 max-w-md text-[10px] leading-4 text-gray-400">{breakdown(e)}</p>}
                 </td>
@@ -93,10 +95,13 @@ export default async function PayrollPage({ searchParams }: { searchParams: { cu
                 <td className="table-td text-right align-top text-red-600">({peso(e.deductions)})</td>
                 <td className="table-td text-right align-top font-bold">
                   {peso(e.netPay)}
-                  <form action={deletePayrollEntry} className="no-print mt-1">
-                    <input type="hidden" name="id" value={e.id} />
-                    <button className="text-[10px] font-normal text-red-500 hover:underline" type="submit">remove</button>
-                  </form>
+                  <div className="no-print mt-1 flex items-center justify-end gap-2">
+                    <a href={`/hr/payroll?cutoff=${encodeURIComponent(selected)}&entry=${e.id}#entry-form`} className="text-[10px] font-normal text-emerald-700 hover:underline">edit</a>
+                    <form action={deletePayrollEntry}>
+                      <input type="hidden" name="id" value={e.id} />
+                      <button className="text-[10px] font-normal text-red-500 hover:underline" type="submit">remove</button>
+                    </form>
+                  </div>
                 </td>
               </tr>
             ))}
@@ -117,7 +122,16 @@ export default async function PayrollPage({ searchParams }: { searchParams: { cu
         </table>
       </div>
 
-      <PayrollEntryForm employees={employees as unknown as EmployeeComp[]} defaultCutoff={selected} />
+      <PayrollEntryForm
+        key={searchParams.entry ?? "new"}
+        employees={employees as unknown as EmployeeComp[]}
+        defaultCutoff={selected}
+        editEntry={(() => {
+          const e = searchParams.entry ? entries.find((x) => x.id === searchParams.entry) : undefined;
+          if (!e) return undefined;
+          return { ...e, employeeName: e.employee.name } as unknown as EditEntry;
+        })()}
+      />
     </div>
   );
 }
