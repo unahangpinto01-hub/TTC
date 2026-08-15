@@ -11,6 +11,7 @@ export function PrintDoc({
   lines,
   signatures,
   footnote,
+  showPrices = true,
 }: {
   title: string;
   docNumber: string;
@@ -19,6 +20,8 @@ export function PrintDoc({
   lines: Line[];
   signatures: { label: string; name?: string }[];
   footnote?: string;
+  /** false = goods-only document (e.g. Delivery Receipt): hides unit prices, amounts, and totals */
+  showPrices?: boolean;
 }) {
   const total = lines.reduce((s, l) => s + l.qty * l.unitPrice, 0);
   const { net, vat } = vatBreakdown(total);
@@ -60,8 +63,8 @@ export function PrintDoc({
             <th className="py-2">#</th>
             <th className="py-2">Item Description</th>
             <th className="py-2 text-right">Qty</th>
-            <th className="py-2 text-right">Unit Price</th>
-            <th className="py-2 text-right">Amount</th>
+            {showPrices && <th className="py-2 text-right">Unit Price</th>}
+            {showPrices && <th className="py-2 text-right">Amount</th>}
           </tr>
         </thead>
         <tbody>
@@ -70,19 +73,28 @@ export function PrintDoc({
               <td className="py-1.5 text-gray-400">{i + 1}</td>
               <td className="py-1.5">{l.name}</td>
               <td className="py-1.5 text-right">{l.qty}</td>
-              <td className="py-1.5 text-right">{peso(l.unitPrice)}</td>
-              <td className="py-1.5 text-right">{peso(l.qty * l.unitPrice)}</td>
+              {showPrices && <td className="py-1.5 text-right">{peso(l.unitPrice)}</td>}
+              {showPrices && <td className="py-1.5 text-right">{peso(l.qty * l.unitPrice)}</td>}
             </tr>
           ))}
         </tbody>
-        <tfoot>
-          <tr><td colSpan={4} className="py-1 text-right text-gray-500">VATable Sales (net)</td><td className="py-1 text-right">{peso(net)}</td></tr>
-          <tr><td colSpan={4} className="py-1 text-right text-gray-500">VAT (12%)</td><td className="py-1 text-right">{peso(vat)}</td></tr>
-          <tr className="border-t-2 border-gray-300 text-base font-bold">
-            <td colSpan={4} className="py-2 text-right">TOTAL</td>
-            <td className="py-2 text-right">{peso(total)}</td>
-          </tr>
-        </tfoot>
+        {showPrices ? (
+          <tfoot>
+            <tr><td colSpan={4} className="py-1 text-right text-gray-500">VATable Sales (net)</td><td className="py-1 text-right">{peso(net)}</td></tr>
+            <tr><td colSpan={4} className="py-1 text-right text-gray-500">VAT (12%)</td><td className="py-1 text-right">{peso(vat)}</td></tr>
+            <tr className="border-t-2 border-gray-300 text-base font-bold">
+              <td colSpan={4} className="py-2 text-right">TOTAL</td>
+              <td className="py-2 text-right">{peso(total)}</td>
+            </tr>
+          </tfoot>
+        ) : (
+          <tfoot>
+            <tr className="border-t-2 border-gray-300 font-bold">
+              <td colSpan={2} className="py-2 text-right">TOTAL QTY</td>
+              <td className="py-2 text-right">{lines.reduce((s, l) => s + l.qty, 0)}</td>
+            </tr>
+          </tfoot>
+        )}
       </table>
 
       {footnote && <p className="mb-8 text-xs text-gray-500">{footnote}</p>}

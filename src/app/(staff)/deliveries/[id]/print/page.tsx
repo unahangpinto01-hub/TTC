@@ -28,6 +28,7 @@ export default async function DRPrintPage({ params }: { params: { id: string } }
         ["Truck / Driver", `${dr.salesOrder.schedule?.truck ?? "—"} / ${dr.salesOrder.schedule?.driver ?? "—"}`],
       ]}
       lines={dr.lines.map((l) => ({ name: l.product.name, qty: l.qty, unitPrice: l.unitPrice }))}
+      showPrices={false}
       signatures={[
         { label: "Prepared by (Admin Clerk)", name: dr.preparedBy ?? undefined },
         { label: "Checked by (Inventory Controller)", name: dr.checkedBy ?? undefined },
