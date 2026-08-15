@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requireStaff } from "@/lib/auth";
@@ -18,6 +19,9 @@ export default async function PODetailPage({ params }: { params: { id: string } 
 
   return (
     <div className="max-w-4xl">
+      <Link href="/purchase-orders" className="mb-3 inline-flex items-center gap-1 text-sm font-medium text-emerald-700 hover:underline">
+        ← Back to Purchase Orders
+      </Link>
       <PageHeader title={`Purchase Order ${po.poNumber}`}>
         <StatusBadge status={po.status} />
         {canEdit && po.status === "Draft" && (
