@@ -25,6 +25,28 @@ export async function createCustomer(formData: FormData) {
   redirect(`/customers/${c.id}`);
 }
 
+export async function updateCustomer(formData: FormData) {
+  await requireStaff(["SUPER_ADMIN", "ADMIN"]);
+  const id = String(formData.get("id"));
+  const terms = ["COD", "30", "60", "90"].filter((t) => formData.get(`term_${t}`));
+  await prisma.customer.update({
+    where: { id },
+    data: {
+      businessName: String(formData.get("businessName")).trim(),
+      contactPerson: String(formData.get("contactPerson") || "").trim(),
+      mobile: String(formData.get("mobile") || "").trim(),
+      messengerHandle: String(formData.get("messengerHandle") || "").trim() || null,
+      address: String(formData.get("address") || "").trim() || null,
+      region: String(formData.get("region")),
+      province: String(formData.get("province") || "").trim(),
+      creditLimit: Number(formData.get("creditLimit")) || 0,
+      allowedTerms: terms.length ? terms.join(",") : "COD",
+      status: formData.get("status") === "Inactive" ? "Inactive" : "Active",
+    },
+  });
+  redirect(`/customers/${id}`);
+}
+
 const REGIONS = ["Luzon", "Visayas", "Mindanao"];
 const VALID_TERMS = ["COD", "30", "60", "90"];
 

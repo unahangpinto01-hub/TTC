@@ -49,6 +49,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: { 
               <th className="table-th">Terms</th>
               <th className="table-th text-right">Credit Limit</th>
               <th className="table-th">Status</th>
+              {canEdit && <th className="table-th" />}
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
@@ -62,9 +63,14 @@ export default async function CustomersPage({ searchParams }: { searchParams: { 
                 <td className="table-td text-xs">{c.allowedTerms.split(",").map(termLabel).join(", ")}</td>
                 <td className="table-td text-right">{peso(c.creditLimit)}</td>
                 <td className="table-td"><StatusBadge status={c.status} /></td>
+                {canEdit && (
+                  <td className="table-td text-right">
+                    <Link href={`/customers/${c.id}?edit=1`} className="text-sm font-medium text-emerald-700 hover:underline">Edit</Link>
+                  </td>
+                )}
               </tr>
             ))}
-            {!customers.length && <tr><td colSpan={6} className="p-8 text-center text-sm text-gray-500">No customers match.</td></tr>}
+            {!customers.length && <tr><td colSpan={canEdit ? 7 : 6} className="p-8 text-center text-sm text-gray-500">No customers match.</td></tr>}
           </tbody>
         </table>
       </div>
