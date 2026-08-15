@@ -1,0 +1,305 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+// Roles: SUPER_ADMIN | ADMIN | CLERK | DEALER
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         String
+  customerId   String?
+  customer     Customer? @relation(fields: [customerId], references: [id])
+  createdAt    DateTime @default(now())
+
+  salesOrders   SalesOrder[]
+  stockMoves    StockMovement[]
+  expenses      Expense[]
+  notifications Notification[]
+  evaluations   Evaluation[]
+}
+
+model Customer {
+  id             String  @id @default(cuid())
+  businessName   String
+  contactPerson  String
+  mobile         String
+  messengerHandle String?
+  address        String?
+  region         String  // Luzon | Visayas | Mindanao
+  province       String
+  creditLimit    Float   @default(0)
+  allowedTerms   String  // comma list: COD,30,60,90
+  status         String  @default("Active")
+  createdAt      DateTime @default(now())
+
+  users          User[]
+  incomingOrders IncomingOrder[]
+  salesOrders    SalesOrder[]
+  salesReceipts  SalesReceipt[]
+}
+
+model Supplier {
+  id      String @id @default(cuid())
+  name    String
+  contact String?
+  address String?
+
+  products       Product[]
+  purchaseOrders PurchaseOrder[]
+}
+
+model Product {
+  id               String  @id @default(cuid())
+  sku              String  @unique
+  name             String
+  activeIngredient String
+  category         String  // Insecticide | Herbicide | Fungicide | Molluscicide | Foliar Fertilizer | Others
+  cropTags         String  // comma list
+  packSize         String
+  unitCost         Float
+  dealerPrice      Float
+  srp              Float
+  reorderPoint     Int     @default(10)
+  stockQty         Int     @default(0)
+  supplierId       String?
+  supplier         Supplier? @relation(fields: [supplierId], references: [id])
+  status           String  @default("Active")
+  createdAt        DateTime @default(now())
+
+  stockMoves         StockMovement[]
+  incomingOrderLines IncomingOrderLine[]
+  salesOrderLines    SalesOrderLine[]
+  drLines            DRLine[]
+  poLines            POLine[]
+}
+
+model StockMovement {
+  id           String   @id @default(cuid())
+  productId    String
+  product      Product  @relation(fields: [productId], references: [id])
+  type         String   // IN | OUT | ADJUST
+  qty          Int
+  balanceAfter Int
+  refType      String?  // PO | DR | OPENING | ADJUST
+  refNo        String?
+  date         DateTime @default(now())
+  userId       String?
+  user         User?    @relation(fields: [userId], references: [id])
+}
+
+model IncomingOrder {
+  id         String   @id @default(cuid())
+  source     String   // PORTAL | MESSENGER | TEXT
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id])
+  term       String   // COD | 30 | 60 | 90
+  status     String   @default("Pending") // Pending | Converted | Cancelled
+  notes      String?
+  createdAt  DateTime @default(now())
+
+  lines       IncomingOrderLine[]
+  salesOrders SalesOrder[]
+}
+
+model IncomingOrderLine {
+  id        String        @id @default(cuid())
+  orderId   String
+  order     IncomingOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product       @relation(fields: [productId], references: [id])
+  qty       Int
+  unitPrice Float
+}
+
+model SalesOrder {
+  id              String    @id @default(cuid())
+  soNumber        String    @unique
+  customerId      String
+  customer        Customer  @relation(fields: [customerId], references: [id])
+  incomingOrderId String?
+  incomingOrder   IncomingOrder? @relation(fields: [incomingOrderId], references: [id])
+  term            String
+  status          String    @default("Draft") // Draft | Confirmed | Scheduled | Delivered | Invoiced | Closed | Cancelled
+  orderDate       DateTime  @default(now())
+  preparedById    String?
+  preparedBy      User?     @relation(fields: [preparedById], references: [id])
+  voidReason      String?
+  createdAt       DateTime  @default(now())
+
+  lines            SalesOrderLine[]
+  schedule         DeliverySchedule?
+  deliveryReceipts DeliveryReceipt[]
+}
+
+model SalesOrderLine {
+  id           String     @id @default(cuid())
+  salesOrderId String
+  salesOrder   SalesOrder @relation(fields: [salesOrderId], references: [id], onDelete: Cascade)
+  productId    String
+  product      Product    @relation(fields: [productId], references: [id])
+  qty          Int
+  unitPrice    Float
+  discount     Float      @default(0)
+  lineTotal    Float
+}
+
+model DeliverySchedule {
+  id           String     @id @default(cuid())
+  salesOrderId String     @unique
+  salesOrder   SalesOrder @relation(fields: [salesOrderId], references: [id])
+  date         DateTime
+  truck        String?
+  driver       String?
+  status       String     @default("Scheduled") // Scheduled | Loading | In Transit | Delivered
+  createdAt    DateTime   @default(now())
+}
+
+model DeliveryReceipt {
+  id           String     @id @default(cuid())
+  drNumber     String     @unique
+  salesOrderId String
+  salesOrder   SalesOrder @relation(fields: [salesOrderId], references: [id])
+  status       String     @default("Draft") // Draft | Delivered | Invoiced | Void
+  date         DateTime   @default(now())
+  deliveredAt  DateTime?
+  preparedBy   String?
+  checkedBy    String?
+  approvedBy   String?
+  voidReason   String?
+
+  lines        DRLine[]
+  salesReceipt SalesReceipt?
+}
+
+model DRLine {
+  id                String          @id @default(cuid())
+  deliveryReceiptId String
+  deliveryReceipt   DeliveryReceipt @relation(fields: [deliveryReceiptId], references: [id], onDelete: Cascade)
+  productId         String
+  product           Product         @relation(fields: [productId], references: [id])
+  qty               Int
+  unitPrice         Float
+}
+
+model SalesReceipt {
+  id                String          @id @default(cuid())
+  srNumber          String          @unique
+  deliveryReceiptId String          @unique
+  deliveryReceipt   DeliveryReceipt @relation(fields: [deliveryReceiptId], references: [id])
+  customerId        String
+  customer          Customer        @relation(fields: [customerId], references: [id])
+  amount            Float
+  term              String
+  invoiceDate       DateTime @default(now())
+  dueDate           DateTime
+  status            String   @default("Open") // Open | Partial | Paid | Void
+  voidReason        String?
+
+  payments Payment[]
+}
+
+model Payment {
+  id             String       @id @default(cuid())
+  salesReceiptId String
+  salesReceipt   SalesReceipt @relation(fields: [salesReceiptId], references: [id])
+  amount         Float
+  date           DateTime     @default(now())
+  method         String       // Cash | Check | Bank Transfer | GCash
+  refNo          String?
+}
+
+model PurchaseOrder {
+  id         String   @id @default(cuid())
+  poNumber   String   @unique
+  supplierId String
+  supplier   Supplier @relation(fields: [supplierId], references: [id])
+  status     String   @default("Draft") // Draft | Sent | Partially Received | Received | Cancelled
+  date       DateTime @default(now())
+
+  lines POLine[]
+}
+
+model POLine {
+  id              String        @id @default(cuid())
+  purchaseOrderId String
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  productId       String
+  product         Product       @relation(fields: [productId], references: [id])
+  qty             Int
+  receivedQty     Int           @default(0)
+  unitCost        Float
+}
+
+model Expense {
+  id       String   @id @default(cuid())
+  date     DateTime @default(now())
+  category String   // Fuel | Salaries | Utilities | Freight | Rent | Supplies | Others
+  amount   Float
+  notes    String?
+  userId   String?
+  user     User?    @relation(fields: [userId], references: [id])
+}
+
+model Employee {
+  id          String   @id @default(cuid())
+  name        String
+  position    String
+  department  String
+  hireDate    DateTime
+  basicSalary Float
+  status      String   @default("Active")
+
+  payrollEntries PayrollEntry[]
+  evaluations    Evaluation[]
+}
+
+model PayrollEntry {
+  id         String   @id @default(cuid())
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id])
+  cutoff     String   // e.g. "Aug 1-15, 2026"
+  basicPay   Float
+  allowances Float    @default(0)
+  deductions Float    @default(0)
+  netPay     Float
+  createdAt  DateTime @default(now())
+}
+
+model Evaluation {
+  id          String   @id @default(cuid())
+  employeeId  String
+  employee    Employee @relation(fields: [employeeId], references: [id])
+  period      String
+  scoresJson  String   // {"criteria": score 1-5}
+  remarks     String?
+  evaluatorId String?
+  evaluator   User?    @relation(fields: [evaluatorId], references: [id])
+  createdAt   DateTime @default(now())
+}
+
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String?   // targeted user, or...
+  user      User?     @relation(fields: [userId], references: [id])
+  role      String?   // ...targeted role (any user with this role sees it)
+  type      String
+  message   String
+  refLink   String?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+}
+
+model DocumentCounter {
+  docType    String
+  year       Int
+  lastNumber Int    @default(0)
+
+  @@id([docType, year])
+}
