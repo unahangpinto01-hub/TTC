@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requireStaff } from "@/lib/auth";
-import { peso, fmtDate, termLabel } from "@/lib/format";
+import { peso, fmtDate, termLabel, daysUntil } from "@/lib/format";
 import { PageHeader, StatusBadge } from "@/components/ui";
 
 export default async function CustomerDetailPage({ params }: { params: { id: string } }) {
@@ -20,6 +20,10 @@ export default async function CustomerDetailPage({ params }: { params: { id: str
   const totalInvoiced = invoiced.reduce((s, sr) => s + sr.amount, 0);
   const totalPaid = invoiced.reduce((s, sr) => s + sr.payments.reduce((a, p) => a + p.amount, 0), 0);
   const balance = totalInvoiced - totalPaid;
+  const srBalance = (sr: (typeof invoiced)[number]) => sr.amount - sr.payments.reduce((a, p) => a + p.amount, 0);
+  const totalPastDue = invoiced
+    .filter((sr) => sr.dueDate < new Date() && srBalance(sr) > 0)
+    .reduce((s, sr) => s + srBalance(sr), 0);
 
   return (
     <div>
@@ -27,11 +31,16 @@ export default async function CustomerDetailPage({ params }: { params: { id: str
         <StatusBadge status={customer.status} />
       </PageHeader>
 
-      <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4">
+      <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-5">
         <div className="card py-3"><p className="text-xs text-gray-500">Contact</p><p className="text-sm font-semibold">{customer.contactPerson}</p><p className="text-xs text-gray-500">{customer.mobile}</p></div>
         <div className="card py-3"><p className="text-xs text-gray-500">Region</p><p className="text-sm font-semibold">{customer.region} · {customer.province}</p></div>
         <div className="card py-3"><p className="text-xs text-gray-500">Terms / Credit Limit</p><p className="text-sm font-semibold">{customer.allowedTerms.split(",").map(termLabel).join(", ")}</p><p className="text-xs text-gray-500">{peso(customer.creditLimit)}</p></div>
         <div className="card py-3"><p className="text-xs text-gray-500">Outstanding Balance</p><p className={`text-lg font-bold ${balance > 0 ? "text-red-600" : "text-emerald-700"}`}>{peso(balance)}</p></div>
+        <div className={`card py-3 ${totalPastDue > 0 ? "border-red-300 bg-red-50" : ""}`}>
+          <p className="text-xs text-gray-500">Total Past Due</p>
+          <p className={`text-lg font-bold ${totalPastDue > 0 ? "text-red-600" : "text-emerald-700"}`}>{peso(totalPastDue)}</p>
+          {totalPastDue > 0 && <p className="text-xs text-red-500">beyond due date</p>}
+        </div>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
@@ -61,23 +70,44 @@ export default async function CustomerDetailPage({ params }: { params: { id: str
           <div className="card overflow-x-auto p-0">
             <table className="w-full min-w-[460px]">
               <thead className="border-b border-gray-200 bg-gray-50">
-                <tr><th className="table-th">SR #</th><th className="table-th">Due</th><th className="table-th text-right">Amount</th><th className="table-th text-right">Paid</th><th className="table-th">Status</th></tr>
+                <tr><th className="table-th">SR #</th><th className="table-th">Due</th><th className="table-th text-right">Amount</th><th className="table-th text-right">Balance</th><th className="table-th text-right">Age</th><th className="table-th">Status</th></tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {customer.salesReceipts.map((sr) => {
                   const paid = sr.payments.reduce((s, p) => s + p.amount, 0);
+                  const bal = sr.amount - paid;
+                  const open = sr.status !== "Void" && bal > 0.005;
+                  const overdueDays = -daysUntil(sr.dueDate); // positive = past due
                   return (
                     <tr key={sr.id}>
                       <td className="table-td"><Link href={`/invoices/${sr.id}`} className="font-mono text-xs text-emerald-700 hover:underline">{sr.srNumber}</Link></td>
                       <td className="table-td text-sm">{fmtDate(sr.dueDate)}</td>
                       <td className="table-td text-right text-sm">{peso(sr.amount)}</td>
-                      <td className="table-td text-right text-sm">{peso(paid)}</td>
+                      <td className={`table-td text-right text-sm ${open ? "font-semibold" : "text-gray-400"}`}>{peso(bal)}</td>
+                      <td className="table-td text-right text-xs">
+                        {!open ? (
+                          <span className="text-gray-400">—</span>
+                        ) : overdueDays > 0 ? (
+                          <span className="font-semibold text-red-600">{overdueDays}d overdue</span>
+                        ) : (
+                          <span className="text-gray-500">due in {-overdueDays}d</span>
+                        )}
+                      </td>
                       <td className="table-td"><StatusBadge status={sr.status} /></td>
                     </tr>
                   );
                 })}
-                {!customer.salesReceipts.length && <tr><td colSpan={5} className="p-6 text-center text-sm text-gray-500">No invoices yet.</td></tr>}
+                {!customer.salesReceipts.length && <tr><td colSpan={6} className="p-6 text-center text-sm text-gray-500">No invoices yet.</td></tr>}
               </tbody>
+              {totalPastDue > 0 && (
+                <tfoot className="border-t-2 border-gray-300 bg-red-50 font-bold">
+                  <tr>
+                    <td className="table-td text-red-700" colSpan={3}>TOTAL PAST DUE</td>
+                    <td className="table-td text-right text-red-600">{peso(totalPastDue)}</td>
+                    <td className="table-td" colSpan={2} />
+                  </tr>
+                </tfoot>
+              )}
             </table>
           </div>
         </div>
