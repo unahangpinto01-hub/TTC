@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db";
 import { requireStaff } from "@/lib/auth";
 import { peso, fmtDateTime } from "@/lib/format";
 import { runNotificationSweep } from "@/lib/notify";
-import { getSalesReport } from "@/lib/reports";
+import { getSalesReport, getPnl } from "@/lib/reports";
 import { SalesChart } from "./sales-chart";
 
 const TARGET = 5;
@@ -51,8 +51,10 @@ export default async function DashboardPage() {
     .reduce((s, sr) => s + sr.amount - sr.payments.reduce((a, p) => a + p.amount, 0), 0);
 
   let salesData: Awaited<ReturnType<typeof getSalesReport>> | null = null;
+  let ytd: Awaited<ReturnType<typeof getPnl>> | null = null;
   if (canFinance) {
     salesData = await getSalesReport({ from: new Date(now.getFullYear(), now.getMonth() - 2, 1), to: now });
+    ytd = await getPnl({ from: new Date(now.getFullYear(), 0, 1), to: now });
   }
 
   return (
@@ -99,6 +101,26 @@ export default async function DashboardPage() {
           </Link>
         )}
       </div>
+
+      {canFinance && ytd && (
+        <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <Link href={`/reports/sales?from=${now.getFullYear()}-01-01&to=${now.toISOString().slice(0, 10)}`} className="card transition-shadow hover:shadow-md">
+            <p className="text-xs text-gray-500">YTD Sales ({now.getFullYear()})</p>
+            <p className="text-2xl font-bold text-emerald-800">{peso(ytd.revenue)}</p>
+            <p className="text-xs text-gray-400">invoiced sales since Jan 1</p>
+          </Link>
+          <Link href={`/finance/expenses?from=${now.getFullYear()}-01-01&to=${now.toISOString().slice(0, 10)}`} className="card transition-shadow hover:shadow-md">
+            <p className="text-xs text-gray-500">YTD Expenses</p>
+            <p className="text-2xl font-bold text-gray-800">{peso(ytd.totalExpenses)}</p>
+            <p className="text-xs text-gray-400">operating expenses since Jan 1</p>
+          </Link>
+          <Link href={`/reports/pnl?from=${now.getFullYear()}-01-01&to=${now.toISOString().slice(0, 10)}`} className="card transition-shadow hover:shadow-md">
+            <p className="text-xs text-gray-500">YTD Net Income</p>
+            <p className={`text-2xl font-bold ${ytd.netIncome >= 0 ? "text-emerald-700" : "text-red-600"}`}>{peso(ytd.netIncome)}</p>
+            <p className="text-xs text-gray-400">sales − COGS − expenses</p>
+          </Link>
+        </div>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="lg:col-span-2">
