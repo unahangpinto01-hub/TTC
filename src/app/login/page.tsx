@@ -2,7 +2,29 @@
 
 import { useFormState, useFormStatus } from "react-dom";
 import { login } from "./actions";
-import { RiceFieldBackground } from "./rice-field";
+
+/** Minimal enterprise-style backdrop: deep gradient, soft brand glows, faint grid. */
+function Backdrop() {
+  return (
+    <div className="absolute inset-0 overflow-hidden bg-[#07120e]" aria-hidden="true">
+      {/* soft radial brand glows */}
+      <div className="absolute -top-40 -left-40 h-[560px] w-[560px] rounded-full bg-emerald-600/25 blur-[140px]" />
+      <div className="absolute bottom-[-180px] right-[-120px] h-[620px] w-[620px] rounded-full bg-teal-500/15 blur-[160px]" />
+      <div className="absolute left-1/2 top-1/3 h-[420px] w-[420px] -translate-x-1/2 rounded-full bg-emerald-400/10 blur-[130px]" />
+      {/* faint grid */}
+      <div
+        className="absolute inset-0 opacity-[0.05]"
+        style={{
+          backgroundImage:
+            "linear-gradient(to right, #ffffff 1px, transparent 1px), linear-gradient(to bottom, #ffffff 1px, transparent 1px)",
+          backgroundSize: "56px 56px",
+        }}
+      />
+      {/* vignette for focus */}
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_40%,rgba(0,0,0,0.45)_100%)]" />
+    </div>
+  );
+}
 
 function SubmitButton() {
   const { pending } = useFormStatus();
@@ -34,11 +56,11 @@ export default function LoginPage() {
   const [state, formAction] = useFormState(login, null);
   return (
     <div className="relative flex min-h-screen flex-col lg:flex-row">
-      <RiceFieldBackground />
+      <Backdrop />
 
-      {/* Left: vision / mission over the field */}
+      {/* Left: vision / mission */}
       <div className="relative z-10 flex flex-1 items-center p-6 sm:p-10 lg:p-16">
-        <div className="max-w-xl rounded-2xl bg-emerald-950/70 p-6 text-emerald-50 backdrop-blur-sm sm:p-8">
+        <div className="max-w-xl rounded-2xl border border-white/10 bg-white/[0.04] p-6 text-emerald-50 backdrop-blur-sm sm:p-8">
           <div className="mb-4 flex items-center gap-3">
             <div className="flex h-11 w-11 items-center justify-center rounded-full bg-emerald-500 text-lg font-bold text-white">
               T
