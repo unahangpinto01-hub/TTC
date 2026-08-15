@@ -15,6 +15,7 @@ export default async function ReportsHub() {
     { title: "Income Statement (P&L)", desc: "Revenue, COGS, expenses, net income", href: `/reports/pnl?from=${monthStart}&to=${today}`, alt: `/reports/pnl?from=${yearStart}&to=${today}` },
     { title: "AR Aging", desc: "Receivables by days past due", href: "/finance/ar" },
     { title: "Inventory Movement", desc: "Stock IN/OUT by date range + stock on hand", href: `/reports/inventory?from=${monthStart}&to=${today}` },
+    { title: "Physical Count Sheet", desc: "Product masterlist with blank count columns for stocktaking", href: "/reports/count-sheet", label: "Open Sheet" },
     { title: "Delivery Performance", desc: "Deliveries per day vs 5/day target", href: `/reports/deliveries?from=${monthStart}&to=${today}` },
   ];
 
@@ -27,7 +28,7 @@ export default async function ReportsHub() {
             <h2 className="font-semibold text-emerald-900">{r.title}</h2>
             <p className="mb-3 text-sm text-gray-500">{r.desc}</p>
             <div className="flex gap-2">
-              <Link href={r.href} className="btn-primary">This Month</Link>
+              <Link href={r.href} className="btn-primary">{(r as any).label ?? "This Month"}</Link>
               {r.alt && <Link href={r.alt} className="btn-secondary">This Year</Link>}
             </div>
           </div>

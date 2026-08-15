@@ -100,6 +100,22 @@ export async function GET(req: NextRequest, { params }: { params: { report: stri
       ];
       return sheetResponse(rows, "Stock", `stock-on-hand.xlsx`);
     }
+    case "count-sheet": {
+      const category = sp.category || "";
+      const products = await prisma.product.findMany({
+        where: { status: "Active", ...(category ? { category } : {}) },
+        orderBy: [{ category: "asc" }, { sku: "asc" }],
+      });
+      const rows: (string | number)[][] = [
+        ["PRODUCT MASTERLIST — PHYSICAL COUNT SHEET", new Date().toISOString().slice(0, 10), category || "All categories"],
+        [],
+        ["#", "SKU", "Product", "Category", "Pack", "Batch", "System Qty", "Physical Count", "Variance", "Remarks"],
+        ...products.map((p, i) => [i + 1, p.sku, p.name, p.category, p.packSize, p.batchNo ?? "", p.stockQty, "", "", ""]),
+        [],
+        ["Counted by (Inventory Controller):", "", "", "Checked by (Supervisor):", "", "", "Noted by:"],
+      ];
+      return sheetResponse(rows, "Count Sheet", `physical-count-sheet.xlsx`);
+    }
     case "delivery-performance": {
       const perf = await getDeliveryPerformance(range);
       const rows: (string | number)[][] = [
