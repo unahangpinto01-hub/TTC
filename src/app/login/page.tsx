@@ -39,56 +39,41 @@ function SubmitButton() {
   );
 }
 
-const MISSION = [
-  "To provide products with real benefits;",
-  "To look for practical alternatives to those that are currently used by farmers;",
-  "To look for quality products at reasonable prices;",
-  "To convince our farmers to consider farming as a business; and,",
-  "To introduce new technology",
-];
-
-const PERFORMANCE = [
-  "Supply quality products at reasonable price",
-  "Improving farmer's lives",
-];
-
 export default function LoginPage() {
   const [state, formAction] = useFormState(login, null);
   return (
     <div className="relative flex min-h-screen flex-col lg:flex-row">
       <Backdrop />
 
-      {/* Left: vision / mission */}
+      {/* Left: artistic company wordmark */}
       <div className="relative z-10 flex flex-1 items-center p-6 sm:p-10 lg:p-16">
-        <div className="max-w-xl rounded-2xl border border-white/10 bg-white/[0.04] p-6 text-emerald-50 backdrop-blur-sm sm:p-8">
-          <div className="mb-4 flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-emerald-500 text-lg font-bold text-white">
-              T
-            </div>
-            <div>
-              <h1 className="text-xl font-bold leading-tight text-white">Teamagro Trading Corp.</h1>
-              <p className="text-xs text-emerald-300">Agricultural Chemicals & Foliar Fertilizers</p>
-            </div>
-          </div>
+        {/* oversized ghost monogram behind the wordmark */}
+        <span
+          className="pointer-events-none absolute -left-10 top-1/2 -translate-y-1/2 select-none text-[26rem] font-black leading-none text-white/[0.03]"
+          aria-hidden="true"
+        >
+          T
+        </span>
 
-          <h2 className="text-xs font-semibold uppercase tracking-widest text-emerald-300">Company Vision</h2>
-          <p className="mb-4 mt-1 text-lg font-medium italic text-white">
-            “To see the farmers enjoy the fruits of their labors.”
+        <div className="relative">
+          <p className="mb-4 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.35em] text-emerald-400">
+            <span className="inline-block h-px w-10 bg-emerald-400/60" />
+            Est. Philippines
           </p>
-
-          <h2 className="text-xs font-semibold uppercase tracking-widest text-emerald-300">Company Mission</h2>
-          <ol className="mb-4 mt-1 list-decimal space-y-1 pl-5 text-sm text-emerald-50">
-            {MISSION.map((m) => (
-              <li key={m}>{m}</li>
-            ))}
-          </ol>
-
-          <h2 className="text-xs font-semibold uppercase tracking-widest text-emerald-300">Performance Areas</h2>
-          <ol className="mt-1 list-decimal space-y-1 pl-5 text-sm text-emerald-50">
-            {PERFORMANCE.map((p) => (
-              <li key={p}>{p}</li>
-            ))}
-          </ol>
+          <h1 className="font-black leading-[0.95] tracking-tight">
+            <span className="block bg-gradient-to-br from-white via-emerald-100 to-emerald-400 bg-clip-text text-6xl text-transparent sm:text-7xl lg:text-8xl">
+              Teamagro
+            </span>
+            <span
+              className="mt-2 block text-4xl uppercase text-transparent sm:text-5xl lg:text-6xl"
+              style={{ WebkitTextStroke: "1.5px rgba(110, 231, 183, 0.55)" }}
+            >
+              Trading Corp.
+            </span>
+          </h1>
+          <p className="mt-6 max-w-md text-sm font-medium tracking-wide text-emerald-200/70">
+            Agricultural Chemicals & Foliar Fertilizers
+          </p>
         </div>
       </div>
 
