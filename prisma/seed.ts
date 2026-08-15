@@ -466,10 +466,25 @@ async function main() {
     });
     for (const cutoff of ["Jul 16-31, 2026", "Aug 1-15, 2026"]) {
       const basicPay = round2(e.basicSalary / 2);
-      const allowances = ri(0, 2) * 500;
-      const deductions = round2(basicPay * 0.09);
+      const allowLiving = ri(0, 2) * 500;
+      const allowGas = e.position.includes("Driver") ? ri(3, 8) * 100 : 0;
+      const allowMotor = e.position.includes("Driver") ? 300 : 0;
+      const allowLoad = ri(0, 1) * 200;
+      const allowTravel = e.department === "Sales" ? ri(2, 6) * 100 : 0;
+      const allowances = round2(allowLiving + allowGas + allowMotor + allowLoad + allowTravel);
+      const dedSss = round2(basicPay * 0.045);
+      const dedPhic = round2(basicPay * 0.025);
+      const dedHdmf = 100;
+      const dedWithholdingTax = round2(Math.max(0, basicPay - 10417) * 0.15);
+      const deductions = round2(dedSss + dedPhic + dedHdmf + dedWithholdingTax);
+      const grossPay = round2(basicPay + allowances);
       await prisma.payrollEntry.create({
-        data: { employeeId: emp.id, cutoff, basicPay, allowances, deductions, netPay: round2(basicPay + allowances - deductions) },
+        data: {
+          employeeId: emp.id, cutoff, basicPay,
+          allowLiving, allowGas, allowMotor, allowLoad, allowTravel,
+          dedSss, dedPhic, dedHdmf, dedWithholdingTax,
+          allowances, grossPay, deductions, netPay: round2(grossPay - deductions),
+        },
       });
     }
     if (rand() > 0.5) {

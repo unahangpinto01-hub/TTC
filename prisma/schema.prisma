@@ -271,9 +271,30 @@ model PayrollEntry {
   employee   Employee @relation(fields: [employeeId], references: [id])
   cutoff     String   // e.g. "Aug 1-15, 2026"
   basicPay   Float
-  allowances Float    @default(0)
-  deductions Float    @default(0)
-  netPay     Float
+
+  // itemized allowances
+  allowLiving Float @default(0)
+  allowGas    Float @default(0)
+  allowMotor  Float @default(0)
+  allowLoad   Float @default(0)
+  allowTravel Float @default(0)
+
+  // itemized deductions
+  dedSss              Float @default(0)
+  dedHdmf             Float @default(0)
+  dedPhic             Float @default(0)
+  dedSssSalaryLoan    Float @default(0)
+  dedSssCalamityLoan  Float @default(0)
+  dedHdmfMplLoan      Float @default(0)
+  dedHdmfCalamityLoan Float @default(0)
+  dedSalaryLoan       Float @default(0)
+  dedWithholdingTax   Float @default(0)
+  dedOthers           Float @default(0)
+
+  allowances Float    @default(0) // total of all allowances
+  grossPay   Float    @default(0) // basicPay + allowances
+  deductions Float    @default(0) // total of all deductions
+  netPay     Float                // grossPay - deductions
   createdAt  DateTime @default(now())
 }
 
