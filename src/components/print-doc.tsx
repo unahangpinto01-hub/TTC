@@ -1,5 +1,5 @@
 import { peso, fmtDate, vatBreakdown } from "@/lib/format";
-import { PrintButton } from "./print-button";
+import { PrintButton, BackButton } from "./print-button";
 
 type Line = { name: string; qty: number; unitPrice: number };
 
@@ -24,7 +24,8 @@ export function PrintDoc({
   const { net, vat } = vatBreakdown(total);
   return (
     <div className="print-page mx-auto max-w-[210mm] rounded-xl border border-gray-200 bg-white p-10 shadow-sm">
-      <div className="no-print mb-6 flex justify-end">
+      <div className="no-print mb-6 flex justify-between">
+        <BackButton />
         <PrintButton />
       </div>
 
