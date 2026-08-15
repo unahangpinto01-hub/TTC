@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { requireStaff } from "@/lib/auth";
-import { peso } from "@/lib/format";
+import { peso, fmtDate, daysUntil, EXPIRY_WARN_DAYS } from "@/lib/format";
 import { getPage, pageCount, PAGE_SIZE } from "@/lib/paginate";
 import { PageHeader, Pagination, StatusBadge, stockStatus } from "@/components/ui";
 
@@ -75,6 +75,7 @@ export default async function InventoryPage({ searchParams }: { searchParams: { 
               <th className="table-th">Pack</th>
               <th className="table-th text-right">Dealer Price</th>
               <th className="table-th text-right">Stock</th>
+              <th className="table-th">Expiry</th>
               <th className="table-th">Status</th>
             </tr>
           </thead>
@@ -90,11 +91,30 @@ export default async function InventoryPage({ searchParams }: { searchParams: { 
                 <td className="table-td">{p.packSize}</td>
                 <td className="table-td text-right">{peso(p.dealerPrice)}</td>
                 <td className="table-td text-right font-semibold">{p.stockQty}</td>
+                <td className="table-td">
+                  {p.expDate ? (
+                    (() => {
+                      const days = daysUntil(p.expDate);
+                      const danger = days < EXPIRY_WARN_DAYS;
+                      return (
+                        <div className={danger ? "font-semibold text-red-600" : "text-gray-600"}>
+                          <p className="text-sm">{fmtDate(p.expDate)}</p>
+                          <p className="text-xs">
+                            {days < 0 ? `EXPIRED ${-days}d ago` : `${days}d left`}
+                            {danger && days >= 0 ? " ⚠" : ""}
+                          </p>
+                        </div>
+                      );
+                    })()
+                  ) : (
+                    <span className="text-xs text-gray-400">—</span>
+                  )}
+                </td>
                 <td className="table-td"><StatusBadge status={stockStatus(p.stockQty, p.reorderPoint)} /></td>
               </tr>
             ))}
             {!products.length && (
-              <tr><td colSpan={7} className="p-8 text-center text-sm text-gray-500">No products match your filters.</td></tr>
+              <tr><td colSpan={8} className="p-8 text-center text-sm text-gray-500">No products match your filters.</td></tr>
             )}
           </tbody>
         </table>

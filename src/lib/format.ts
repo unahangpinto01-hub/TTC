@@ -24,6 +24,14 @@ export function termLabel(term: string): string {
 
 export const VAT_RATE = 0.12;
 
+/** Days from today until d (negative = past). */
+export function daysUntil(d: Date | string): number {
+  return Math.ceil((new Date(d).getTime() - Date.now()) / 86400000);
+}
+
+/** Expiry warning threshold: 6 months. */
+export const EXPIRY_WARN_DAYS = 180;
+
 /** Prices are VAT-inclusive. Returns {net, vat} components of a gross amount. */
 export function vatBreakdown(gross: number) {
   const net = gross / (1 + VAT_RATE);

@@ -154,6 +154,12 @@ async function main() {
       const srp = round2(dealerPrice * 1.15);
       const reorderPoint = ri(10, 30);
       const fullName = `${name} ${cat.category} ${pack}`;
+      // batch/expiry: most products expire 1.5-2.5 yrs out; every 10th is inside
+      // the 6-month warning window and one is already expired (for the red flags)
+      const mfgDate = daysAgo(ri(60, 400));
+      let expDate = addDays(mfgDate, ri(540, 900));
+      if (skuCounter % 10 === 0) expDate = daysAgo(-ri(30, 170));
+      if (skuCounter === 13) expDate = daysAgo(ri(5, 40));
       const p = await prisma.product.create({
         data: {
           sku: `${cat.skuPrefix}-${String(skuCounter).padStart(3, "0")}`,
@@ -167,6 +173,9 @@ async function main() {
           srp,
           reorderPoint,
           supplierId: pick(suppliers).id,
+          batchNo: `B26-${String(1000 + skuCounter)}`,
+          mfgDate,
+          expDate,
         },
       });
       products.push({ id: p.id, sku: p.sku, name: p.name, dealerPrice, unitCost, reorderPoint, stock: 0 });

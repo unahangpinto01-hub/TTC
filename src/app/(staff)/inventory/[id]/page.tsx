@@ -1,9 +1,9 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requireStaff } from "@/lib/auth";
-import { peso, fmtDate } from "@/lib/format";
+import { peso, fmtDate, daysUntil, EXPIRY_WARN_DAYS } from "@/lib/format";
 import { PageHeader, StatusBadge, stockStatus } from "@/components/ui";
-import { adjustStock } from "../actions";
+import { adjustStock, updateBatchInfo } from "../actions";
 
 export default async function ProductDetailPage({ params }: { params: { id: string } }) {
   const user = await requireStaff();
@@ -39,13 +39,56 @@ export default async function ProductDetailPage({ params }: { params: { id: stri
           ["SRP", peso(product.srp)],
           ["Reorder Point", String(product.reorderPoint)],
           ["Stock on Hand", String(product.stockQty)],
+          ["Batch Number", product.batchNo ?? "—"],
+          ["Manufacturing Date", product.mfgDate ? fmtDate(product.mfgDate) : "—"],
         ].map(([k, v]) => (
           <div key={k} className="card py-3">
             <p className="text-xs text-gray-500">{k}</p>
             <p className="text-sm font-semibold">{v}</p>
           </div>
         ))}
+        {(() => {
+          if (!product.expDate) {
+            return (
+              <div className="card py-3">
+                <p className="text-xs text-gray-500">Expiration Date</p>
+                <p className="text-sm font-semibold">—</p>
+              </div>
+            );
+          }
+          const days = daysUntil(product.expDate);
+          const danger = days < EXPIRY_WARN_DAYS;
+          return (
+            <div className={`card py-3 ${danger ? "border-red-300 bg-red-50" : ""}`}>
+              <p className="text-xs text-gray-500">Expiration Date</p>
+              <p className={`text-sm font-semibold ${danger ? "text-red-700" : ""}`}>{fmtDate(product.expDate)}</p>
+              <p className={`text-xs font-semibold ${danger ? "text-red-600" : "text-gray-500"}`}>
+                {days < 0 ? `EXPIRED ${-days} day(s) ago` : `${days} day(s) before expiration`}
+                {danger && days >= 0 ? " ⚠ under 6 months" : ""}
+              </p>
+            </div>
+          );
+        })()}
       </div>
+
+      {canEdit && (
+        <form action={updateBatchInfo} className="card mb-4 flex flex-wrap items-end gap-3">
+          <input type="hidden" name="productId" value={product.id} />
+          <div>
+            <label className="label">Batch Number</label>
+            <input name="batchNo" defaultValue={product.batchNo ?? ""} className="input w-36" placeholder="B26-0001" />
+          </div>
+          <div>
+            <label className="label">Manufacturing Date</label>
+            <input name="mfgDate" type="date" defaultValue={product.mfgDate ? product.mfgDate.toISOString().slice(0, 10) : ""} className="input" />
+          </div>
+          <div>
+            <label className="label">Expiration Date</label>
+            <input name="expDate" type="date" defaultValue={product.expDate ? product.expDate.toISOString().slice(0, 10) : ""} className="input" />
+          </div>
+          <button className="btn-secondary" type="submit">Save Batch Info</button>
+        </form>
+      )}
 
       {canEdit && (
         <form action={adjustStock} className="card mb-4 flex flex-wrap items-end gap-3">

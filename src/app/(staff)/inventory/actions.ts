@@ -20,6 +20,9 @@ export async function createProduct(formData: FormData) {
     srp: Number(formData.get("srp")) || 0,
     reorderPoint: Number(formData.get("reorderPoint")) || 10,
     supplierId: String(formData.get("supplierId")) || null,
+    batchNo: String(formData.get("batchNo") || "").trim() || null,
+    mfgDate: formData.get("mfgDate") ? new Date(String(formData.get("mfgDate"))) : null,
+    expDate: formData.get("expDate") ? new Date(String(formData.get("expDate"))) : null,
   };
   const product = await prisma.product.create({ data });
   const opening = Number(formData.get("openingStock")) || 0;
@@ -31,6 +34,23 @@ export async function createProduct(formData: FormData) {
     });
   }
   redirect(`/inventory/${product.id}`);
+}
+
+export async function updateBatchInfo(formData: FormData) {
+  await requireStaff(["SUPER_ADMIN", "ADMIN"]);
+  const productId = String(formData.get("productId"));
+  const mfg = String(formData.get("mfgDate") || "");
+  const exp = String(formData.get("expDate") || "");
+  await prisma.product.update({
+    where: { id: productId },
+    data: {
+      batchNo: String(formData.get("batchNo") || "").trim() || null,
+      mfgDate: mfg ? new Date(mfg) : null,
+      expDate: exp ? new Date(exp) : null,
+    },
+  });
+  revalidatePath(`/inventory/${productId}`);
+  redirect(`/inventory/${productId}`);
 }
 
 export async function adjustStock(formData: FormData) {
