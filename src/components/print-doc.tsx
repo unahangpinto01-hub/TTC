@@ -62,7 +62,7 @@ export function PrintDoc({
           <tr className="border-b-2 border-gray-300 text-left">
             <th className="py-2">#</th>
             <th className="py-2">Item Description</th>
-            <th className="py-2 text-right">Qty</th>
+            <th className={`py-2 text-right ${showPrices ? "" : "pr-16"}`}>Qty</th>
             {showPrices && <th className="py-2 text-right">Unit Price</th>}
             {showPrices && <th className="py-2 text-right">Amount</th>}
           </tr>
@@ -72,7 +72,7 @@ export function PrintDoc({
             <tr key={i} className="border-b border-gray-100">
               <td className="py-1.5 text-gray-400">{i + 1}</td>
               <td className="py-1.5">{l.name}</td>
-              <td className="py-1.5 text-right">{l.qty}</td>
+              <td className={`py-1.5 text-right ${showPrices ? "" : "pr-16"}`}>{l.qty}</td>
               {showPrices && <td className="py-1.5 text-right">{peso(l.unitPrice)}</td>}
               {showPrices && <td className="py-1.5 text-right">{peso(l.qty * l.unitPrice)}</td>}
             </tr>
@@ -91,7 +91,7 @@ export function PrintDoc({
           <tfoot>
             <tr className="border-t-2 border-gray-300 font-bold">
               <td colSpan={2} className="py-2 text-right">TOTAL QTY</td>
-              <td className="py-2 text-right">{lines.reduce((s, l) => s + l.qty, 0)}</td>
+              <td className="py-2 pr-16 text-right">{lines.reduce((s, l) => s + l.qty, 0)}</td>
             </tr>
           </tfoot>
         )}
