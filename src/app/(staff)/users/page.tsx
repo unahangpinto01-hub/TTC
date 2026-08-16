@@ -1,5 +1,6 @@
+import Link from "next/link";
 import { prisma } from "@/lib/db";
-import { requireStaff } from "@/lib/auth";
+import { requirePerm } from "@/lib/auth";
 import { fmtDate } from "@/lib/format";
 import { PageHeader } from "@/components/ui";
 import { createUser, setUserAccess } from "./actions";
@@ -22,7 +23,7 @@ function AccessBadge({ access }: { access: string }) {
 }
 
 export default async function UsersPage({ searchParams }: { searchParams: { error?: string } }) {
-  const me = await requireStaff(["SUPER_ADMIN"]);
+  const me = await requirePerm("users");
   const [users, customers] = await Promise.all([
     prisma.user.findMany({ orderBy: { createdAt: "asc" }, include: { customer: true } }),
     prisma.customer.findMany({ where: { status: "Active" }, orderBy: { businessName: "asc" } }),
@@ -45,35 +46,44 @@ export default async function UsersPage({ searchParams }: { searchParams: { erro
                   <th className="table-th">Name</th>
                   <th className="table-th">Email</th>
                   <th className="table-th">Role</th>
-                  <th className="table-th">Dealer Account</th>
-                  <th className="table-th">Permission</th>
+                  <th className="table-th">Account</th>
+                  <th className="table-th">Permissions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {users.map((u) => (
                   <tr key={u.id} className={u.access === "NONE" ? "opacity-60" : ""}>
                     <td className="table-td font-medium">
-                      {u.name}
+                      <Link href={`/users/${u.id}`} className="text-emerald-700 hover:underline">{u.name}</Link>
                       {u.id === me.id && <span className="ml-1 text-xs text-gray-400">(you)</span>}
                       <p className="text-xs text-gray-400">{fmtDate(u.createdAt)}</p>
                     </td>
                     <td className="table-td text-sm">{u.email}</td>
                     <td className="table-td"><span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-semibold">{u.role.replace("_", " ")}</span></td>
-                    <td className="table-td text-sm text-gray-600">{u.customer?.businessName ?? "—"}</td>
                     <td className="table-td">
                       {u.id === me.id ? (
                         <AccessBadge access={u.access} />
                       ) : (
-                        <form action={setUserAccess} className="flex flex-wrap items-center gap-3">
+                        <form action={setUserAccess} className="flex flex-wrap items-center gap-2">
                           <input type="hidden" name="id" value={u.id} />
-                          {ACCESS_OPTIONS.map(([value, label]) => (
-                            <label key={value} className="flex items-center gap-1 whitespace-nowrap text-xs">
-                              <input type="radio" name="access" value={value} defaultChecked={u.access === value} />
-                              {label}
-                            </label>
-                          ))}
+                          <select name="access" defaultValue={u.access} className="input w-auto px-2 py-1 text-xs">
+                            {ACCESS_OPTIONS.map(([value, label]) => (
+                              <option key={value} value={value}>{label}</option>
+                            ))}
+                          </select>
                           <button className="btn-secondary px-2 py-0.5 text-xs" type="submit">Save</button>
                         </form>
+                      )}
+                    </td>
+                    <td className="table-td">
+                      {u.role === "SUPER_ADMIN" ? (
+                        <span className="text-xs font-semibold text-emerald-700">👑 Full access</span>
+                      ) : u.role === "DEALER" ? (
+                        <span className="text-xs text-gray-400">portal only</span>
+                      ) : (
+                        <Link href={`/users/${u.id}`} className="text-sm font-medium text-emerald-700 hover:underline">
+                          Configure →
+                        </Link>
                       )}
                     </td>
                   </tr>
@@ -82,9 +92,9 @@ export default async function UsersPage({ searchParams }: { searchParams: { erro
             </table>
           </div>
           <p className="mt-2 text-xs text-gray-500">
-            <span className="font-semibold">No Access</span> — cannot sign in ·{" "}
-            <span className="font-semibold">Read/Write</span> — full use within their role ·{" "}
-            <span className="font-semibold">Read Only</span> — can view but cannot create, edit, or delete.
+            <span className="font-semibold">Account</span> is the master switch (No Access blocks sign-in; Read Only caps every function to viewing).
+            Click a user or <span className="font-semibold">Configure →</span> to set per-function permissions
+            (No Access / Read-Write / Read Only for each function). Super Admin always has full access.
           </p>
         </div>
         <form action={createUser} className="card h-fit space-y-3">

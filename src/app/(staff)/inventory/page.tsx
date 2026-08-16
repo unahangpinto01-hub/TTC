@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
-import { requireStaff } from "@/lib/auth";
+import { requirePerm } from "@/lib/auth";
 import { peso, fmtDate, daysUntil, EXPIRY_WARN_DAYS } from "@/lib/format";
 import { getPage, pageCount, PAGE_SIZE } from "@/lib/paginate";
 import { PageHeader, Pagination, StatusBadge, stockStatus } from "@/components/ui";
@@ -8,7 +8,7 @@ import { PageHeader, Pagination, StatusBadge, stockStatus } from "@/components/u
 const CATEGORIES = ["Insecticide", "Herbicide", "Fungicide", "Molluscicide", "Foliar Fertilizer", "Others"];
 
 export default async function InventoryPage({ searchParams }: { searchParams: { q?: string; category?: string; stock?: string; page?: string } }) {
-  const user = await requireStaff();
+  const user = await requirePerm("inventory");
   const { page, skip, take } = getPage(searchParams);
   const q = searchParams.q?.trim() || "";
   const category = searchParams.category || "";
@@ -38,7 +38,7 @@ export default async function InventoryPage({ searchParams }: { searchParams: { 
   if (category) params.category = category;
   if (stockFilter) params.stock = stockFilter;
 
-  const canEdit = ["SUPER_ADMIN", "ADMIN"].includes(user.role);
+  const canEdit = user.perm === "READ_WRITE";
 
   return (
     <div>

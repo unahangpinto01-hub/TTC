@@ -3,12 +3,12 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
-import { requireStaffWrite } from "@/lib/auth";
+import { requirePermWrite } from "@/lib/auth";
 import { nextDocNumber } from "@/lib/numbering";
 import { notifyRole } from "@/lib/notify";
 
 export async function createPO(formData: FormData) {
-  await requireStaffWrite(["SUPER_ADMIN", "ADMIN"]);
+  await requirePermWrite("purchaseOrders");
   const supplierId = String(formData.get("supplierId"));
   const productIds = formData.getAll("productId").map(String);
   const qtys = formData.getAll("qty").map(Number);
@@ -38,7 +38,7 @@ export async function createPO(formData: FormData) {
 }
 
 export async function markPOSent(formData: FormData) {
-  await requireStaffWrite(["SUPER_ADMIN", "ADMIN"]);
+  await requirePermWrite("purchaseOrders");
   const id = String(formData.get("id"));
   await prisma.purchaseOrder.update({ where: { id }, data: { status: "Sent" } });
   revalidatePath(`/purchase-orders/${id}`);
@@ -46,7 +46,7 @@ export async function markPOSent(formData: FormData) {
 
 /** Receive quantities against PO lines; adds IN stock movements. */
 export async function receivePO(formData: FormData) {
-  const user = await requireStaffWrite(["SUPER_ADMIN", "ADMIN"]);
+  const user = await requirePermWrite("purchaseOrders");
   const poId = String(formData.get("poId"));
   const lineIds = formData.getAll("lineId").map(String);
   const recvQtys = formData.getAll("recvQty").map(Number);

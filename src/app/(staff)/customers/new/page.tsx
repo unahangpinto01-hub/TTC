@@ -1,9 +1,9 @@
-import { requireStaff } from "@/lib/auth";
+import { requirePerm } from "@/lib/auth";
 import { PageHeader } from "@/components/ui";
 import { createCustomer } from "../actions";
 
 export default async function NewCustomerPage() {
-  await requireStaff();
+  await requirePerm("customers");
   return (
     <div className="max-w-2xl">
       <PageHeader title="New Customer" />

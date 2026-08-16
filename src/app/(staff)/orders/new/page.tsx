@@ -1,11 +1,11 @@
 import { prisma } from "@/lib/db";
-import { requireStaff } from "@/lib/auth";
+import { requirePerm } from "@/lib/auth";
 import { PageHeader } from "@/components/ui";
 import { encodeOrder } from "../actions";
 import { EncodeLines } from "./encode-lines";
 
 export default async function EncodeOrderPage({ searchParams }: { searchParams: { error?: string } }) {
-  await requireStaff();
+  await requirePerm("orders");
   const [customers, products] = await Promise.all([
     prisma.customer.findMany({ where: { status: "Active" }, orderBy: { businessName: "asc" } }),
     prisma.product.findMany({ where: { status: "Active" }, orderBy: { name: "asc" }, select: { id: true, sku: true, name: true, dealerPrice: true, stockQty: true } }),

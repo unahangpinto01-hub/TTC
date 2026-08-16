@@ -1,10 +1,10 @@
-import { requireStaff } from "@/lib/auth";
+import { requirePerm } from "@/lib/auth";
 import { getLedger, parseRange } from "@/lib/reports";
 import { peso, fmtDate } from "@/lib/format";
 import { PageHeader } from "@/components/ui";
 
 export default async function LedgerPage({ searchParams }: { searchParams: { from?: string; to?: string } }) {
-  await requireStaff(["SUPER_ADMIN", "ADMIN"]);
+  await requirePerm("ledger");
   const range = parseRange(searchParams);
   const entries = await getLedger(range);
   const fromStr = range.from.toISOString().slice(0, 10);

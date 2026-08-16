@@ -1,12 +1,12 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { requireStaff } from "@/lib/auth";
+import { requirePerm } from "@/lib/auth";
 import { peso, fmtDate, daysUntil, EXPIRY_WARN_DAYS } from "@/lib/format";
 import { PageHeader, StatusBadge, stockStatus } from "@/components/ui";
 import { adjustStock, updateBatchInfo } from "../actions";
 
 export default async function ProductDetailPage({ params }: { params: { id: string } }) {
-  const user = await requireStaff();
+  const user = await requirePerm("inventory");
   const product = await prisma.product.findUnique({
     where: { id: params.id },
     include: { supplier: true },
@@ -18,7 +18,7 @@ export default async function ProductDetailPage({ params }: { params: { id: stri
     take: 100,
     include: { user: { select: { name: true } } },
   });
-  const canEdit = ["SUPER_ADMIN", "ADMIN"].includes(user.role);
+  const canEdit = user.perm === "READ_WRITE";
 
   return (
     <div>

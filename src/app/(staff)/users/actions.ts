@@ -27,6 +27,23 @@ export async function createUser(formData: FormData) {
   redirect("/users");
 }
 
+/** Save the per-function permission matrix for a user (Super Admin only). */
+export async function updateUserPerms(formData: FormData) {
+  await requireStaffWrite(["SUPER_ADMIN"]);
+  const { FUNCTIONS } = await import("@/lib/permissions");
+  const id = String(formData.get("id"));
+  const target = await prisma.user.findUniqueOrThrow({ where: { id } });
+  if (target.role === "SUPER_ADMIN") redirect("/users"); // super admin is always full access
+  const perms: Record<string, string> = {};
+  for (const [key] of FUNCTIONS) {
+    const v = String(formData.get(`perm_${key}`) || "");
+    perms[key] = ACCESS_LEVELS.includes(v) ? v : "NONE";
+  }
+  await prisma.user.update({ where: { id }, data: { permsJson: JSON.stringify(perms) } });
+  revalidatePath(`/users/${id}`);
+  redirect(`/users/${id}`);
+}
+
 /** Set a user's access level. You cannot change your own (prevents locking yourself out). */
 export async function setUserAccess(formData: FormData) {
   const me = await requireStaffWrite(["SUPER_ADMIN"]);

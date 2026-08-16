@@ -1,16 +1,16 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
-import { requireStaff } from "@/lib/auth";
+import { requirePerm } from "@/lib/auth";
 import { PageHeader, StatusBadge } from "@/components/ui";
 import { createSupplier, updateSupplier } from "./actions";
 
 export default async function SuppliersPage({ searchParams }: { searchParams: { edit?: string } }) {
-  const user = await requireStaff();
+  const user = await requirePerm("suppliers");
   const suppliers = await prisma.supplier.findMany({
     orderBy: { name: "asc" },
     include: { _count: { select: { products: true, purchaseOrders: true } } },
   });
-  const canEdit = ["SUPER_ADMIN", "ADMIN"].includes(user.role);
+  const canEdit = user.perm === "READ_WRITE";
   const editingId = canEdit ? searchParams.edit : undefined;
 
   return (

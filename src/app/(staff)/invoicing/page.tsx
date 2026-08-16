@@ -1,12 +1,12 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
-import { requireStaff } from "@/lib/auth";
+import { requirePerm } from "@/lib/auth";
 import { fmtDate, peso, termLabel } from "@/lib/format";
 import { PageHeader } from "@/components/ui";
 import { convertDRtoSR } from "./actions";
 
 export default async function InvoicingQueuePage() {
-  await requireStaff(["SUPER_ADMIN", "ADMIN"]);
+  await requirePerm("invoicing");
   const queue = await prisma.deliveryReceipt.findMany({
     where: { status: "Delivered", salesReceipt: null },
     orderBy: { deliveredAt: "asc" },

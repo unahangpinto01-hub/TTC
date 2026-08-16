@@ -1,21 +1,22 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
-import { requireStaff } from "@/lib/auth";
+import { requirePerm } from "@/lib/auth";
 import { peso, fmtDateTime } from "@/lib/format";
 import { runNotificationSweep } from "@/lib/notify";
+import { getPerm } from "@/lib/permissions";
 import { getSalesReport, getPnl } from "@/lib/reports";
 import { SalesChart } from "./sales-chart";
 
 const TARGET = 5;
 
 export default async function DashboardPage() {
-  const user = await requireStaff();
+  const user = await requirePerm("dashboard");
   await runNotificationSweep();
 
   const now = new Date();
   const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
   const todayEnd = new Date(todayStart); todayEnd.setDate(todayEnd.getDate() + 1);
-  const canFinance = ["SUPER_ADMIN", "ADMIN"].includes(user.role);
+  const canFinance = getPerm(user, "ar") !== "NONE";
 
   // last 6 months of invoiced sales
   const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1);

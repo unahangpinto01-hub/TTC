@@ -3,11 +3,11 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
-import { requireStaffWrite } from "@/lib/auth";
+import { requirePermWrite, requireStaffWrite } from "@/lib/auth";
 import { notifyRoles } from "@/lib/notify";
 
 export async function updateScheduleStatus(formData: FormData) {
-  await requireStaffWrite();
+  await requirePermWrite("schedule");
   const id = String(formData.get("scheduleId"));
   const status = String(formData.get("status"));
   if (!["Scheduled", "Loading", "In Transit"].includes(status)) return;
@@ -17,7 +17,7 @@ export async function updateScheduleStatus(formData: FormData) {
 
 /** Confirm delivery: deducts stock (OUT entries), updates SO + schedule, notifies accounting. */
 export async function markDelivered(formData: FormData) {
-  const user = await requireStaffWrite();
+  const user = await requirePermWrite("deliveries");
   const drId = String(formData.get("drId"));
   const dr = await prisma.deliveryReceipt.findUniqueOrThrow({
     where: { id: drId },
@@ -51,7 +51,7 @@ export async function markDelivered(formData: FormData) {
   redirect(`/deliveries/${drId}`);
 }
 
-/** Void a DR (Super Admin). Restores stock if it was already delivered. */
+/** Void a DR (Super Admin only, per spec). Restores stock if it was already delivered. */
 export async function voidDR(formData: FormData) {
   const user = await requireStaffWrite(["SUPER_ADMIN"]);
   const drId = String(formData.get("drId"));

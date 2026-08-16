@@ -1,13 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { requireStaff } from "@/lib/auth";
+import { requirePerm } from "@/lib/auth";
 import { fmtDate, peso, termLabel, vatBreakdown } from "@/lib/format";
 import { PageHeader, StatusBadge } from "@/components/ui";
 import { confirmSO, cancelSO, scheduleSO, generateDR, updateLineQty, removeLine } from "../actions";
 
 export default async function SODetailPage({ params, searchParams }: { params: { id: string }; searchParams: { error?: string } }) {
-  const user = await requireStaff();
+  const user = await requirePerm("salesOrders");
   const so = await prisma.salesOrder.findUnique({
     where: { id: params.id },
     include: {
@@ -24,7 +24,7 @@ export default async function SODetailPage({ params, searchParams }: { params: {
   const total = so.lines.reduce((s, l) => s + l.lineTotal, 0);
   const { net, vat } = vatBreakdown(total);
   const anyShort = so.lines.some((l) => l.product.stockQty < l.qty);
-  const canApprove = ["SUPER_ADMIN", "ADMIN"].includes(user.role);
+  const canApprove = user.perm === "READ_WRITE";
   const dr = so.deliveryReceipts[0];
   const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 

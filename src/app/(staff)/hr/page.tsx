@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
-import { requireStaff } from "@/lib/auth";
+import { requirePerm } from "@/lib/auth";
 import { peso, fmtDate } from "@/lib/format";
 import { ALLOWANCE_FIELDS, DEDUCTION_FIELDS } from "@/lib/payroll";
 import { PageHeader, StatusBadge } from "@/components/ui";
@@ -8,7 +8,7 @@ import { createEmployee, updateEmployee } from "./actions";
 import { HrTabs } from "./hr-tabs";
 
 export default async function EmployeesPage({ searchParams }: { searchParams: { edit?: string } }) {
-  await requireStaff(["SUPER_ADMIN", "ADMIN"]);
+  await requirePerm("hr");
   const employees = await prisma.employee.findMany({ orderBy: { name: "asc" } });
   const today = new Date().toISOString().slice(0, 10);
   const editing = searchParams.edit ? employees.find((e) => e.id === searchParams.edit) : undefined;

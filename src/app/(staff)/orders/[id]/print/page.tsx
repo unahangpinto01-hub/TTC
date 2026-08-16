@@ -1,11 +1,11 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { requireStaff } from "@/lib/auth";
+import { requirePerm } from "@/lib/auth";
 import { fmtDateTime, termLabel } from "@/lib/format";
 import { PrintDoc } from "@/components/print-doc";
 
 export default async function IncomingOrderPrintPage({ params }: { params: { id: string } }) {
-  await requireStaff();
+  await requirePerm("orders");
   const order = await prisma.incomingOrder.findUnique({
     where: { id: params.id },
     include: { customer: true, lines: { include: { product: true } }, salesOrders: true },

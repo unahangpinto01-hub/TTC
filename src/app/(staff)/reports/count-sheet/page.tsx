@@ -1,6 +1,6 @@
 import { Fragment } from "react";
 import { prisma } from "@/lib/db";
-import { requireStaff } from "@/lib/auth";
+import { requirePerm } from "@/lib/auth";
 import { fmtDate } from "@/lib/format";
 import { PageHeader } from "@/components/ui";
 import { PrintButton, BackButton } from "@/components/print-button";
@@ -8,7 +8,7 @@ import { PrintButton, BackButton } from "@/components/print-button";
 const CATEGORIES = ["Insecticide", "Herbicide", "Fungicide", "Molluscicide", "Foliar Fertilizer", "Others"];
 
 export default async function CountSheetPage({ searchParams }: { searchParams: { category?: string } }) {
-  await requireStaff(["SUPER_ADMIN", "ADMIN"]);
+  await requirePerm("reports");
   const category = searchParams.category || "";
   const products = await prisma.product.findMany({
     where: { status: "Active", ...(category ? { category } : {}) },

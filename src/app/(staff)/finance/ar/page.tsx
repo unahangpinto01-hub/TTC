@@ -1,12 +1,12 @@
 import Link from "next/link";
-import { requireStaff } from "@/lib/auth";
+import { requirePerm } from "@/lib/auth";
 import { getArAging } from "@/lib/reports";
 import { peso } from "@/lib/format";
 import { PageHeader } from "@/components/ui";
 import { PrintButton } from "@/components/print-button";
 
 export default async function ArAgingPage() {
-  await requireStaff(["SUPER_ADMIN", "ADMIN"]);
+  await requirePerm("ar");
   const { rows, totals } = await getArAging();
 
   return (

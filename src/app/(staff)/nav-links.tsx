@@ -3,60 +3,61 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-type Item = { href: string; label: string; roles?: string[] };
+type Item = { href: string; label: string; fn: string };
 
 const NAV: { section: string; items: Item[] }[] = [
   {
     section: "Overview",
     items: [
-      { href: "/dashboard", label: "Dashboard" },
-      { href: "/notifications", label: "Notifications" },
+      { href: "/dashboard", label: "Dashboard", fn: "dashboard" },
+      { href: "/notifications", label: "Notifications", fn: "notifications" },
     ],
   },
   {
     section: "Sales",
     items: [
-      { href: "/orders", label: "Order Inbox" },
-      { href: "/sales-orders", label: "Sales Orders" },
-      { href: "/schedule", label: "Delivery Schedule" },
-      { href: "/deliveries", label: "Delivery Receipts" },
-      { href: "/invoicing", label: "For Invoicing", roles: ["SUPER_ADMIN", "ADMIN"] },
-      { href: "/invoices", label: "Invoices (SR)" },
-      { href: "/customers", label: "Customers" },
+      { href: "/orders", label: "Order Inbox", fn: "orders" },
+      { href: "/sales-orders", label: "Sales Orders", fn: "salesOrders" },
+      { href: "/schedule", label: "Delivery Schedule", fn: "schedule" },
+      { href: "/deliveries", label: "Delivery Receipts", fn: "deliveries" },
+      { href: "/invoicing", label: "For Invoicing", fn: "invoicing" },
+      { href: "/invoices", label: "Invoices (SR)", fn: "invoices" },
+      { href: "/customers", label: "Customers", fn: "customers" },
     ],
   },
   {
     section: "Inventory",
     items: [
-      { href: "/inventory", label: "Products" },
-      { href: "/purchase-orders", label: "Purchase Orders" },
-      { href: "/suppliers", label: "Suppliers" },
+      { href: "/inventory", label: "Products", fn: "inventory" },
+      { href: "/purchase-orders", label: "Purchase Orders", fn: "purchaseOrders" },
+      { href: "/suppliers", label: "Suppliers", fn: "suppliers" },
     ],
   },
   {
     section: "Finance",
     items: [
-      { href: "/finance/ar", label: "AR / Aging", roles: ["SUPER_ADMIN", "ADMIN"] },
-      { href: "/finance/expenses", label: "Expenses", roles: ["SUPER_ADMIN", "ADMIN"] },
-      { href: "/finance/ledger", label: "Ledger", roles: ["SUPER_ADMIN", "ADMIN"] },
-      { href: "/reports", label: "Reports", roles: ["SUPER_ADMIN", "ADMIN"] },
+      { href: "/finance/ar", label: "AR / Aging", fn: "ar" },
+      { href: "/finance/expenses", label: "Expenses", fn: "expenses" },
+      { href: "/finance/ledger", label: "Ledger", fn: "ledger" },
+      { href: "/reports", label: "Reports", fn: "reports" },
     ],
   },
   {
     section: "Admin",
     items: [
-      { href: "/hr", label: "HR", roles: ["SUPER_ADMIN", "ADMIN"] },
-      { href: "/users", label: "Users", roles: ["SUPER_ADMIN"] },
+      { href: "/hr", label: "HR", fn: "hr" },
+      { href: "/users", label: "Users", fn: "users" },
     ],
   },
 ];
 
-export function NavLinks({ role }: { role: string }) {
+/** perms: map of function key -> effective level; NONE entries are hidden. */
+export function NavLinks({ perms }: { perms: Record<string, string> }) {
   const pathname = usePathname();
   return (
     <nav className="flex-1 space-y-4 overflow-y-auto px-2 pb-6">
       {NAV.map((group) => {
-        const items = group.items.filter((i) => !i.roles || i.roles.includes(role));
+        const items = group.items.filter((i) => perms[i.fn] && perms[i.fn] !== "NONE");
         if (!items.length) return null;
         return (
           <div key={group.section}>
@@ -77,6 +78,7 @@ export function NavLinks({ role }: { role: string }) {
                     }`}
                   >
                     {item.label}
+                    {perms[item.fn] === "READ_ONLY" && <span className="ml-1 text-[9px] text-emerald-400">👁</span>}
                   </Link>
                 );
               })}

@@ -1,9 +1,9 @@
 import Link from "next/link";
-import { requireStaff } from "@/lib/auth";
+import { requirePerm } from "@/lib/auth";
 import { PageHeader } from "@/components/ui";
 
 export default async function ReportsHub() {
-  await requireStaff(["SUPER_ADMIN", "ADMIN"]);
+  await requirePerm("reports");
   const now = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
   const yearStart = new Date(now.getFullYear(), 0, 1).toISOString().slice(0, 10);

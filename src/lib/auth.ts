@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createHmac } from "crypto";
 import { prisma } from "./db";
+import { getPerm, type FnKey } from "./permissions";
 
 const SECRET = process.env.AUTH_SECRET || "teamagro-dev-secret-change-me";
 const COOKIE = "tt_session";
@@ -32,6 +33,7 @@ export type SessionUser = {
   email: string;
   role: string;
   access: string;
+  permsJson: string | null;
   customerId: string | null;
 };
 
@@ -41,7 +43,7 @@ export async function getUser(): Promise<SessionUser | null> {
   if (!userId) return null;
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { id: true, name: true, email: true, role: true, access: true, customerId: true },
+    select: { id: true, name: true, email: true, role: true, access: true, permsJson: true, customerId: true },
   });
   if (user?.access === "NONE") return null; // no-access accounts are treated as signed out
   return user;
@@ -60,6 +62,22 @@ export async function requireStaff(roles?: string[]): Promise<SessionUser> {
 export async function requireStaffWrite(roles?: string[]): Promise<SessionUser> {
   const user = await requireStaff(roles);
   if (user.access === "READ_ONLY") redirect("/denied");
+  return user;
+}
+
+/** Page guard for a specific function: NONE is bounced to /denied.
+    Returns the user with their effective permission for the function. */
+export async function requirePerm(fn: FnKey): Promise<SessionUser & { perm: "READ_WRITE" | "READ_ONLY" }> {
+  const user = await requireStaff();
+  const perm = getPerm(user, fn);
+  if (perm === "NONE") redirect("/denied");
+  return { ...user, perm };
+}
+
+/** Action guard for a specific function: only READ_WRITE may proceed. */
+export async function requirePermWrite(fn: FnKey): Promise<SessionUser> {
+  const user = await requirePerm(fn);
+  if (user.perm !== "READ_WRITE") redirect("/denied");
   return user;
 }
 

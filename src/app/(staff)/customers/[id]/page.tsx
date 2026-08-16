@@ -1,13 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { requireStaff } from "@/lib/auth";
+import { requirePerm } from "@/lib/auth";
 import { peso, fmtDate, termLabel, daysUntil } from "@/lib/format";
 import { PageHeader, StatusBadge } from "@/components/ui";
 import { updateCustomer } from "../actions";
 
 export default async function CustomerDetailPage({ params, searchParams }: { params: { id: string }; searchParams: { edit?: string } }) {
-  const user = await requireStaff();
+  const user = await requirePerm("customers");
   const customer = await prisma.customer.findUnique({
     where: { id: params.id },
     include: {
@@ -26,7 +26,7 @@ export default async function CustomerDetailPage({ params, searchParams }: { par
     .filter((sr) => sr.dueDate < new Date() && srBalance(sr) > 0)
     .reduce((s, sr) => s + srBalance(sr), 0);
 
-  const canEdit = ["SUPER_ADMIN", "ADMIN"].includes(user.role);
+  const canEdit = user.perm === "READ_WRITE";
   const editing = canEdit && searchParams.edit === "1";
 
   return (

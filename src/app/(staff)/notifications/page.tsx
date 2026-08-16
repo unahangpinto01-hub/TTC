@@ -1,12 +1,12 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
-import { requireStaff } from "@/lib/auth";
+import { requirePerm } from "@/lib/auth";
 import { fmtDateTime } from "@/lib/format";
 import { PageHeader } from "@/components/ui";
 import { markAllRead, markRead } from "./actions";
 
 export default async function NotificationsPage() {
-  const user = await requireStaff();
+  const user = await requirePerm("notifications");
   const notifications = await prisma.notification.findMany({
     where: { OR: [{ userId: user.id }, { role: user.role }] },
     orderBy: { createdAt: "desc" },

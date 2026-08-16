@@ -1,13 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { requireStaff } from "@/lib/auth";
+import { requirePerm } from "@/lib/auth";
 import { fmtDate, peso, vatBreakdown } from "@/lib/format";
 import { PageHeader, StatusBadge } from "@/components/ui";
 import { markDelivered, voidDR } from "../actions";
 
 export default async function DRDetailPage({ params, searchParams }: { params: { id: string }; searchParams: { error?: string } }) {
-  const user = await requireStaff();
+  const user = await requirePerm("deliveries");
   const dr = await prisma.deliveryReceipt.findUnique({
     where: { id: params.id },
     include: {

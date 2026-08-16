@@ -1,12 +1,12 @@
 import { prisma } from "@/lib/db";
-import { requireStaff } from "@/lib/auth";
+import { requirePerm } from "@/lib/auth";
 import { PageHeader } from "@/components/ui";
 import { createProduct } from "../actions";
 
 const CATEGORIES = ["Insecticide", "Herbicide", "Fungicide", "Molluscicide", "Foliar Fertilizer", "Others"];
 
 export default async function NewProductPage() {
-  await requireStaff(["SUPER_ADMIN", "ADMIN"]);
+  await requirePerm("inventory");
   const suppliers = await prisma.supplier.findMany({ where: { status: "Active" }, orderBy: { name: "asc" } });
   return (
     <div className="max-w-2xl">

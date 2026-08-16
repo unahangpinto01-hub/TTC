@@ -3,12 +3,12 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
-import { requireStaffWrite } from "@/lib/auth";
+import { requirePermWrite } from "@/lib/auth";
 import { nextDocNumber } from "@/lib/numbering";
 import { notifyRoles } from "@/lib/notify";
 
 export async function encodeOrder(formData: FormData) {
-  await requireStaffWrite();
+  await requirePermWrite("orders");
   const customerId = String(formData.get("customerId"));
   const source = String(formData.get("source"));
   const term = String(formData.get("term"));
@@ -45,7 +45,7 @@ export async function encodeOrder(formData: FormData) {
 }
 
 export async function convertToSO(formData: FormData) {
-  const user = await requireStaffWrite();
+  const user = await requirePermWrite("orders");
   const orderId = String(formData.get("orderId"));
   const order = await prisma.incomingOrder.findUniqueOrThrow({
     where: { id: orderId },
@@ -78,7 +78,7 @@ export async function convertToSO(formData: FormData) {
 }
 
 export async function cancelIncoming(formData: FormData) {
-  await requireStaffWrite();
+  await requirePermWrite("orders");
   const orderId = String(formData.get("orderId"));
   await prisma.incomingOrder.update({ where: { id: orderId }, data: { status: "Cancelled" } });
   revalidatePath("/orders");

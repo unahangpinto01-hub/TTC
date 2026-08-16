@@ -2,12 +2,12 @@
 
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { requireStaffWrite } from "@/lib/auth";
+import { requirePermWrite } from "@/lib/auth";
 import { parseUpload } from "@/lib/xlsx-helpers";
 import type { ImportResult } from "../inventory/import/actions";
 
 export async function createCustomer(formData: FormData) {
-  await requireStaffWrite(["SUPER_ADMIN", "ADMIN", "CLERK"]);
+  await requirePermWrite("customers");
   const terms = ["COD", "30", "60", "90"].filter((t) => formData.get(`term_${t}`));
   const c = await prisma.customer.create({
     data: {
@@ -26,7 +26,7 @@ export async function createCustomer(formData: FormData) {
 }
 
 export async function updateCustomer(formData: FormData) {
-  await requireStaffWrite(["SUPER_ADMIN", "ADMIN"]);
+  await requirePermWrite("customers");
   const id = String(formData.get("id"));
   const terms = ["COD", "30", "60", "90"].filter((t) => formData.get(`term_${t}`));
   await prisma.customer.update({
@@ -51,7 +51,7 @@ const REGIONS = ["Luzon", "Visayas", "Mindanao"];
 const VALID_TERMS = ["COD", "30", "60", "90"];
 
 export async function importCustomers(_prev: ImportResult, formData: FormData): Promise<ImportResult> {
-  await requireStaffWrite(["SUPER_ADMIN", "ADMIN"]);
+  await requirePermWrite("customers");
   const file = formData.get("file") as File | null;
   if (!file || !file.size) return { imported: 0, errors: [{ row: 0, message: "No file uploaded." }] };
 

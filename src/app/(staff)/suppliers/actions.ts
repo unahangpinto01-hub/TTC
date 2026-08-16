@@ -3,10 +3,10 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
-import { requireStaffWrite } from "@/lib/auth";
+import { requirePermWrite } from "@/lib/auth";
 
 export async function createSupplier(formData: FormData) {
-  await requireStaffWrite(["SUPER_ADMIN", "ADMIN"]);
+  await requirePermWrite("suppliers");
   await prisma.supplier.create({
     data: {
       name: String(formData.get("name")).trim(),
@@ -19,7 +19,7 @@ export async function createSupplier(formData: FormData) {
 }
 
 export async function updateSupplier(formData: FormData) {
-  await requireStaffWrite(["SUPER_ADMIN", "ADMIN"]);
+  await requirePermWrite("suppliers");
   const id = String(formData.get("id"));
   await prisma.supplier.update({
     where: { id },

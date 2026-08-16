@@ -3,11 +3,11 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
-import { requireStaffWrite } from "@/lib/auth";
+import { requirePermWrite } from "@/lib/auth";
 import { notifyRole } from "@/lib/notify";
 
 export async function createProduct(formData: FormData) {
-  await requireStaffWrite(["SUPER_ADMIN", "ADMIN"]);
+  await requirePermWrite("inventory");
   const data = {
     sku: String(formData.get("sku")).trim(),
     name: String(formData.get("name")).trim(),
@@ -27,7 +27,7 @@ export async function createProduct(formData: FormData) {
   const product = await prisma.product.create({ data });
   const opening = Number(formData.get("openingStock")) || 0;
   if (opening > 0) {
-    const user = await requireStaffWrite();
+    const user = await requirePermWrite("inventory");
     await prisma.product.update({ where: { id: product.id }, data: { stockQty: opening } });
     await prisma.stockMovement.create({
       data: { productId: product.id, type: "IN", qty: opening, balanceAfter: opening, refType: "OPENING", refNo: "OPENING", userId: user.id },
@@ -37,7 +37,7 @@ export async function createProduct(formData: FormData) {
 }
 
 export async function updateBatchInfo(formData: FormData) {
-  await requireStaffWrite(["SUPER_ADMIN", "ADMIN"]);
+  await requirePermWrite("inventory");
   const productId = String(formData.get("productId"));
   const mfg = String(formData.get("mfgDate") || "");
   const exp = String(formData.get("expDate") || "");
@@ -54,7 +54,7 @@ export async function updateBatchInfo(formData: FormData) {
 }
 
 export async function adjustStock(formData: FormData) {
-  const user = await requireStaffWrite(["SUPER_ADMIN", "ADMIN"]);
+  const user = await requirePermWrite("inventory");
   const productId = String(formData.get("productId"));
   const delta = Number(formData.get("delta")) || 0;
   const reason = String(formData.get("reason") || "Manual adjustment");

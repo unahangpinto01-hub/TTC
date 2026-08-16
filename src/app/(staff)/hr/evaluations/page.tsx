@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import { requireStaff } from "@/lib/auth";
+import { requirePerm } from "@/lib/auth";
 import { fmtDate } from "@/lib/format";
 import { PageHeader } from "@/components/ui";
 import { createEvaluation } from "../actions";
@@ -8,7 +8,7 @@ import { HrTabs } from "../hr-tabs";
 const CRITERIA = ["punctuality", "quality", "teamwork", "initiative"];
 
 export default async function EvaluationsPage() {
-  await requireStaff(["SUPER_ADMIN", "ADMIN"]);
+  await requirePerm("hr");
   const [evals, employees] = await Promise.all([
     prisma.evaluation.findMany({ orderBy: { createdAt: "desc" }, include: { employee: true, evaluator: true } }),
     prisma.employee.findMany({ where: { status: "Active" }, orderBy: { name: "asc" } }),

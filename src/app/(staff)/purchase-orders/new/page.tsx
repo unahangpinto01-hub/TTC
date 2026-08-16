@@ -1,11 +1,11 @@
 import { prisma } from "@/lib/db";
-import { requireStaff } from "@/lib/auth";
+import { requirePerm } from "@/lib/auth";
 import { PageHeader } from "@/components/ui";
 import { createPO } from "../actions";
 import { POLinePicker } from "./line-picker";
 
 export default async function NewPOPage() {
-  await requireStaff(["SUPER_ADMIN", "ADMIN"]);
+  await requirePerm("purchaseOrders");
   const [suppliers, products] = await Promise.all([
     prisma.supplier.findMany({ where: { status: "Active" }, orderBy: { name: "asc" } }),
     prisma.product.findMany({ orderBy: { sku: "asc" }, select: { id: true, sku: true, name: true, unitCost: true, stockQty: true } }),

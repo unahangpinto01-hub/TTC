@@ -1,4 +1,4 @@
-import { requireStaff } from "@/lib/auth";
+import { requirePerm } from "@/lib/auth";
 import { getExpenseReport, parseRange } from "@/lib/reports";
 import { peso, fmtDate } from "@/lib/format";
 import { PageHeader } from "@/components/ui";
@@ -7,7 +7,7 @@ import { createExpense } from "../actions";
 const CATEGORIES = ["Fuel", "Salaries", "Utilities", "Freight", "Rent", "Supplies", "Others"];
 
 export default async function ExpensesPage({ searchParams }: { searchParams: { from?: string; to?: string } }) {
-  await requireStaff(["SUPER_ADMIN", "ADMIN"]);
+  await requirePerm("expenses");
   const range = parseRange(searchParams);
   const { expenses, total, byCategory } = await getExpenseReport(range);
   const today = new Date().toISOString().slice(0, 10);

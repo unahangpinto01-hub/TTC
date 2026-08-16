@@ -1,11 +1,11 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { requireStaff } from "@/lib/auth";
+import { requirePerm } from "@/lib/auth";
 import { fmtDate, termLabel } from "@/lib/format";
 import { PrintDoc } from "@/components/print-doc";
 
 export default async function DRPrintPage({ params }: { params: { id: string } }) {
-  await requireStaff();
+  await requirePerm("deliveries");
   const dr = await prisma.deliveryReceipt.findUnique({
     where: { id: params.id },
     include: {

@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import { requireStaff } from "@/lib/auth";
+import { requirePerm } from "@/lib/auth";
 import { peso } from "@/lib/format";
 import { ALLOWANCE_FIELDS, DEDUCTION_FIELDS } from "@/lib/payroll";
 import { PageHeader } from "@/components/ui";
@@ -9,7 +9,7 @@ import { deletePayrollEntry } from "../actions";
 import { PayrollEntryForm, type EmployeeComp, type EditEntry } from "./entry-form";
 
 export default async function PayrollPage({ searchParams }: { searchParams: { cutoff?: string; error?: string; emp?: string; entry?: string } }) {
-  await requireStaff(["SUPER_ADMIN", "ADMIN"]);
+  await requirePerm("hr");
   const [entries, employees] = await Promise.all([
     prisma.payrollEntry.findMany({ orderBy: { createdAt: "desc" }, include: { employee: true } }),
     prisma.employee.findMany({ where: { status: "Active" }, orderBy: { name: "asc" } }),

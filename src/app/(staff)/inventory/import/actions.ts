@@ -1,7 +1,7 @@
 "use server";
 
 import { prisma } from "@/lib/db";
-import { requireStaffWrite } from "@/lib/auth";
+import { requirePermWrite } from "@/lib/auth";
 import { parseUpload } from "@/lib/xlsx-helpers";
 
 export type ImportResult = {
@@ -12,7 +12,7 @@ export type ImportResult = {
 const CATEGORIES = ["Insecticide", "Herbicide", "Fungicide", "Molluscicide", "Foliar Fertilizer", "Others"];
 
 export async function importProducts(_prev: ImportResult, formData: FormData): Promise<ImportResult> {
-  const user = await requireStaffWrite(["SUPER_ADMIN", "ADMIN"]);
+  const user = await requirePermWrite("inventory");
   const file = formData.get("file") as File | null;
   if (!file || !file.size) return { imported: 0, errors: [{ row: 0, message: "No file uploaded." }] };
 

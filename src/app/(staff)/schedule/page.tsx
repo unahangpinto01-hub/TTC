@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
-import { requireStaff } from "@/lib/auth";
+import { requirePerm } from "@/lib/auth";
 import { PageHeader, StatusBadge } from "@/components/ui";
 import { updateScheduleStatus } from "../deliveries/actions";
 
@@ -14,7 +14,7 @@ function dayKey(d: Date) {
 }
 
 export default async function SchedulePage({ searchParams }: { searchParams: { start?: string } }) {
-  await requireStaff();
+  await requirePerm("schedule");
   const todayKey = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila" }).format(new Date());
   const startStr = /^\d{4}-\d{2}-\d{2}$/.test(searchParams.start || "") ? searchParams.start! : todayKey;
   const start = new Date(startStr + "T00:00:00Z");

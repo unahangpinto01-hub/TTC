@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
-import { requireStaff } from "@/lib/auth";
+import { requirePerm } from "@/lib/auth";
 import { fmtDate, peso, termLabel } from "@/lib/format";
 import { getPage, pageCount } from "@/lib/paginate";
 import { PageHeader, Pagination, StatusBadge } from "@/components/ui";
@@ -8,7 +8,7 @@ import { PageHeader, Pagination, StatusBadge } from "@/components/ui";
 const STATUSES = ["Draft", "Confirmed", "Scheduled", "Delivered", "Invoiced", "Closed", "Cancelled"];
 
 export default async function SalesOrdersPage({ searchParams }: { searchParams: { q?: string; status?: string; page?: string } }) {
-  await requireStaff();
+  await requirePerm("salesOrders");
   const { page, skip, take } = getPage(searchParams);
   const q = searchParams.q?.trim() || "";
   const status = searchParams.status || "";

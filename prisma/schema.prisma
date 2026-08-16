@@ -14,7 +14,8 @@ model User {
   email        String   @unique
   passwordHash String
   role         String
-  access       String  @default("READ_WRITE") // NONE | READ_WRITE | READ_ONLY
+  access       String  @default("READ_WRITE") // NONE | READ_WRITE | READ_ONLY (account-level master)
+  permsJson    String? // per-function permissions {fnKey: NONE|READ_WRITE|READ_ONLY}; null = role defaults
   customerId   String?
   customer     Customer? @relation(fields: [customerId], references: [id])
   createdAt    DateTime @default(now())

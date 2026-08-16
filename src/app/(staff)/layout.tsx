@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { requireStaff } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { FUNCTIONS, getPerm } from "@/lib/permissions";
 import { logout } from "@/app/login/actions";
 import { NavLinks } from "./nav-links";
 
 export default async function StaffLayout({ children }: { children: React.ReactNode }) {
   const user = await requireStaff();
+  const perms = Object.fromEntries(FUNCTIONS.map(([key]) => [key, getPerm(user, key)]));
   const unread = await prisma.notification.count({
     where: {
       readAt: null,
@@ -25,7 +27,7 @@ export default async function StaffLayout({ children }: { children: React.ReactN
             <p className="text-[10px] text-emerald-300">Trading Corp. BMS</p>
           </div>
         </div>
-        <NavLinks role={user.role} />
+        <NavLinks perms={perms} />
       </aside>
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="no-print sticky top-0 z-10 flex items-center justify-between border-b border-gray-200 bg-white px-4 py-2.5">

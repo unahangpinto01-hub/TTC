@@ -1,12 +1,12 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
-import { requireStaff } from "@/lib/auth";
+import { requirePerm } from "@/lib/auth";
 import { fmtDateTime, peso, termLabel } from "@/lib/format";
 import { getPage, pageCount } from "@/lib/paginate";
 import { PageHeader, Pagination, StatusBadge } from "@/components/ui";
 
 export default async function OrderInboxPage({ searchParams }: { searchParams: { status?: string; page?: string } }) {
-  await requireStaff();
+  await requirePerm("orders");
   const { page, skip, take } = getPage(searchParams);
   const status = searchParams.status || "";
   const where: any = {};

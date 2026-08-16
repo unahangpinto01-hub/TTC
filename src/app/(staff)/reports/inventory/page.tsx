@@ -1,11 +1,11 @@
-import { requireStaff } from "@/lib/auth";
+import { requirePerm } from "@/lib/auth";
 import { getMovements, parseRange } from "@/lib/reports";
 import { fmtDate } from "@/lib/format";
 import { PageHeader } from "@/components/ui";
 import { PrintButton } from "@/components/print-button";
 
 export default async function InventoryReportPage({ searchParams }: { searchParams: { from?: string; to?: string } }) {
-  await requireStaff(["SUPER_ADMIN", "ADMIN"]);
+  await requirePerm("reports");
   const range = parseRange(searchParams);
   const moves = await getMovements(range);
   const fromStr = range.from.toISOString().slice(0, 10);

@@ -1,19 +1,19 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { requireStaff } from "@/lib/auth";
+import { requirePerm } from "@/lib/auth";
 import { fmtDate, peso } from "@/lib/format";
 import { PageHeader, StatusBadge } from "@/components/ui";
 import { markPOSent, receivePO } from "../actions";
 
 export default async function PODetailPage({ params }: { params: { id: string } }) {
-  const user = await requireStaff();
+  const user = await requirePerm("purchaseOrders");
   const po = await prisma.purchaseOrder.findUnique({
     where: { id: params.id },
     include: { supplier: true, lines: { include: { product: true } } },
   });
   if (!po) notFound();
-  const canEdit = ["SUPER_ADMIN", "ADMIN"].includes(user.role);
+  const canEdit = user.perm === "READ_WRITE";
   const receivable = canEdit && ["Sent", "Partially Received"].includes(po.status);
   const total = po.lines.reduce((s, l) => s + l.qty * l.unitCost, 0);
 

@@ -1,12 +1,12 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
-import { requireStaff } from "@/lib/auth";
+import { requirePerm } from "@/lib/auth";
 import { peso, termLabel } from "@/lib/format";
 import { getPage, pageCount } from "@/lib/paginate";
 import { PageHeader, Pagination, StatusBadge } from "@/components/ui";
 
 export default async function CustomersPage({ searchParams }: { searchParams: { q?: string; region?: string; page?: string } }) {
-  const user = await requireStaff();
+  const user = await requirePerm("customers");
   const { page, skip, take } = getPage(searchParams);
   const q = searchParams.q?.trim() || "";
   const region = searchParams.region || "";
@@ -21,7 +21,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: { 
   const params: Record<string, string> = {};
   if (q) params.q = q;
   if (region) params.region = region;
-  const canEdit = ["SUPER_ADMIN", "ADMIN"].includes(user.role);
+  const canEdit = user.perm === "READ_WRITE";
 
   return (
     <div>
