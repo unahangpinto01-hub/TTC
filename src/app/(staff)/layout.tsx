@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { FUNCTIONS, getPerm } from "@/lib/permissions";
 import { logout } from "@/app/login/actions";
 import { NavLinks } from "./nav-links";
+import { Clock } from "./clock";
 
 export default async function StaffLayout({ children }: { children: React.ReactNode }) {
   const user = await requireStaff();
@@ -36,8 +37,8 @@ export default async function StaffLayout({ children }: { children: React.ReactN
               Teamagro BMS
             </Link>
           </div>
-          <div className="hidden text-sm text-gray-500 md:block">
-            {new Date().toLocaleDateString("en-PH", { timeZone: "Asia/Manila", weekday: "long", year: "numeric", month: "long", day: "numeric" })}
+          <div className="hidden md:block">
+            <Clock />
           </div>
           <div className="flex items-center gap-3">
             <Link href="/notifications" className="relative rounded-full p-2 hover:bg-gray-100" title="Notifications">
