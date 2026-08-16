@@ -14,6 +14,7 @@ model User {
   email        String   @unique
   passwordHash String
   role         String
+  access       String  @default("READ_WRITE") // NONE | READ_WRITE | READ_ONLY
   customerId   String?
   customer     Customer? @relation(fields: [customerId], references: [id])
   createdAt    DateTime @default(now())

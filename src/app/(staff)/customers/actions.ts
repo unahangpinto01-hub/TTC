@@ -2,12 +2,12 @@
 
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { requireStaff } from "@/lib/auth";
+import { requireStaffWrite } from "@/lib/auth";
 import { parseUpload } from "@/lib/xlsx-helpers";
 import type { ImportResult } from "../inventory/import/actions";
 
 export async function createCustomer(formData: FormData) {
-  await requireStaff(["SUPER_ADMIN", "ADMIN", "CLERK"]);
+  await requireStaffWrite(["SUPER_ADMIN", "ADMIN", "CLERK"]);
   const terms = ["COD", "30", "60", "90"].filter((t) => formData.get(`term_${t}`));
   const c = await prisma.customer.create({
     data: {
@@ -26,7 +26,7 @@ export async function createCustomer(formData: FormData) {
 }
 
 export async function updateCustomer(formData: FormData) {
-  await requireStaff(["SUPER_ADMIN", "ADMIN"]);
+  await requireStaffWrite(["SUPER_ADMIN", "ADMIN"]);
   const id = String(formData.get("id"));
   const terms = ["COD", "30", "60", "90"].filter((t) => formData.get(`term_${t}`));
   await prisma.customer.update({
@@ -51,7 +51,7 @@ const REGIONS = ["Luzon", "Visayas", "Mindanao"];
 const VALID_TERMS = ["COD", "30", "60", "90"];
 
 export async function importCustomers(_prev: ImportResult, formData: FormData): Promise<ImportResult> {
-  await requireStaff(["SUPER_ADMIN", "ADMIN"]);
+  await requireStaffWrite(["SUPER_ADMIN", "ADMIN"]);
   const file = formData.get("file") as File | null;
   if (!file || !file.size) return { imported: 0, errors: [{ row: 0, message: "No file uploaded." }] };
 

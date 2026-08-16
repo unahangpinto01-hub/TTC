@@ -3,14 +3,14 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
-import { requireStaff } from "@/lib/auth";
+import { requireStaffWrite } from "@/lib/auth";
 import { nextDocNumber } from "@/lib/numbering";
 import { notifyRoles } from "@/lib/notify";
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
 export async function updateLineQty(formData: FormData) {
-  await requireStaff();
+  await requireStaffWrite();
   const lineId = String(formData.get("lineId"));
   const qty = Math.max(1, Math.floor(Number(formData.get("qty")) || 1));
   const line = await prisma.salesOrderLine.findUniqueOrThrow({ where: { id: lineId }, include: { salesOrder: true } });
@@ -24,7 +24,7 @@ export async function updateLineQty(formData: FormData) {
 }
 
 export async function removeLine(formData: FormData) {
-  await requireStaff();
+  await requireStaffWrite();
   const lineId = String(formData.get("lineId"));
   const line = await prisma.salesOrderLine.findUniqueOrThrow({ where: { id: lineId }, include: { salesOrder: true } });
   if (line.salesOrder.status !== "Draft") redirect(`/sales-orders/${line.salesOrderId}`);
@@ -35,7 +35,7 @@ export async function removeLine(formData: FormData) {
 
 /** Confirm SO — blocked if any line exceeds current stock. */
 export async function confirmSO(formData: FormData) {
-  await requireStaff();
+  await requireStaffWrite();
   const soId = String(formData.get("soId"));
   const so = await prisma.salesOrder.findUniqueOrThrow({
     where: { id: soId },
@@ -51,7 +51,7 @@ export async function confirmSO(formData: FormData) {
 }
 
 export async function cancelSO(formData: FormData) {
-  const user = await requireStaff(["SUPER_ADMIN", "ADMIN"]);
+  const user = await requireStaffWrite(["SUPER_ADMIN", "ADMIN"]);
   const soId = String(formData.get("soId"));
   const reason = String(formData.get("reason") || "").trim() || "Cancelled by " + user.name;
   const so = await prisma.salesOrder.findUniqueOrThrow({ where: { id: soId } });
@@ -62,7 +62,7 @@ export async function cancelSO(formData: FormData) {
 }
 
 export async function scheduleSO(formData: FormData) {
-  await requireStaff();
+  await requireStaffWrite();
   const soId = String(formData.get("soId"));
   const date = new Date(String(formData.get("date")));
   const truck = String(formData.get("truck") || "").trim();
@@ -83,7 +83,7 @@ export async function scheduleSO(formData: FormData) {
 
 /** Generate a DR from the SO, allowing partial quantities. */
 export async function generateDR(formData: FormData) {
-  const user = await requireStaff();
+  const user = await requireStaffWrite();
   const soId = String(formData.get("soId"));
   const so = await prisma.salesOrder.findUniqueOrThrow({
     where: { id: soId },

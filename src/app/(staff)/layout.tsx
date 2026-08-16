@@ -50,7 +50,12 @@ export default async function StaffLayout({ children }: { children: React.ReactN
             </Link>
             <div className="hidden text-right sm:block">
               <p className="text-sm font-semibold leading-tight">{user.name}</p>
-              <p className="text-xs text-gray-500">{user.role.replace("_", " ")}</p>
+              <p className="text-xs text-gray-500">
+                {user.role.replace("_", " ")}
+                {user.access === "READ_ONLY" && (
+                  <span className="ml-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800">READ ONLY</span>
+                )}
+              </p>
             </div>
             <form action={logout}>
               <button className="btn-secondary" type="submit">

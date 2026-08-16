@@ -2,10 +2,27 @@ import { prisma } from "@/lib/db";
 import { requireStaff } from "@/lib/auth";
 import { fmtDate } from "@/lib/format";
 import { PageHeader } from "@/components/ui";
-import { createUser } from "./actions";
+import { createUser, setUserAccess } from "./actions";
 
-export default async function UsersPage() {
-  await requireStaff(["SUPER_ADMIN"]);
+const ACCESS_OPTIONS = [
+  ["NONE", "No Access"],
+  ["READ_WRITE", "Read/Write"],
+  ["READ_ONLY", "Read Only"],
+] as const;
+
+function AccessBadge({ access }: { access: string }) {
+  const cls =
+    access === "READ_WRITE"
+      ? "bg-emerald-100 text-emerald-800"
+      : access === "READ_ONLY"
+        ? "bg-amber-100 text-amber-800"
+        : "bg-red-100 text-red-700";
+  const label = ACCESS_OPTIONS.find(([k]) => k === access)?.[1] ?? access;
+  return <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${cls}`}>{label}</span>;
+}
+
+export default async function UsersPage({ searchParams }: { searchParams: { error?: string } }) {
+  const me = await requireStaff(["SUPER_ADMIN"]);
   const [users, customers] = await Promise.all([
     prisma.user.findMany({ orderBy: { createdAt: "asc" }, include: { customer: true } }),
     prisma.customer.findMany({ where: { status: "Active" }, orderBy: { businessName: "asc" } }),
@@ -14,32 +31,61 @@ export default async function UsersPage() {
   return (
     <div>
       <PageHeader title="User Management" />
+      {searchParams.error === "self" && (
+        <p className="mb-4 rounded-xl bg-red-50 p-3 text-sm text-red-700">
+          ⚠ You cannot change your own access level.
+        </p>
+      )}
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="lg:col-span-2">
           <div className="card overflow-x-auto p-0">
-            <table className="w-full min-w-[560px]">
+            <table className="w-full min-w-[760px]">
               <thead className="border-b border-gray-200 bg-gray-50">
                 <tr>
                   <th className="table-th">Name</th>
                   <th className="table-th">Email</th>
                   <th className="table-th">Role</th>
                   <th className="table-th">Dealer Account</th>
-                  <th className="table-th">Created</th>
+                  <th className="table-th">Permission</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {users.map((u) => (
-                  <tr key={u.id}>
-                    <td className="table-td font-medium">{u.name}</td>
+                  <tr key={u.id} className={u.access === "NONE" ? "opacity-60" : ""}>
+                    <td className="table-td font-medium">
+                      {u.name}
+                      {u.id === me.id && <span className="ml-1 text-xs text-gray-400">(you)</span>}
+                      <p className="text-xs text-gray-400">{fmtDate(u.createdAt)}</p>
+                    </td>
                     <td className="table-td text-sm">{u.email}</td>
                     <td className="table-td"><span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-semibold">{u.role.replace("_", " ")}</span></td>
                     <td className="table-td text-sm text-gray-600">{u.customer?.businessName ?? "—"}</td>
-                    <td className="table-td text-sm">{fmtDate(u.createdAt)}</td>
+                    <td className="table-td">
+                      {u.id === me.id ? (
+                        <AccessBadge access={u.access} />
+                      ) : (
+                        <form action={setUserAccess} className="flex flex-wrap items-center gap-3">
+                          <input type="hidden" name="id" value={u.id} />
+                          {ACCESS_OPTIONS.map(([value, label]) => (
+                            <label key={value} className="flex items-center gap-1 whitespace-nowrap text-xs">
+                              <input type="radio" name="access" value={value} defaultChecked={u.access === value} />
+                              {label}
+                            </label>
+                          ))}
+                          <button className="btn-secondary px-2 py-0.5 text-xs" type="submit">Save</button>
+                        </form>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+          <p className="mt-2 text-xs text-gray-500">
+            <span className="font-semibold">No Access</span> — cannot sign in ·{" "}
+            <span className="font-semibold">Read/Write</span> — full use within their role ·{" "}
+            <span className="font-semibold">Read Only</span> — can view but cannot create, edit, or delete.
+          </p>
         </div>
         <form action={createUser} className="card h-fit space-y-3">
           <h2 className="font-semibold">Add User</h2>
@@ -53,6 +99,14 @@ export default async function UsersPage() {
               <option value="ADMIN">Admin</option>
               <option value="SUPER_ADMIN">Super Admin</option>
               <option value="DEALER">Dealer</option>
+            </select>
+          </div>
+          <div>
+            <label className="label">Permission</label>
+            <select name="access" className="input">
+              <option value="READ_WRITE">Read/Write</option>
+              <option value="READ_ONLY">Read Only</option>
+              <option value="NONE">No Access</option>
             </select>
           </div>
           <div>

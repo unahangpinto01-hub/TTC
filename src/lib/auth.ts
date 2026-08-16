@@ -31,6 +31,7 @@ export type SessionUser = {
   name: string;
   email: string;
   role: string;
+  access: string;
   customerId: string | null;
 };
 
@@ -40,8 +41,9 @@ export async function getUser(): Promise<SessionUser | null> {
   if (!userId) return null;
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { id: true, name: true, email: true, role: true, customerId: true },
+    select: { id: true, name: true, email: true, role: true, access: true, customerId: true },
   });
+  if (user?.access === "NONE") return null; // no-access accounts are treated as signed out
   return user;
 }
 
@@ -51,6 +53,13 @@ export async function requireStaff(roles?: string[]): Promise<SessionUser> {
   if (!user) redirect("/login");
   if (user.role === "DEALER") redirect("/portal");
   if (roles && !roles.includes(user.role)) redirect("/dashboard");
+  return user;
+}
+
+/** Staff guard for mutating actions: read-only accounts are bounced to /denied. */
+export async function requireStaffWrite(roles?: string[]): Promise<SessionUser> {
+  const user = await requireStaff(roles);
+  if (user.access === "READ_ONLY") redirect("/denied");
   return user;
 }
 

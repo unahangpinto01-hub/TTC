@@ -3,12 +3,12 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
-import { requireStaff } from "@/lib/auth";
+import { requireStaffWrite } from "@/lib/auth";
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
 export async function recordPayment(formData: FormData) {
-  await requireStaff(["SUPER_ADMIN", "ADMIN"]);
+  await requireStaffWrite(["SUPER_ADMIN", "ADMIN"]);
   const srId = String(formData.get("srId"));
   const amount = round2(Number(formData.get("amount")) || 0);
   const method = String(formData.get("method") || "Cash");
@@ -33,7 +33,7 @@ export async function recordPayment(formData: FormData) {
 }
 
 export async function createExpense(formData: FormData) {
-  const user = await requireStaff(["SUPER_ADMIN", "ADMIN"]);
+  const user = await requireStaffWrite(["SUPER_ADMIN", "ADMIN"]);
   await prisma.expense.create({
     data: {
       date: new Date(String(formData.get("date")) || Date.now()),

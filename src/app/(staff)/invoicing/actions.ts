@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
-import { requireStaff } from "@/lib/auth";
+import { requireStaffWrite } from "@/lib/auth";
 import { nextDocNumber } from "@/lib/numbering";
 import { notifyRoles } from "@/lib/notify";
 
@@ -11,7 +11,7 @@ const round2 = (n: number) => Math.round(n * 100) / 100;
 
 /** One-click DR → SR conversion. Due date = delivery date + term days. */
 export async function convertDRtoSR(formData: FormData) {
-  await requireStaff(["SUPER_ADMIN", "ADMIN"]);
+  await requireStaffWrite(["SUPER_ADMIN", "ADMIN"]);
   const drId = String(formData.get("drId"));
   const dr = await prisma.deliveryReceipt.findUniqueOrThrow({
     where: { id: drId },
@@ -49,7 +49,7 @@ export async function convertDRtoSR(formData: FormData) {
 
 /** Void an SR (Super Admin). Reopens the DR for invoicing. */
 export async function voidSR(formData: FormData) {
-  await requireStaff(["SUPER_ADMIN"]);
+  await requireStaffWrite(["SUPER_ADMIN"]);
   const srId = String(formData.get("srId"));
   const reason = String(formData.get("reason") || "").trim();
   if (!reason) redirect(`/invoices/${srId}?error=reason`);

@@ -13,6 +13,9 @@ export async function login(_prev: { error?: string } | null, formData: FormData
   if (!user || !bcrypt.compareSync(password, user.passwordHash)) {
     return { error: "Invalid email or password." };
   }
+  if (user.access === "NONE") {
+    return { error: "This account has no access. Please contact your administrator." };
+  }
   cookies().set(SESSION_COOKIE, makeToken(user.id), {
     httpOnly: true,
     sameSite: "lax",

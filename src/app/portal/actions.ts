@@ -10,6 +10,9 @@ export async function placePortalOrder(input: {
   notes?: string;
 }): Promise<{ ok: boolean; error?: string; orderId?: string }> {
   const user = await requireDealer();
+  if (user.access === "READ_ONLY") {
+    return { ok: false, error: "Your account is read-only — orders cannot be placed. Contact Teamagro." };
+  }
   const customer = await prisma.customer.findUniqueOrThrow({ where: { id: user.customerId } });
 
   const allowed = customer.allowedTerms.split(",");

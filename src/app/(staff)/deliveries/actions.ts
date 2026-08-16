@@ -3,11 +3,11 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
-import { requireStaff } from "@/lib/auth";
+import { requireStaffWrite } from "@/lib/auth";
 import { notifyRoles } from "@/lib/notify";
 
 export async function updateScheduleStatus(formData: FormData) {
-  await requireStaff();
+  await requireStaffWrite();
   const id = String(formData.get("scheduleId"));
   const status = String(formData.get("status"));
   if (!["Scheduled", "Loading", "In Transit"].includes(status)) return;
@@ -17,7 +17,7 @@ export async function updateScheduleStatus(formData: FormData) {
 
 /** Confirm delivery: deducts stock (OUT entries), updates SO + schedule, notifies accounting. */
 export async function markDelivered(formData: FormData) {
-  const user = await requireStaff();
+  const user = await requireStaffWrite();
   const drId = String(formData.get("drId"));
   const dr = await prisma.deliveryReceipt.findUniqueOrThrow({
     where: { id: drId },
@@ -53,7 +53,7 @@ export async function markDelivered(formData: FormData) {
 
 /** Void a DR (Super Admin). Restores stock if it was already delivered. */
 export async function voidDR(formData: FormData) {
-  const user = await requireStaff(["SUPER_ADMIN"]);
+  const user = await requireStaffWrite(["SUPER_ADMIN"]);
   const drId = String(formData.get("drId"));
   const reason = String(formData.get("reason") || "").trim();
   if (!reason) redirect(`/deliveries/${drId}?error=reason`);
