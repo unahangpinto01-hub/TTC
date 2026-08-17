@@ -39,6 +39,13 @@
   body {
     background: white !important;
   }
+  .print-page input {
+    border: none !important;
+    background: transparent !important;
+  }
+  .print-page input::placeholder {
+    color: transparent;
+  }
   .print-page {
     box-shadow: none !important;
     border: none !important;

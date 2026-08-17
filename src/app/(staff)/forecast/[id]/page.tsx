@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requirePerm } from "@/lib/auth";
 import { PageHeader } from "@/components/ui";
+import { PrintButton } from "@/components/print-button";
 import { getParentInfos } from "../parents";
 import { ForecastGrid, type GridRow, type ParentOption } from "./forecast-grid";
 
@@ -31,11 +32,17 @@ export default async function ForecastDetailPage({ params }: { params: { id: str
   });
 
   return (
-    <div>
-      <Link href="/forecast" className="mb-3 inline-flex items-center gap-1 text-sm font-medium text-emerald-700 hover:underline">
-        ← Back to Forecasts
-      </Link>
+    <div className="print-page">
+      <div className="no-print mb-3 flex items-center justify-between">
+        <Link href="/forecast" className="inline-flex items-center gap-1 text-sm font-medium text-emerald-700 hover:underline">
+          ← Back to Forecasts
+        </Link>
+        <PrintButton />
+      </div>
       <PageHeader title={forecast.title} />
+      <p className="mb-3 hidden text-sm text-gray-600 print:block">
+        Year {forecast.year} · Area {forecast.area}
+      </p>
       <ForecastGrid
         forecastId={forecast.id}
         initialTitle={forecast.title}

@@ -96,7 +96,7 @@ export function ForecastGrid({
 
   return (
     <div>
-      <div className="card mb-4 flex flex-wrap items-end gap-3">
+      <div className="no-print card mb-4 flex flex-wrap items-end gap-3">
         <div className="min-w-[280px] flex-1">
           <label className="label">Title</label>
           <input value={title} onChange={(e) => setTitle(e.target.value)} disabled={readOnly} className="input font-semibold" />
@@ -145,7 +145,7 @@ export function ForecastGrid({
               ))}
               <th className="px-2 py-2 text-right font-bold text-red-600">TOTAL</th>
               <th className="px-2 py-2 text-right font-bold">AMOUNT</th>
-              {!readOnly && <th className="px-1 py-2" />}
+              {!readOnly && <th className="no-print px-1 py-2" />}
             </tr>
           </thead>
           <tbody>
@@ -177,7 +177,7 @@ export function ForecastGrid({
                 ))}
                 <td className="bg-yellow-100 px-2 py-1.5 text-right text-red-600">{grandQty.toLocaleString()}</td>
                 <td className="px-2 py-1.5" />
-                {!readOnly && <td />}
+                {!readOnly && <td className="no-print" />}
               </tr>
               <tr className="font-semibold text-emerald-900">
                 <td className="sticky left-0 bg-gray-50 px-2 py-1.5">AMOUNT (₱)</td>
@@ -186,7 +186,7 @@ export function ForecastGrid({
                 ))}
                 <td className="px-2 py-1.5" />
                 <td className="bg-yellow-100 px-2 py-1.5 text-right font-bold">{fmtPeso(grandAmount)}</td>
-                {!readOnly && <td />}
+                {!readOnly && <td className="no-print" />}
               </tr>
             </tfoot>
           )}
@@ -245,7 +245,7 @@ function FragmentRow({
         <td className="px-2 py-1 text-right font-semibold text-red-600">{total.toLocaleString()}</td>
         <td className="px-2 py-1 text-right font-semibold">{fmtPeso(total * row.price)}</td>
         {!readOnly && (
-          <td className="px-1 py-1 text-center">
+          <td className="no-print px-1 py-1 text-center">
             <button onClick={() => onRemove(row.parentItem)} className="text-red-400 hover:text-red-600" title="Remove row" type="button">×</button>
           </td>
         )}
