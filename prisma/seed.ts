@@ -176,6 +176,7 @@ async function main() {
           batchNo: `B26-${String(1000 + skuCounter)}`,
           mfgDate,
           expDate,
+          parentItem: name, // brand + formulation, e.g. "FungiStop 50 SC"
         },
       });
       products.push({ id: p.id, sku: p.sku, name: p.name, dealerPrice, unitCost, reorderPoint, stock: 0 });
