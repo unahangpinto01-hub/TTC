@@ -55,6 +55,29 @@ export async function updateBatchInfo(formData: FormData) {
   redirect(`/inventory/${productId}`);
 }
 
+/** Rename a parent group across all its sub-items (merging into an existing name is allowed). */
+export async function renameParentItem(formData: FormData) {
+  await requirePermWrite("inventory");
+  const from = String(formData.get("from") || "").trim();
+  const to = String(formData.get("to") || "").trim();
+  if (from && to && from !== to) {
+    await prisma.product.updateMany({ where: { parentItem: from }, data: { parentItem: to } });
+  }
+  revalidatePath("/inventory");
+  redirect("/inventory");
+}
+
+/** Dissolve a parent group: all its sub-items become standalone rows again. */
+export async function ungroupParentItem(formData: FormData) {
+  await requirePermWrite("inventory");
+  const from = String(formData.get("from") || "").trim();
+  if (from) {
+    await prisma.product.updateMany({ where: { parentItem: from }, data: { parentItem: null } });
+  }
+  revalidatePath("/inventory");
+  redirect("/inventory");
+}
+
 export async function adjustStock(formData: FormData) {
   const user = await requirePermWrite("inventory");
   const productId = String(formData.get("productId"));

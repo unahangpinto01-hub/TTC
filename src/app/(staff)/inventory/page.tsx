@@ -4,10 +4,11 @@ import { requirePerm } from "@/lib/auth";
 import { peso, fmtDate, daysUntil, EXPIRY_WARN_DAYS } from "@/lib/format";
 import { getPage, pageCount, PAGE_SIZE } from "@/lib/paginate";
 import { PageHeader, Pagination, StatusBadge, stockStatus } from "@/components/ui";
+import { renameParentItem, ungroupParentItem } from "./actions";
 
 const CATEGORIES = ["Insecticide", "Herbicide", "Fungicide", "Molluscicide", "Foliar Fertilizer", "Others"];
 
-export default async function InventoryPage({ searchParams }: { searchParams: { q?: string; category?: string; stock?: string; page?: string } }) {
+export default async function InventoryPage({ searchParams }: { searchParams: { q?: string; category?: string; stock?: string; page?: string; renameParent?: string } }) {
   const user = await requirePerm("inventory");
   const { page, skip, take } = getPage(searchParams);
   const q = searchParams.q?.trim() || "";
@@ -88,10 +89,35 @@ export default async function InventoryPage({ searchParams }: { searchParams: { 
               // header row whenever a new parent group starts within this page
               if (isSub && p.parentItem !== products[i - 1]?.parentItem) {
                 const count = products.filter((x) => x.parentItem === p.parentItem).length;
+                const renaming = canEdit && searchParams.renameParent === p.parentItem;
                 rows.push(
                   <tr key={`grp-${p.parentItem}`} className="bg-emerald-50/70">
                     <td colSpan={8} className="px-3 py-1.5 text-xs font-bold uppercase tracking-wide text-emerald-900">
-                      📦 {p.parentItem} <span className="ml-1 font-normal normal-case text-emerald-700">· {count} pack size{count > 1 ? "s" : ""}</span>
+                      {renaming ? (
+                        <form action={renameParentItem} className="flex flex-wrap items-center gap-2 normal-case">
+                          <span>📦</span>
+                          <input type="hidden" name="from" value={p.parentItem!} />
+                          <input name="to" defaultValue={p.parentItem!} required className="input w-56 py-1 text-xs font-normal" autoFocus />
+                          <button className="btn-primary px-2 py-0.5 text-xs" type="submit">Save</button>
+                          <Link href="/inventory" className="btn-secondary px-2 py-0.5 text-xs font-normal">Cancel</Link>
+                        </form>
+                      ) : (
+                        <span className="flex flex-wrap items-center gap-2">
+                          📦 {p.parentItem}
+                          <span className="font-normal normal-case text-emerald-700">· {count} pack size{count > 1 ? "s" : ""}</span>
+                          {canEdit && (
+                            <span className="ml-2 flex items-center gap-2 font-normal normal-case">
+                              <Link href={`/inventory?renameParent=${encodeURIComponent(p.parentItem!)}`} className="text-emerald-700 hover:underline">
+                                ✎ edit
+                              </Link>
+                              <form action={ungroupParentItem} className="inline">
+                                <input type="hidden" name="from" value={p.parentItem!} />
+                                <button className="text-red-500 hover:underline" type="submit">ungroup</button>
+                              </form>
+                            </span>
+                          )}
+                        </span>
+                      )}
                     </td>
                   </tr>
                 );

@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { requirePerm } from "@/lib/auth";
 import { PageHeader } from "@/components/ui";
 import { createProduct } from "../actions";
+import { ParentItemField } from "../parent-item-field";
 
 const CATEGORIES = ["Insecticide", "Herbicide", "Fungicide", "Molluscicide", "Foliar Fertilizer", "Others"];
 
@@ -40,10 +41,7 @@ export default async function NewProductPage() {
           <div><label className="label">Expiration Date</label><input name="expDate" type="date" className="input" /></div>
           <div>
             <label className="label">Parent Item (grouping, optional)</label>
-            <input name="parentItem" list="parent-options" className="input" placeholder="e.g. FungiStop 50 SC" />
-            <datalist id="parent-options">
-              {parentOptions.map((p) => <option key={p} value={p} />)}
-            </datalist>
+            <ParentItemField options={parentOptions} />
           </div>
           <div>
             <label className="label">Supplier</label>

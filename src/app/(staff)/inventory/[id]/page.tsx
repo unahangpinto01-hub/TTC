@@ -4,6 +4,7 @@ import { requirePerm } from "@/lib/auth";
 import { peso, fmtDate, daysUntil, EXPIRY_WARN_DAYS } from "@/lib/format";
 import { PageHeader, StatusBadge, stockStatus } from "@/components/ui";
 import { adjustStock, updateBatchInfo } from "../actions";
+import { ParentItemField } from "../parent-item-field";
 
 export default async function ProductDetailPage({ params }: { params: { id: string } }) {
   const user = await requirePerm("inventory");
@@ -97,10 +98,7 @@ export default async function ProductDetailPage({ params }: { params: { id: stri
           </div>
           <div>
             <label className="label">Parent Item (grouping)</label>
-            <input name="parentItem" defaultValue={product.parentItem ?? ""} list="parent-options" className="input w-52" placeholder="e.g. FungiStop 50 SC" />
-            <datalist id="parent-options">
-              {parentOptions.map((p) => <option key={p} value={p} />)}
-            </datalist>
+            <ParentItemField options={parentOptions} defaultValue={product.parentItem} />
           </div>
           <button className="btn-secondary" type="submit">Save Details</button>
         </form>
