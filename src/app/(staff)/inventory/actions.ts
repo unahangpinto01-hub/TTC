@@ -23,6 +23,7 @@ export async function createProduct(formData: FormData) {
     batchNo: String(formData.get("batchNo") || "").trim() || null,
     mfgDate: formData.get("mfgDate") ? new Date(String(formData.get("mfgDate"))) : null,
     expDate: formData.get("expDate") ? new Date(String(formData.get("expDate"))) : null,
+    parentItem: String(formData.get("parentItem") || "").trim() || null,
   };
   const product = await prisma.product.create({ data });
   const opening = Number(formData.get("openingStock")) || 0;
@@ -47,6 +48,7 @@ export async function updateBatchInfo(formData: FormData) {
       batchNo: String(formData.get("batchNo") || "").trim() || null,
       mfgDate: mfg ? new Date(mfg) : null,
       expDate: exp ? new Date(exp) : null,
+      parentItem: String(formData.get("parentItem") || "").trim() || null,
     },
   });
   revalidatePath(`/inventory/${productId}`);

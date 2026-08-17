@@ -18,6 +18,14 @@ export default async function ProductDetailPage({ params }: { params: { id: stri
     take: 100,
     include: { user: { select: { name: true } } },
   });
+  const parentOptions = (
+    await prisma.product.findMany({
+      where: { parentItem: { not: null } },
+      select: { parentItem: true },
+      distinct: ["parentItem"],
+      orderBy: { parentItem: "asc" },
+    })
+  ).map((p) => p.parentItem!);
   const canEdit = user.perm === "READ_WRITE";
 
   return (
@@ -41,6 +49,7 @@ export default async function ProductDetailPage({ params }: { params: { id: stri
           ["Stock on Hand", String(product.stockQty)],
           ["Batch Number", product.batchNo ?? "—"],
           ["Manufacturing Date", product.mfgDate ? fmtDate(product.mfgDate) : "—"],
+          ["Parent Item", product.parentItem ?? "—"],
         ].map(([k, v]) => (
           <div key={k} className="card py-3">
             <p className="text-xs text-gray-500">{k}</p>
@@ -86,7 +95,14 @@ export default async function ProductDetailPage({ params }: { params: { id: stri
             <label className="label">Expiration Date</label>
             <input name="expDate" type="date" defaultValue={product.expDate ? product.expDate.toISOString().slice(0, 10) : ""} className="input" />
           </div>
-          <button className="btn-secondary" type="submit">Save Batch Info</button>
+          <div>
+            <label className="label">Parent Item (grouping)</label>
+            <input name="parentItem" defaultValue={product.parentItem ?? ""} list="parent-options" className="input w-52" placeholder="e.g. FungiStop 50 SC" />
+            <datalist id="parent-options">
+              {parentOptions.map((p) => <option key={p} value={p} />)}
+            </datalist>
+          </div>
+          <button className="btn-secondary" type="submit">Save Details</button>
         </form>
       )}
 

@@ -74,6 +74,7 @@ model Product {
   batchNo          String?
   mfgDate          DateTime?
   expDate          DateTime?
+  parentItem       String? // manual grouping label, e.g. "FungiStop 50 SC"; null = standalone row
   supplierId       String?
   supplier         Supplier? @relation(fields: [supplierId], references: [id])
   status           String  @default("Active")

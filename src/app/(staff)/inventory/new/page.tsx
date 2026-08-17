@@ -8,6 +8,14 @@ const CATEGORIES = ["Insecticide", "Herbicide", "Fungicide", "Molluscicide", "Fo
 export default async function NewProductPage() {
   await requirePerm("inventory");
   const suppliers = await prisma.supplier.findMany({ where: { status: "Active" }, orderBy: { name: "asc" } });
+  const parentOptions = (
+    await prisma.product.findMany({
+      where: { parentItem: { not: null } },
+      select: { parentItem: true },
+      distinct: ["parentItem"],
+      orderBy: { parentItem: "asc" },
+    })
+  ).map((p) => p.parentItem!);
   return (
     <div className="max-w-2xl">
       <PageHeader title="New Product" />
@@ -30,6 +38,13 @@ export default async function NewProductPage() {
           <div><label className="label">Batch Number</label><input name="batchNo" className="input" placeholder="B26-0001" /></div>
           <div><label className="label">Manufacturing Date</label><input name="mfgDate" type="date" className="input" /></div>
           <div><label className="label">Expiration Date</label><input name="expDate" type="date" className="input" /></div>
+          <div>
+            <label className="label">Parent Item (grouping, optional)</label>
+            <input name="parentItem" list="parent-options" className="input" placeholder="e.g. FungiStop 50 SC" />
+            <datalist id="parent-options">
+              {parentOptions.map((p) => <option key={p} value={p} />)}
+            </datalist>
+          </div>
           <div>
             <label className="label">Supplier</label>
             <select name="supplierId" className="input">

@@ -15,20 +15,22 @@ export default async function InventoryPage({ searchParams }: { searchParams: { 
   const stockFilter = searchParams.stock || "";
 
   const where: any = {};
-  if (q) where.OR = [{ name: { contains: q } }, { sku: { contains: q } }, { activeIngredient: { contains: q } }];
+  if (q) where.OR = [{ name: { contains: q } }, { sku: { contains: q } }, { activeIngredient: { contains: q } }, { parentItem: { contains: q } }];
   if (category) where.category = category;
   if (stockFilter === "out") where.stockQty = { lte: 0 };
 
+  // grouped ordering: parented products cluster under their parent label, standalone rows follow by SKU
+  const orderBy: any = [{ parentItem: { sort: "asc", nulls: "last" } }, { sku: "asc" }];
   let products, total;
   if (stockFilter === "low") {
     // low = qty > 0 and qty <= reorderPoint; needs raw comparison across columns
-    const all = await prisma.product.findMany({ where, orderBy: { sku: "asc" }, include: { supplier: true } });
+    const all = await prisma.product.findMany({ where, orderBy, include: { supplier: true } });
     const low = all.filter((p) => p.stockQty > 0 && p.stockQty <= p.reorderPoint);
     total = low.length;
     products = low.slice(skip, skip + take);
   } else {
     [products, total] = await Promise.all([
-      prisma.product.findMany({ where, orderBy: { sku: "asc" }, skip, take, include: { supplier: true } }),
+      prisma.product.findMany({ where, orderBy, skip, take, include: { supplier: true } }),
       prisma.product.count({ where }),
     ]);
   }
@@ -80,12 +82,27 @@ export default async function InventoryPage({ searchParams }: { searchParams: { 
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {products.map((p) => (
+            {products.flatMap((p, i) => {
+              const rows = [];
+              const isSub = !!p.parentItem;
+              // header row whenever a new parent group starts within this page
+              if (isSub && p.parentItem !== products[i - 1]?.parentItem) {
+                const count = products.filter((x) => x.parentItem === p.parentItem).length;
+                rows.push(
+                  <tr key={`grp-${p.parentItem}`} className="bg-emerald-50/70">
+                    <td colSpan={8} className="px-3 py-1.5 text-xs font-bold uppercase tracking-wide text-emerald-900">
+                      📦 {p.parentItem} <span className="ml-1 font-normal normal-case text-emerald-700">· {count} pack size{count > 1 ? "s" : ""}</span>
+                    </td>
+                  </tr>
+                );
+              }
+              rows.push(
               <tr key={p.id} className="hover:bg-gray-50">
-                <td className="table-td font-mono text-xs">{p.sku}</td>
+                <td className={`table-td font-mono text-xs ${isSub ? "pl-6" : ""}`}>{p.sku}</td>
                 <td className="table-td">
+                  <span className={isSub ? "pl-3 text-gray-400" : "hidden"}>↳ </span>
                   <Link href={`/inventory/${p.id}`} className="font-medium text-emerald-700 hover:underline">{p.name}</Link>
-                  <p className="text-xs text-gray-500">{p.activeIngredient}</p>
+                  <p className={`text-xs text-gray-500 ${isSub ? "pl-7" : ""}`}>{p.activeIngredient}</p>
                 </td>
                 <td className="table-td text-sm text-gray-600">{p.category}</td>
                 <td className="table-td">{p.packSize}</td>
@@ -112,7 +129,9 @@ export default async function InventoryPage({ searchParams }: { searchParams: { 
                 </td>
                 <td className="table-td"><StatusBadge status={stockStatus(p.stockQty, p.reorderPoint)} /></td>
               </tr>
-            ))}
+              );
+              return rows;
+            })}
             {!products.length && (
               <tr><td colSpan={8} className="p-8 text-center text-sm text-gray-500">No products match your filters.</td></tr>
             )}
