@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { getUser } from "@/lib/auth";
 import { sheetResponse } from "@/lib/xlsx-helpers";
-import { getSalesReport, getExpenseReport, getPnl, getArAging, getMovements, getDeliveryPerformance, parseRange } from "@/lib/reports";
+import { getSalesReport, getExpenseReport, getPnl, getArAging, getMovements, getDeliveryPerformance, getMonthlyProductSales, parseRange } from "@/lib/reports";
 import { prisma } from "@/lib/db";
 
 export async function GET(req: NextRequest, { params }: { params: { report: string } }) {
@@ -99,6 +99,31 @@ export async function GET(req: NextRequest, { params }: { params: { report: stri
         ]),
       ];
       return sheetResponse(rows, "Stock", `stock-on-hand.xlsx`);
+    }
+    case "sales-monthly": {
+      const year = Number(sp.year) || new Date().getFullYear();
+      const region = sp.region || "";
+      const rows = await getMonthlyProductSales(year, region || undefined);
+      const months = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+      const data: (string | number)[][] = [
+        [`MONTHLY SALES PER PRODUCT — ${region || "ALL REGIONS"} ${year}`],
+        [],
+        ["Product", "Category", ...months, "Total Qty", "Amount"],
+        ...rows.map((r) => [
+          r.name,
+          r.category,
+          ...r.monthsQty,
+          r.monthsQty.reduce((a, b) => a + b, 0),
+          Math.round(r.monthsAmt.reduce((a, b) => a + b, 0) * 100) / 100,
+        ]),
+        [
+          "TOTAL", "",
+          ...months.map((_, mi) => rows.reduce((s, r) => s + r.monthsQty[mi], 0)),
+          rows.reduce((s, r) => s + r.monthsQty.reduce((a, b) => a + b, 0), 0),
+          Math.round(rows.reduce((s, r) => s + r.monthsAmt.reduce((a, b) => a + b, 0), 0) * 100) / 100,
+        ],
+      ];
+      return sheetResponse(data, "Monthly Sales", `monthly-sales-${region || "all"}-${year}.xlsx`);
     }
     case "count-sheet": {
       const category = sp.category || "";

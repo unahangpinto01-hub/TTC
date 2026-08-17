@@ -51,6 +51,47 @@ export async function getSalesReport({ from, to }: Range) {
   };
 }
 
+export type MonthlyProductRow = {
+  name: string; // parent item (product line)
+  category: string;
+  monthsQty: number[]; // 12
+  monthsAmt: number[]; // 12
+};
+
+/** Actual invoiced sales per product line per month, optionally filtered to one region. */
+export async function getMonthlyProductSales(year: number, region?: string) {
+  const from = new Date(year, 0, 1);
+  const to = new Date(year, 11, 31, 23, 59, 59, 999);
+  const srs = await prisma.salesReceipt.findMany({
+    where: {
+      status: { not: "Void" },
+      invoiceDate: { gte: from, lte: to },
+      ...(region ? { customer: { region } } : {}),
+    },
+    include: { deliveryReceipt: { include: { lines: { include: { product: true } } } } },
+  });
+
+  const map = new Map<string, MonthlyProductRow>();
+  for (const sr of srs) {
+    const mi = sr.invoiceDate.getMonth();
+    for (const l of sr.deliveryReceipt.lines) {
+      const key = l.product.parentItem?.trim() || l.product.name;
+      let row = map.get(key);
+      if (!row) {
+        row = { name: key, category: l.product.category, monthsQty: Array(12).fill(0), monthsAmt: Array(12).fill(0) };
+        map.set(key, row);
+      }
+      row.monthsQty[mi] += l.qty;
+      row.monthsAmt[mi] = round2(row.monthsAmt[mi] + l.qty * l.unitPrice);
+    }
+  }
+
+  const CATEGORY_ORDER = ["Insecticide", "Herbicide", "Fungicide", "Molluscicide", "Foliar Fertilizer", "Others"];
+  return [...map.values()].sort(
+    (a, b) => CATEGORY_ORDER.indexOf(a.category) - CATEGORY_ORDER.indexOf(b.category) || a.name.localeCompare(b.name)
+  );
+}
+
 export async function getExpenseReport({ from, to }: Range) {
   const expenses = await prisma.expense.findMany({
     where: { date: { gte: from, lte: to } },

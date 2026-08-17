@@ -14,6 +14,7 @@ export default async function SalesReportPage({ searchParams }: { searchParams: 
   return (
     <div className="print-page">
       <PageHeader title="Sales Report">
+        <a href="/reports/sales-monthly" className="btn-secondary no-print">📅 Monthly per Region</a>
         <a href={`/api/export/sales?from=${fromStr}&to=${toStr}`} className="btn-secondary no-print">⬇ Excel</a>
         <span className="no-print"><PrintButton /></span>
       </PageHeader>
