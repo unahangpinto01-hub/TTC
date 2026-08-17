@@ -85,6 +85,7 @@ model Product {
   salesOrderLines    SalesOrderLine[]
   drLines            DRLine[]
   poLines            POLine[]
+  forecastLines      ForecastLine[]
 }
 
 model StockMovement {
@@ -340,6 +341,38 @@ model Notification {
   refLink   String?
   readAt    DateTime?
   createdAt DateTime  @default(now())
+}
+
+model Forecast {
+  id        String   @id @default(cuid())
+  title     String
+  year      Int
+  area      String   // e.g. LUZVIMIN, Luzon, Visayas
+  createdAt DateTime @default(now())
+
+  lines ForecastLine[]
+}
+
+model ForecastLine {
+  id         String   @id @default(cuid())
+  forecastId String
+  forecast   Forecast @relation(fields: [forecastId], references: [id], onDelete: Cascade)
+  productId  String
+  product    Product  @relation(fields: [productId], references: [id])
+  m1  Int @default(0)
+  m2  Int @default(0)
+  m3  Int @default(0)
+  m4  Int @default(0)
+  m5  Int @default(0)
+  m6  Int @default(0)
+  m7  Int @default(0)
+  m8  Int @default(0)
+  m9  Int @default(0)
+  m10 Int @default(0)
+  m11 Int @default(0)
+  m12 Int @default(0)
+
+  @@unique([forecastId, productId])
 }
 
 model DocumentCounter {

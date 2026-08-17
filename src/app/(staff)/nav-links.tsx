@@ -22,6 +22,7 @@ const NAV: { section: string; items: Item[] }[] = [
       { href: "/deliveries", label: "Delivery Receipts", fn: "deliveries" },
       { href: "/invoicing", label: "For Invoicing", fn: "invoicing" },
       { href: "/invoices", label: "Invoices (SR)", fn: "invoices" },
+      { href: "/forecast", label: "Sales Forecast", fn: "forecast" },
       { href: "/customers", label: "Customers", fn: "customers" },
     ],
   },

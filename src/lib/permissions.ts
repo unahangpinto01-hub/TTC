@@ -10,6 +10,7 @@ export const FUNCTIONS = [
   ["deliveries", "Delivery Receipts"],
   ["invoicing", "For Invoicing"],
   ["invoices", "Invoices (SR)"],
+  ["forecast", "Sales Forecast"],
   ["customers", "Customers"],
   ["inventory", "Products / Inventory"],
   ["purchaseOrders", "Purchase Orders"],
@@ -36,9 +37,9 @@ export const ROLE_DEFAULTS: Record<string, Record<FnKey, PermLevel>> = {
   ADMIN: { ...ALL_RW, users: NO },
   CLERK: {
     dashboard: RW, notifications: RW, orders: RW, salesOrders: RW, schedule: RW,
-    deliveries: RW, invoicing: NO, invoices: RO, customers: RW, inventory: RO,
-    purchaseOrders: RO, suppliers: RO, ar: NO, expenses: NO, ledger: NO,
-    reports: NO, hr: NO, users: NO,
+    deliveries: RW, invoicing: NO, invoices: RO, forecast: RO, customers: RW,
+    inventory: RO, purchaseOrders: RO, suppliers: RO, ar: NO, expenses: NO,
+    ledger: NO, reports: NO, hr: NO, users: NO,
   },
 };
 
