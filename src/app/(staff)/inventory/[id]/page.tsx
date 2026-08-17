@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requirePerm } from "@/lib/auth";
@@ -31,6 +32,9 @@ export default async function ProductDetailPage({ params }: { params: { id: stri
 
   return (
     <div>
+      <Link href="/inventory" className="mb-3 inline-flex items-center gap-1 text-sm font-medium text-emerald-700 hover:underline">
+        ← Back to Products
+      </Link>
       <PageHeader title={product.name}>
         <StatusBadge status={stockStatus(product.stockQty, product.reorderPoint)} />
       </PageHeader>
