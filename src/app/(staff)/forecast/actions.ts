@@ -25,7 +25,7 @@ export async function deleteForecast(formData: FormData) {
   redirect("/forecast");
 }
 
-export type ForecastRowInput = { productId: string; months: number[] };
+export type ForecastRowInput = { parentItem: string; months: number[] };
 
 /** Save the whole grid: header fields + upsert every row, delete removed rows. */
 export async function saveForecast(input: {
@@ -46,13 +46,15 @@ export async function saveForecast(input: {
     },
   });
 
-  const clean = input.rows.map((r) => ({
-    productId: r.productId,
-    months: Array.from({ length: 12 }, (_, i) => Math.max(0, Math.floor(Number(r.months[i]) || 0))),
-  }));
+  const clean = input.rows
+    .filter((r) => r.parentItem.trim())
+    .map((r) => ({
+      parentItem: r.parentItem.trim(),
+      months: Array.from({ length: 12 }, (_, i) => Math.max(0, Math.floor(Number(r.months[i]) || 0))),
+    }));
 
   await prisma.forecastLine.deleteMany({
-    where: { forecastId, productId: { notIn: clean.map((r) => r.productId) } },
+    where: { forecastId, parentItem: { notIn: clean.map((r) => r.parentItem) } },
   });
   for (const r of clean) {
     const months = {
@@ -61,8 +63,8 @@ export async function saveForecast(input: {
       m9: r.months[8], m10: r.months[9], m11: r.months[10], m12: r.months[11],
     };
     await prisma.forecastLine.upsert({
-      where: { forecastId_productId: { forecastId, productId: r.productId } },
-      create: { forecastId, productId: r.productId, ...months },
+      where: { forecastId_parentItem: { forecastId, parentItem: r.parentItem } },
+      create: { forecastId, parentItem: r.parentItem, ...months },
       update: months,
     });
   }

@@ -4,13 +4,17 @@ import { requirePerm } from "@/lib/auth";
 import { peso, fmtDate } from "@/lib/format";
 import { PageHeader } from "@/components/ui";
 import { createForecast, deleteForecast } from "./actions";
+import { getParentInfos } from "./parents";
 
 export default async function ForecastListPage() {
   const user = await requirePerm("forecast");
-  const forecasts = await prisma.forecast.findMany({
-    orderBy: [{ year: "desc" }, { createdAt: "desc" }],
-    include: { lines: { include: { product: { select: { dealerPrice: true } } } } },
-  });
+  const [forecasts, parentMap] = await Promise.all([
+    prisma.forecast.findMany({
+      orderBy: [{ year: "desc" }, { createdAt: "desc" }],
+      include: { lines: true },
+    }),
+    getParentInfos(),
+  ]);
   const canEdit = user.perm === "READ_WRITE";
   const thisYear = new Date().getFullYear();
 
@@ -42,7 +46,7 @@ export default async function ForecastListPage() {
                     (s, l) =>
                       s +
                       (l.m1 + l.m2 + l.m3 + l.m4 + l.m5 + l.m6 + l.m7 + l.m8 + l.m9 + l.m10 + l.m11 + l.m12) *
-                        l.product.dealerPrice,
+                        (parentMap.get(l.parentItem)?.price ?? 0),
                     0
                   );
                   return (

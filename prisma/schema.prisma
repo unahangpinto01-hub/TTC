@@ -85,7 +85,6 @@ model Product {
   salesOrderLines    SalesOrderLine[]
   drLines            DRLine[]
   poLines            POLine[]
-  forecastLines      ForecastLine[]
 }
 
 model StockMovement {
@@ -357,8 +356,7 @@ model ForecastLine {
   id         String   @id @default(cuid())
   forecastId String
   forecast   Forecast @relation(fields: [forecastId], references: [id], onDelete: Cascade)
-  productId  String
-  product    Product  @relation(fields: [productId], references: [id])
+  parentItem String   // forecast is at product-line level (Product.parentItem)
   m1  Int @default(0)
   m2  Int @default(0)
   m3  Int @default(0)
@@ -372,7 +370,7 @@ model ForecastLine {
   m11 Int @default(0)
   m12 Int @default(0)
 
-  @@unique([forecastId, productId])
+  @@unique([forecastId, parentItem])
 }
 
 model DocumentCounter {

@@ -8,14 +8,14 @@ const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "
 const CATEGORY_ORDER = ["Insecticide", "Herbicide", "Fungicide", "Molluscicide", "Foliar Fertilizer", "Others"];
 
 export type GridRow = {
-  productId: string;
-  name: string;
+  parentItem: string;
   category: string;
-  dealerPrice: number;
+  price: number; // average dealer price across the line's pack sizes
+  packs: number;
   months: number[];
 };
 
-export type ProductOption = { id: string; sku: string; name: string; category: string; dealerPrice: number };
+export type ParentOption = { name: string; category: string; price: number; packs: number };
 
 function fmtPeso(n: number) {
   return "₱" + n.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -27,7 +27,7 @@ export function ForecastGrid({
   initialYear,
   initialArea,
   initialRows,
-  products,
+  parents,
   readOnly,
 }: {
   forecastId: string;
@@ -35,7 +35,7 @@ export function ForecastGrid({
   initialYear: number;
   initialArea: string;
   initialRows: GridRow[];
-  products: ProductOption[];
+  parents: ParentOption[];
   readOnly: boolean;
 }) {
   const router = useRouter();
@@ -52,31 +52,31 @@ export function ForecastGrid({
       const ca = CATEGORY_ORDER.indexOf(a.category);
       const cb = CATEGORY_ORDER.indexOf(b.category);
       if (ca !== cb) return ca - cb;
-      return a.name.localeCompare(b.name);
+      return a.parentItem.localeCompare(b.parentItem);
     });
   }, [rows]);
 
-  const available = products.filter((p) => !rows.some((r) => r.productId === p.id));
+  const available = parents.filter((p) => !rows.some((r) => r.parentItem === p.name));
 
-  const setCell = (productId: string, mi: number, value: string) => {
+  const setCell = (parentItem: string, mi: number, value: string) => {
     const v = Math.max(0, Math.floor(Number(value) || 0));
-    setRows((prev) => prev.map((r) => (r.productId === productId ? { ...r, months: r.months.map((m, i) => (i === mi ? v : m)) } : r)));
+    setRows((prev) => prev.map((r) => (r.parentItem === parentItem ? { ...r, months: r.months.map((m, i) => (i === mi ? v : m)) } : r)));
   };
 
   const addRow = () => {
-    const p = products.find((x) => x.id === pick);
+    const p = parents.find((x) => x.name === pick);
     if (!p) return;
-    setRows((prev) => [...prev, { productId: p.id, name: p.name, category: p.category, dealerPrice: p.dealerPrice, months: Array(12).fill(0) }]);
+    setRows((prev) => [...prev, { parentItem: p.name, category: p.category, price: p.price, packs: p.packs, months: Array(12).fill(0) }]);
     setPick("");
   };
 
-  const removeRow = (productId: string) => setRows((prev) => prev.filter((r) => r.productId !== productId));
+  const removeRow = (parentItem: string) => setRows((prev) => prev.filter((r) => r.parentItem !== parentItem));
 
   const rowTotal = (r: GridRow) => r.months.reduce((s, m) => s + m, 0);
   const monthQty = (mi: number) => rows.reduce((s, r) => s + r.months[mi], 0);
-  const monthAmount = (mi: number) => rows.reduce((s, r) => s + r.months[mi] * r.dealerPrice, 0);
+  const monthAmount = (mi: number) => rows.reduce((s, r) => s + r.months[mi] * r.price, 0);
   const grandQty = rows.reduce((s, r) => s + rowTotal(r), 0);
-  const grandAmount = rows.reduce((s, r) => s + rowTotal(r) * r.dealerPrice, 0);
+  const grandAmount = rows.reduce((s, r) => s + rowTotal(r) * r.price, 0);
 
   const save = async () => {
     setSaving(true);
@@ -85,7 +85,7 @@ export function ForecastGrid({
       title,
       year,
       area,
-      rows: rows.map((r) => ({ productId: r.productId, months: r.months })),
+      rows: rows.map((r) => ({ parentItem: r.parentItem, months: r.months })),
     });
     setSaving(false);
     setSavedAt(new Date().toLocaleTimeString());
@@ -121,15 +121,17 @@ export function ForecastGrid({
 
       {!readOnly && (
         <div className="no-print card mb-4 flex flex-wrap items-center gap-2">
-          <label className="text-sm font-medium text-gray-700">Add product:</label>
+          <label className="text-sm font-medium text-gray-700">Add product line:</label>
           <select value={pick} onChange={(e) => setPick(e.target.value)} className="input max-w-md">
-            <option value="">— select a product —</option>
+            <option value="">— select a parent item —</option>
             {available.map((p) => (
-              <option key={p.id} value={p.id}>{p.sku} · {p.name}</option>
+              <option key={p.name} value={p.name}>
+                {p.name} ({p.category}{p.packs > 1 ? ` · ${p.packs} packs` : ""})
+              </option>
             ))}
           </select>
           <button onClick={addRow} disabled={!pick} className="btn-secondary" type="button">+ Add Row</button>
-          <span className="text-xs text-gray-400">{rows.length} product(s) in this forecast</span>
+          <span className="text-xs text-gray-400">{rows.length} line(s) in this forecast</span>
         </div>
       )}
 
@@ -152,7 +154,7 @@ export function ForecastGrid({
               lastCategory = r.category;
               return (
                 <FragmentRow
-                  key={r.productId}
+                  key={r.parentItem}
                   row={r}
                   showCategory={showCat}
                   readOnly={readOnly}
@@ -163,7 +165,7 @@ export function ForecastGrid({
               );
             })}
             {!rows.length && (
-              <tr><td colSpan={16} className="p-8 text-center text-sm text-gray-500">No products yet — add rows above to start forecasting.</td></tr>
+              <tr><td colSpan={16} className="p-8 text-center text-sm text-gray-500">No product lines yet — add rows above to start forecasting.</td></tr>
             )}
           </tbody>
           {rows.length > 0 && (
@@ -191,7 +193,7 @@ export function ForecastGrid({
         </table>
       </div>
       <p className="mt-2 text-xs text-gray-500">
-        Amount = forecast quantity × current dealer price. Edit any month cell, then Save Forecast.
+        Rows are product lines (parent items). Amount = quantity × the line's dealer price (averaged across its pack sizes when there is more than one).
       </p>
     </div>
   );
@@ -208,8 +210,8 @@ function FragmentRow({
   row: GridRow;
   showCategory: boolean;
   readOnly: boolean;
-  onCell: (productId: string, mi: number, value: string) => void;
-  onRemove: (productId: string) => void;
+  onCell: (parentItem: string, mi: number, value: string) => void;
+  onRemove: (parentItem: string) => void;
   total: number;
 }) {
   return (
@@ -220,7 +222,10 @@ function FragmentRow({
         </tr>
       )}
       <tr className="border-b border-gray-100 hover:bg-gray-50">
-        <td className="sticky left-0 z-10 max-w-[220px] truncate bg-white px-2 py-1 font-medium" title={row.name}>{row.name}</td>
+        <td className="sticky left-0 z-10 max-w-[220px] truncate bg-white px-2 py-1 font-medium" title={`${row.parentItem} · avg price ₱${row.price.toFixed(2)}`}>
+          {row.parentItem}
+          {row.packs > 1 && <span className="ml-1 text-[10px] font-normal text-gray-400">({row.packs} packs)</span>}
+        </td>
         {row.months.map((m, mi) => (
           <td key={mi} className="px-0.5 py-0.5 text-right">
             {readOnly ? (
@@ -231,17 +236,17 @@ function FragmentRow({
                 min={0}
                 value={m || ""}
                 placeholder="-"
-                onChange={(e) => onCell(row.productId, mi, e.target.value)}
+                onChange={(e) => onCell(row.parentItem, mi, e.target.value)}
                 className="w-14 rounded border border-gray-200 px-1 py-0.5 text-right text-xs focus:border-emerald-600 focus:outline-none"
               />
             )}
           </td>
         ))}
         <td className="px-2 py-1 text-right font-semibold text-red-600">{total.toLocaleString()}</td>
-        <td className="px-2 py-1 text-right font-semibold">{fmtPeso(total * row.dealerPrice)}</td>
+        <td className="px-2 py-1 text-right font-semibold">{fmtPeso(total * row.price)}</td>
         {!readOnly && (
           <td className="px-1 py-1 text-center">
-            <button onClick={() => onRemove(row.productId)} className="text-red-400 hover:text-red-600" title="Remove row" type="button">×</button>
+            <button onClick={() => onRemove(row.parentItem)} className="text-red-400 hover:text-red-600" title="Remove row" type="button">×</button>
           </td>
         )}
       </tr>
