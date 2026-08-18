@@ -17,9 +17,9 @@ export function AddSupplierForm() {
   const [result, formAction] = useFormState(createSupplier, null);
   const formRef = useRef<HTMLFormElement>(null);
 
-  // clear the fields after a successful add so the next supplier can be typed right away
+  // clear the fields after every attempt — successful add or duplicate — so the form is ready for fresh input
   useEffect(() => {
-    if (result?.ok) formRef.current?.reset();
+    if (result) formRef.current?.reset();
   }, [result]);
 
   return (
