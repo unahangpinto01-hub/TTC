@@ -2,7 +2,8 @@ import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { requirePerm } from "@/lib/auth";
 import { PageHeader, StatusBadge } from "@/components/ui";
-import { createSupplier, updateSupplier } from "./actions";
+import { updateSupplier } from "./actions";
+import { AddSupplierForm } from "./add-supplier-form";
 
 export default async function SuppliersPage({ searchParams }: { searchParams: { edit?: string } }) {
   const user = await requirePerm("suppliers");
@@ -84,19 +85,7 @@ export default async function SuppliersPage({ searchParams }: { searchParams: { 
             </table>
           </div>
         </div>
-        {canEdit && (
-          <form action={createSupplier} className="card h-fit space-y-3">
-            <h2 className="font-semibold">Add Supplier</h2>
-            <div><label className="label">Name</label><input name="name" required className="input" /></div>
-            <div><label className="label">Contact</label><input name="contact" className="input" /></div>
-            <div><label className="label">Address</label><input name="address" className="input" /></div>
-            <div>
-              <label className="label">Status</label>
-              <select name="status" className="input"><option>Active</option><option>Inactive</option></select>
-            </div>
-            <button className="btn-primary" type="submit">Add</button>
-          </form>
-        )}
+        {canEdit && <AddSupplierForm />}
       </div>
     </div>
   );
