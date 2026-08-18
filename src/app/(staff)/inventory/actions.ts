@@ -37,20 +37,33 @@ export async function createProduct(formData: FormData) {
   redirect(`/inventory/${product.id}`);
 }
 
-export async function updateBatchInfo(formData: FormData) {
-  await requirePermWrite("inventory");
+/** Full product edit (everything except SKU and stock). Superadmin only. */
+export async function updateProduct(formData: FormData) {
+  const user = await requirePermWrite("inventory");
+  if (user.role !== "SUPER_ADMIN") redirect("/denied");
   const productId = String(formData.get("productId"));
   const mfg = String(formData.get("mfgDate") || "");
   const exp = String(formData.get("expDate") || "");
   await prisma.product.update({
     where: { id: productId },
     data: {
+      name: String(formData.get("name")).trim(),
+      activeIngredient: String(formData.get("activeIngredient") || "").trim(),
+      category: String(formData.get("category")),
+      cropTags: String(formData.get("cropTags") || "").trim(),
+      packSize: String(formData.get("packSize")).trim(),
+      unitCost: Math.max(0, Number(formData.get("unitCost")) || 0),
+      dealerPrice: Math.max(0, Number(formData.get("dealerPrice")) || 0),
+      srp: Math.max(0, Number(formData.get("srp")) || 0),
+      reorderPoint: Math.max(0, Number(formData.get("reorderPoint")) || 0),
+      supplierId: String(formData.get("supplierId")) || null,
       batchNo: String(formData.get("batchNo") || "").trim() || null,
       mfgDate: mfg ? new Date(mfg) : null,
       expDate: exp ? new Date(exp) : null,
       parentItem: String(formData.get("parentItem") || "").trim() || null,
     },
   });
+  revalidatePath("/inventory");
   revalidatePath(`/inventory/${productId}`);
   redirect(`/inventory/${productId}`);
 }

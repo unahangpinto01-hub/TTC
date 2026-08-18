@@ -4,8 +4,8 @@ import { prisma } from "@/lib/db";
 import { requirePerm } from "@/lib/auth";
 import { peso, fmtDate, daysUntil, EXPIRY_WARN_DAYS } from "@/lib/format";
 import { PageHeader, StatusBadge, stockStatus } from "@/components/ui";
-import { adjustStock, updateBatchInfo } from "../actions";
-import { ParentItemField } from "../parent-item-field";
+import { adjustStock } from "../actions";
+import { ProductEditForm } from "./product-edit-form";
 
 export default async function ProductDetailPage({ params }: { params: { id: string } }) {
   const user = await requirePerm("inventory");
@@ -29,6 +29,10 @@ export default async function ProductDetailPage({ params }: { params: { id: stri
     })
   ).map((p) => p.parentItem!);
   const canEdit = user.perm === "READ_WRITE";
+  const isSuperAdmin = user.role === "SUPER_ADMIN";
+  const suppliers = isSuperAdmin
+    ? await prisma.supplier.findMany({ where: { status: "Active" }, orderBy: { name: "asc" }, select: { id: true, name: true } })
+    : [];
 
   return (
     <div>
@@ -85,27 +89,29 @@ export default async function ProductDetailPage({ params }: { params: { id: stri
         })()}
       </div>
 
-      {canEdit && (
-        <form action={updateBatchInfo} className="card mb-4 flex flex-wrap items-end gap-3">
-          <input type="hidden" name="productId" value={product.id} />
-          <div>
-            <label className="label">Batch Number</label>
-            <input name="batchNo" defaultValue={product.batchNo ?? ""} className="input w-36" placeholder="B26-0001" />
-          </div>
-          <div>
-            <label className="label">Manufacturing Date</label>
-            <input name="mfgDate" type="date" defaultValue={product.mfgDate ? product.mfgDate.toISOString().slice(0, 10) : ""} className="input" />
-          </div>
-          <div>
-            <label className="label">Expiration Date</label>
-            <input name="expDate" type="date" defaultValue={product.expDate ? product.expDate.toISOString().slice(0, 10) : ""} className="input" />
-          </div>
-          <div>
-            <label className="label">Parent Item (grouping)</label>
-            <ParentItemField options={parentOptions} defaultValue={product.parentItem} />
-          </div>
-          <button className="btn-secondary" type="submit">Save Details</button>
-        </form>
+      {isSuperAdmin && (
+        <ProductEditForm
+          product={{
+            id: product.id,
+            sku: product.sku,
+            name: product.name,
+            activeIngredient: product.activeIngredient,
+            category: product.category,
+            cropTags: product.cropTags,
+            packSize: product.packSize,
+            unitCost: product.unitCost,
+            dealerPrice: product.dealerPrice,
+            srp: product.srp,
+            reorderPoint: product.reorderPoint,
+            supplierId: product.supplierId,
+            batchNo: product.batchNo,
+            mfgDate: product.mfgDate ? product.mfgDate.toISOString().slice(0, 10) : "",
+            expDate: product.expDate ? product.expDate.toISOString().slice(0, 10) : "",
+            parentItem: product.parentItem,
+          }}
+          suppliers={suppliers}
+          parentOptions={parentOptions}
+        />
       )}
 
       {canEdit && (
