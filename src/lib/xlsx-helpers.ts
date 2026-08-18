@@ -21,7 +21,7 @@ export async function parseUpload(file: File): Promise<Record<string, any>[]> {
 }
 
 export const PRODUCT_TEMPLATE_HEADERS = [
-  "sku", "name", "activeIngredient", "category", "cropTags", "packSize",
+  "sku", "name", "parentItem", "activeIngredient", "category", "cropTags", "packSize",
   "unitCost", "dealerPrice", "srp", "reorderPoint", "supplier", "openingStock",
 ];
 

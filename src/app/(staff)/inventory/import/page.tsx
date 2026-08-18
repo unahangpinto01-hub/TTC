@@ -19,8 +19,8 @@ export default function ProductImportPage() {
       <h1 className="mb-4 text-xl font-bold">Bulk Import Products</h1>
       <div className="card mb-4 space-y-3">
         <p className="text-sm text-gray-600">
-          Upload an Excel file with columns: <code className="rounded bg-gray-100 px-1 text-xs">sku, name, activeIngredient, category, cropTags, packSize, unitCost, dealerPrice, srp, reorderPoint, supplier, openingStock</code>.
-          Opening stock creates an initial IN stock-card entry.
+          Upload an Excel file with columns: <code className="rounded bg-gray-100 px-1 text-xs">sku, name, parentItem, activeIngredient, category, cropTags, packSize, unitCost, dealerPrice, srp, reorderPoint, supplier, openingStock</code>.
+          Opening stock creates an initial IN stock-card entry. Parent item is the product-line label used for grouping and forecasts (e.g. &quot;AgroShield 5 EC&quot;) — leave blank for a standalone product.
         </p>
         <a href="/api/templates/products" className="btn-secondary w-fit">⬇ Download Template</a>
       </div>

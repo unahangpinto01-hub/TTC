@@ -58,6 +58,7 @@ export async function importProducts(_prev: ImportResult, formData: FormData): P
       data: {
         sku,
         name,
+        parentItem: String(r.parentItem || "").trim() || null,
         activeIngredient: String(r.activeIngredient || "").trim(),
         category,
         cropTags: String(r.cropTags || "").trim(),
