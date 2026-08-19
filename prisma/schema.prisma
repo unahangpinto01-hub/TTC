@@ -95,6 +95,10 @@ model StockMovement {
   productId    String
   product      Product  @relation(fields: [productId], references: [id])
   // qty/balanceAfter are ALWAYS in PCS (base unit). enteredQty/enteredUnit record what the user typed.
+  // qty is signed for ADJUST (negative = stock removed); IN/OUT store positive qty with direction in `type`.
+  // `date` is the EFFECTIVE date (drives the stock card and all inventory calculations);
+  // `createdAt` is when the row was actually entered (audit trail).
+  createdAt    DateTime @default(now())
   enteredQty   Int?
   enteredUnit  String?
   type         String   // IN | OUT | ADJUST

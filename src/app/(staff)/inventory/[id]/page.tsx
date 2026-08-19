@@ -17,7 +17,7 @@ export default async function ProductDetailPage({ params, searchParams }: { para
   if (!product) notFound();
   const moves = await prisma.stockMovement.findMany({
     where: { productId: product.id },
-    orderBy: { date: "desc" },
+    orderBy: [{ date: "desc" }, { createdAt: "desc" }, { id: "desc" }],
     take: 100,
     include: { user: { select: { name: true } } },
   });
@@ -148,6 +148,17 @@ export default async function ProductDetailPage({ params, searchParams }: { para
         <form action={adjustStock} className="card mb-4 flex flex-wrap items-end gap-3">
           <input type="hidden" name="productId" value={product.id} />
           <div>
+            <label className="label">Effective Date</label>
+            <input
+              name="effectiveDate"
+              type="date"
+              defaultValue={new Date().toISOString().slice(0, 10)}
+              max={new Date().toISOString().slice(0, 10)}
+              className="input"
+              title="The date the movement applies to — backdate for beginning balances"
+            />
+          </div>
+          <div>
             <label className="label">Adjust Stock (+/−)</label>
             <input name="delta" type="number" className="input w-32" placeholder="+10 or -5" required />
           </div>
@@ -160,7 +171,7 @@ export default async function ProductDetailPage({ params, searchParams }: { para
           </div>
           <div className="flex-1">
             <label className="label">Reason</label>
-            <input name="reason" className="input" placeholder="Physical count correction" />
+            <input name="reason" className="input" placeholder="Physical count correction / Beginning Balance" />
           </div>
           <button className="btn-secondary" type="submit">Apply Adjustment</button>
         </form>
@@ -182,13 +193,18 @@ export default async function ProductDetailPage({ params, searchParams }: { para
           <tbody className="divide-y divide-gray-100">
             {moves.map((m) => (
               <tr key={m.id}>
-                <td className="table-td">{fmtDate(m.date)}</td>
+                <td className="table-td">
+                  {fmtDate(m.date)}
+                  {m.createdAt.toDateString() !== m.date.toDateString() && (
+                    <p className="text-xs text-gray-400">entered {fmtDate(m.createdAt)}</p>
+                  )}
+                </td>
                 <td className="table-td">
                   <span className={`font-semibold ${m.type === "IN" ? "text-emerald-700" : m.type === "OUT" ? "text-red-600" : "text-amber-600"}`}>{m.type}</span>
                 </td>
                 <td className="table-td text-sm text-gray-600">{m.refType === "ADJUST" ? m.refNo : `${m.refType ?? ""} ${m.refNo ?? ""}`}</td>
                 <td className="table-td text-right">
-                  {m.type === "OUT" ? "−" : "+"}{m.qty}
+                  {m.type === "OUT" || m.qty < 0 ? "−" : "+"}{Math.abs(m.qty)}
                   {m.enteredUnit === "CARTON" && m.enteredQty != null && (
                     <span className="text-xs text-gray-400"> ({m.enteredQty} CTN)</span>
                   )}

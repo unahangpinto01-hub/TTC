@@ -82,10 +82,10 @@ export async function GET(req: NextRequest, { params }: { params: { report: stri
       const rows: (string | number)[][] = [
         ["INVENTORY MOVEMENT", tag],
         [],
-        ["Date", "SKU", "Product", "Type", "Qty (PCS)", "Entered As", "Balance After (PCS)", "Ref", "User"],
+        ["Effective Date", "Entered On", "SKU", "Product", "Type", "Qty (PCS)", "Entered As", "Balance After (PCS)", "Ref", "User"],
         ...moves.map((m) => [
-          m.date.toISOString().slice(0, 10), m.product.sku, m.product.name, m.type, m.qty,
-          m.enteredUnit === "CARTON" ? `${m.enteredQty} CARTON` : `${m.enteredQty ?? m.qty} PCS`,
+          m.date.toISOString().slice(0, 10), m.createdAt.toISOString().slice(0, 10), m.product.sku, m.product.name, m.type, m.qty,
+          m.enteredUnit === "CARTON" ? `${m.enteredQty} CARTON` : `${m.enteredQty ?? Math.abs(m.qty)} PCS`,
           m.balanceAfter, `${m.refType ?? ""} ${m.refNo ?? ""}`.trim(), m.user?.name ?? "",
         ]),
       ];

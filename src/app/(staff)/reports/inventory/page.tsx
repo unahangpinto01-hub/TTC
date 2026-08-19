@@ -52,7 +52,7 @@ export default async function InventoryReportPage({ searchParams }: { searchPara
                 <td className="table-td text-sm"><span className="font-mono text-xs text-gray-400">{m.product.sku}</span> {m.product.name}</td>
                 <td className={`table-td font-semibold ${m.type === "IN" ? "text-emerald-700" : m.type === "OUT" ? "text-red-600" : "text-amber-600"}`}>{m.type}</td>
                 <td className="table-td text-right">
-                  {m.type === "OUT" ? "−" : "+"}{m.qty}
+                  {m.type === "OUT" || m.qty < 0 ? "−" : "+"}{Math.abs(m.qty)}
                   {m.enteredUnit === "CARTON" && m.enteredQty != null && (
                     <span className="text-xs text-gray-400"> ({m.enteredQty} CTN)</span>
                   )}

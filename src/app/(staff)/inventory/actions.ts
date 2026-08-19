@@ -111,22 +111,52 @@ export async function adjustStock(formData: FormData) {
     if (e instanceof UnitError) redirect(`/inventory/${productId}?error=nocarton`);
     throw e;
   }
-  const newQty = product.stockQty + basePcs;
-  if (newQty < 0) redirect(`/inventory/${productId}?error=negative`);
-  await prisma.product.update({ where: { id: productId }, data: { stockQty: newQty } });
-  await prisma.stockMovement.create({
-    data: {
-      productId,
-      type: "ADJUST",
-      qty: Math.abs(basePcs),
-      balanceAfter: newQty,
-      enteredQty: Math.abs(delta),
-      enteredUnit: unit,
-      refType: "ADJUST",
-      refNo: reason,
-      userId: user.id,
-    },
-  });
+
+  // Effective date: when the movement applies (stock card + all calculations use it).
+  // Backdated entries land at end-of-day; today/blank/future = right now. createdAt keeps the real entry time.
+  const effRaw = String(formData.get("effectiveDate") || "");
+  let effective = new Date();
+  if (effRaw) {
+    const d = new Date(`${effRaw}T23:59:59.999`);
+    if (!Number.isNaN(d.getTime()) && d.getTime() < Date.now()) effective = d;
+  }
+
+  // Insert, then recompute the product's whole balance chain in effective-date order —
+  // a backdated entry shifts every later balanceAfter. Rejected if any point in history would go negative.
+  let newQty = 0;
+  try {
+    newQty = await prisma.$transaction(async (tx) => {
+      await tx.stockMovement.create({
+        data: {
+          productId,
+          type: "ADJUST",
+          qty: basePcs, // signed: negative = stock removed
+          balanceAfter: 0, // set by the recompute below
+          enteredQty: Math.abs(delta),
+          enteredUnit: unit,
+          refType: "ADJUST",
+          refNo: reason,
+          date: effective,
+          userId: user.id,
+        },
+      });
+      const moves = await tx.stockMovement.findMany({
+        where: { productId },
+        orderBy: [{ date: "asc" }, { createdAt: "asc" }, { id: "asc" }],
+      });
+      let bal = 0;
+      for (const m of moves) {
+        bal += m.type === "OUT" ? -m.qty : m.qty;
+        if (bal < 0) throw new UnitError("negative");
+        if (m.balanceAfter !== bal) await tx.stockMovement.update({ where: { id: m.id }, data: { balanceAfter: bal } });
+      }
+      await tx.product.update({ where: { id: productId }, data: { stockQty: bal } });
+      return bal;
+    });
+  } catch (e) {
+    if (e instanceof UnitError) redirect(`/inventory/${productId}?error=negative`);
+    throw e;
+  }
   if (newQty <= product.reorderPoint) {
     await notifyRole("ADMIN", "LOW_STOCK", `${product.name} is at/below reorder point (${newQty} left)`, `/inventory/${productId}`);
   }
