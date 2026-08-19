@@ -1,8 +1,25 @@
 import * as XLSX from "xlsx";
 
-export function sheetResponse(rows: (string | number)[][], sheetName: string, filename: string) {
+export type SheetStyle = {
+  /** column widths in characters, by column index */
+  colWidths?: number[];
+  /** number formats applied per column from a starting row (0-based), e.g. peso or thousands */
+  numFmts?: { col: number; fmt: string; fromRow?: number }[];
+};
+
+export const PESO_FMT = '"₱"#,##0.00';
+export const QTY_FMT = "#,##0";
+
+export function sheetResponse(rows: (string | number)[][], sheetName: string, filename: string, style?: SheetStyle) {
   const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.aoa_to_sheet(rows);
+  if (style?.colWidths) ws["!cols"] = style.colWidths.map((wch) => ({ wch }));
+  for (const { col, fmt, fromRow = 0 } of style?.numFmts ?? []) {
+    for (let r = fromRow; r < rows.length; r++) {
+      const cell = ws[XLSX.utils.encode_cell({ r, c: col })];
+      if (cell && typeof cell.v === "number") cell.z = fmt;
+    }
+  }
   XLSX.utils.book_append_sheet(wb, ws, sheetName.slice(0, 31));
   const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer;
   return new Response(new Uint8Array(buf), {

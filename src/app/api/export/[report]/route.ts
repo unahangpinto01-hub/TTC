@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { getUser } from "@/lib/auth";
-import { sheetResponse } from "@/lib/xlsx-helpers";
-import { getSalesReport, getExpenseReport, getPnl, getArAging, getMovements, getDeliveryPerformance, getMonthlyProductSales, parseRange } from "@/lib/reports";
+import { sheetResponse, PESO_FMT, QTY_FMT } from "@/lib/xlsx-helpers";
+import { getSalesReport, getExpenseReport, getPnl, getArAging, getMovements, getDeliveryPerformance, getMonthlyProductSales, getMerchandiseInventory, parseRange } from "@/lib/reports";
 import { cartonBreakdown } from "@/lib/units";
 import { prisma } from "@/lib/db";
 
@@ -153,6 +153,34 @@ export async function GET(req: NextRequest, { params }: { params: { report: stri
         ["Counted by (Inventory Controller):", "", "", "Checked by (Supervisor):", "", "", "Noted by:"],
       ];
       return sheetResponse(rows, "Count Sheet", `physical-count-sheet.xlsx`);
+    }
+    case "merchandise-inventory": {
+      const asOfStr = sp.asOf || new Date().toISOString().slice(0, 10);
+      const category = sp.category || "";
+      const q = sp.q || "";
+      const showZero = sp.zero === "1";
+      const r = await getMerchandiseInventory({ asOf: new Date(asOfStr), category, q, showZero });
+      const HEADER_ROW = 4; // 0-based index of the column-header row below
+      const rows: (string | number)[][] = [
+        ["MERCHANDISE INVENTORY — Valuation at Cost"],
+        [`As of: ${asOfStr}${r.historical ? " (reconstructed from stock card)" : ""}`],
+        [`Filters: ${category || "All Categories"} · ${q ? `Search "${q}"` : "All Products"} · ${showZero ? "Including zero stock" : "Zero stock hidden"}`],
+        [],
+        ["#", "SKU", "Product Name", "Pack", "Unit Cost", "Stock (PCS)", "Amount"],
+        ...r.rows.map((row, i) => [i + 1, row.sku, row.name, row.packSize, row.unitCost, row.stock, row.amount]),
+        [],
+        ["", "", "", "", "", "TOTAL INVENTORY VALUE", r.totalValue],
+        ["", "", "", "", "", "Inventory Items", String(r.items)],
+        ["", "", "", "", "", "Total Stock (PCS)", r.totalStock.toLocaleString()],
+      ];
+      return sheetResponse(rows, "Merchandise Inventory", `Merchandise_Inventory_${asOfStr}.xlsx`, {
+        colWidths: [4, 10, 42, 10, 14, 12, 16],
+        numFmts: [
+          { col: 4, fmt: PESO_FMT, fromRow: HEADER_ROW + 1 },
+          { col: 5, fmt: QTY_FMT, fromRow: HEADER_ROW + 1 },
+          { col: 6, fmt: PESO_FMT, fromRow: HEADER_ROW + 1 },
+        ],
+      });
     }
     case "delivery-performance": {
       const perf = await getDeliveryPerformance(range);

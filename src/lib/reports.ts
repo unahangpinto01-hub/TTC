@@ -182,6 +182,97 @@ export async function getArAging(): Promise<{ rows: AgingRow[]; totals: Omit<Agi
   return { rows, totals };
 }
 
+export type MerchandiseInventoryRow = {
+  id: string;
+  sku: string;
+  name: string;
+  packSize: string;
+  category: string;
+  piecesPerCarton: number | null;
+  unitCost: number; // cost per PCS (the product master's existing costing field)
+  stock: number; // PCS as of the report date
+  amount: number; // unitCost × stock
+};
+
+export type MerchandiseInventoryReport = {
+  rows: MerchandiseInventoryRow[];
+  items: number;
+  totalStock: number;
+  totalValue: number;
+  historical: boolean; // true when stock was reconstructed from the stock card for a past date
+};
+
+/**
+ * Inventory valuation at COST: stock PCS × product unitCost (per PCS).
+ * Read-only. For a past as-of date, stock is reconstructed from StockMovement.balanceAfter
+ * (the last movement on or before that date; products with no movements by then were at 0).
+ * Valuation always uses the CURRENT unit cost — the system stores a single static cost per product.
+ */
+export async function getMerchandiseInventory(opts: {
+  asOf?: Date | null;
+  category?: string;
+  q?: string;
+  showZero?: boolean;
+}): Promise<MerchandiseInventoryReport> {
+  const where: any = {};
+  if (opts.category) where.category = opts.category;
+  if (opts.q) {
+    where.OR = [
+      { name: { contains: opts.q, mode: "insensitive" } },
+      { sku: { contains: opts.q, mode: "insensitive" } },
+      { packSize: { contains: opts.q, mode: "insensitive" } },
+      { activeIngredient: { contains: opts.q, mode: "insensitive" } },
+    ];
+  }
+  const products = await prisma.product.findMany({ where, orderBy: [{ category: "asc" }, { name: "asc" }] });
+
+  // historical only when the as-of date ends before now; today (or future) = live stock
+  let asOfEnd: Date | null = null;
+  if (opts.asOf) {
+    asOfEnd = new Date(opts.asOf);
+    asOfEnd.setHours(23, 59, 59, 999);
+    if (asOfEnd.getTime() >= Date.now()) asOfEnd = null;
+  }
+
+  let stockOf: (p: (typeof products)[number]) => number;
+  if (asOfEnd) {
+    const balances = await prisma.$queryRaw<{ productId: string; balanceAfter: number }[]>`
+      SELECT DISTINCT ON ("productId") "productId", "balanceAfter"
+      FROM "StockMovement"
+      WHERE "date" <= ${asOfEnd}
+      ORDER BY "productId", "date" DESC, "id" DESC`;
+    const map = new Map(balances.map((b) => [b.productId, b.balanceAfter]));
+    stockOf = (p) => map.get(p.id) ?? 0;
+  } else {
+    stockOf = (p) => p.stockQty;
+  }
+
+  let rows: MerchandiseInventoryRow[] = products.map((p) => {
+    const stock = stockOf(p);
+    return {
+      id: p.id,
+      sku: p.sku,
+      name: p.name,
+      packSize: p.packSize,
+      category: p.category,
+      piecesPerCarton: p.piecesPerCarton,
+      unitCost: p.unitCost,
+      stock,
+      amount: round2(stock * p.unitCost),
+    };
+  });
+  // zero stock hidden by default; negative stock is always shown (never silently dropped)
+  if (!opts.showZero) rows = rows.filter((r) => r.stock !== 0);
+
+  return {
+    rows,
+    items: rows.length,
+    totalStock: rows.reduce((s, r) => s + r.stock, 0),
+    totalValue: round2(rows.reduce((s, r) => s + r.amount, 0)),
+    historical: !!asOfEnd,
+  };
+}
+
 export async function getMovements({ from, to }: Range) {
   return prisma.stockMovement.findMany({
     where: { date: { gte: from, lte: to } },

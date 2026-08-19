@@ -15,6 +15,7 @@ export default async function ReportsHub() {
     { title: "Expense Report", desc: "By category with detail listing", href: `/finance/expenses?from=${monthStart}&to=${today}`, alt: `/finance/expenses?from=${yearStart}&to=${today}` },
     { title: "Income Statement (P&L)", desc: "Revenue, COGS, expenses, net income", href: `/reports/pnl?from=${monthStart}&to=${today}`, alt: `/reports/pnl?from=${yearStart}&to=${today}` },
     { title: "AR Aging", desc: "Receivables by days past due", href: "/finance/ar" },
+    { title: "Merchandise Inventory", desc: "Inventory valuation at cost — stock × unit cost per product", href: "/reports/merchandise-inventory", label: "Open Report" },
     { title: "Inventory Movement", desc: "Stock IN/OUT by date range + stock on hand", href: `/reports/inventory?from=${monthStart}&to=${today}` },
     { title: "Physical Count Sheet", desc: "Product masterlist with blank count columns for stocktaking", href: "/reports/count-sheet", label: "Open Sheet" },
     { title: "Delivery Performance", desc: "Deliveries per day vs 5/day target", href: `/reports/deliveries?from=${monthStart}&to=${today}` },
