@@ -19,6 +19,8 @@ type ProductFields = {
   dealerPrice: number;
   srp: number;
   reorderPoint: number;
+  piecesPerCarton: number | null;
+  cartonDealerPrice: number | null;
   supplierId: string | null;
   batchNo: string | null;
   mfgDate: string; // yyyy-mm-dd or ""
@@ -76,7 +78,15 @@ export function ProductEditForm({
         <div><label className="label">Unit Cost (₱)</label><input name="unitCost" type="number" step="0.01" min="0" defaultValue={product.unitCost} className="input" /></div>
         <div><label className="label">Dealer Price (₱)</label><input name="dealerPrice" type="number" step="0.01" min="0" defaultValue={product.dealerPrice} className="input" /></div>
         <div><label className="label">SRP (₱)</label><input name="srp" type="number" step="0.01" min="0" defaultValue={product.srp} className="input" /></div>
-        <div><label className="label">Reorder Point</label><input name="reorderPoint" type="number" min="0" defaultValue={product.reorderPoint} className="input" /></div>
+        <div><label className="label">Reorder Point (PCS)</label><input name="reorderPoint" type="number" min="0" defaultValue={product.reorderPoint} className="input" /></div>
+        <div>
+          <label className="label">Pieces per Carton</label>
+          <input name="piecesPerCarton" type="number" min="0" defaultValue={product.piecesPerCarton ?? ""} className="input" placeholder="blank = no carton" />
+        </div>
+        <div>
+          <label className="label">Carton Dealer Price (₱)</label>
+          <input name="cartonDealerPrice" type="number" step="0.01" min="0" defaultValue={product.cartonDealerPrice ?? ""} className="input" placeholder="blank = PCS price × per-carton" />
+        </div>
         <div>
           <label className="label">Supplier</label>
           <select name="supplierId" defaultValue={product.supplierId ?? ""} className="input">

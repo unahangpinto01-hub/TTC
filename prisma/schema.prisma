@@ -75,6 +75,9 @@ model Product {
   mfgDate          DateTime?
   expDate          DateTime?
   parentItem       String? // manual grouping label, e.g. "FungiStop 50 SC"; null = standalone row
+  // Packaging: PCS is always the base inventory unit; CARTON is a selling/purchasing unit only.
+  piecesPerCarton  Int?    // null = product not sold by carton
+  cartonDealerPrice Float? // override; null = dealerPrice × piecesPerCarton
   supplierId       String?
   supplier         Supplier? @relation(fields: [supplierId], references: [id])
   status           String  @default("Active")
@@ -91,6 +94,9 @@ model StockMovement {
   id           String   @id @default(cuid())
   productId    String
   product      Product  @relation(fields: [productId], references: [id])
+  // qty/balanceAfter are ALWAYS in PCS (base unit). enteredQty/enteredUnit record what the user typed.
+  enteredQty   Int?
+  enteredUnit  String?
   type         String   // IN | OUT | ADJUST
   qty          Int
   balanceAfter Int
@@ -121,8 +127,10 @@ model IncomingOrderLine {
   order     IncomingOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
   productId String
   product   Product       @relation(fields: [productId], references: [id])
-  qty       Int
-  unitPrice Float
+  qty       Int    // in `unit`
+  unit      String @default("PCS") // PCS | CARTON
+  baseQty   Int    @default(0) // qty converted to PCS at entry time
+  unitPrice Float  // price per `unit`
 }
 
 model SalesOrder {
@@ -151,8 +159,10 @@ model SalesOrderLine {
   salesOrder   SalesOrder @relation(fields: [salesOrderId], references: [id], onDelete: Cascade)
   productId    String
   product      Product    @relation(fields: [productId], references: [id])
-  qty          Int
-  unitPrice    Float
+  qty          Int    // in `unit`
+  unit         String @default("PCS") // PCS | CARTON
+  baseQty      Int    @default(0) // qty converted to PCS at entry time
+  unitPrice    Float  // price per `unit`
   discount     Float      @default(0)
   lineTotal    Float
 }
@@ -191,8 +201,10 @@ model DRLine {
   deliveryReceipt   DeliveryReceipt @relation(fields: [deliveryReceiptId], references: [id], onDelete: Cascade)
   productId         String
   product           Product         @relation(fields: [productId], references: [id])
-  qty               Int
-  unitPrice         Float
+  qty               Int    // in `unit`
+  unit              String @default("PCS") // PCS | CARTON
+  baseQty           Int    @default(0) // qty converted to PCS; stock is deducted by this
+  unitPrice         Float  // price per `unit`
 }
 
 model SalesReceipt {
@@ -240,9 +252,11 @@ model POLine {
   purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
   productId       String
   product         Product       @relation(fields: [productId], references: [id])
-  qty             Int
-  receivedQty     Int           @default(0)
-  unitCost        Float
+  qty             Int    // in `unit`
+  unit            String @default("PCS") // PCS | CARTON
+  baseQty         Int    @default(0) // ordered qty converted to PCS
+  receivedQty     Int    @default(0) // in `unit`
+  unitCost        Float  // cost per `unit`
 }
 
 model Expense {

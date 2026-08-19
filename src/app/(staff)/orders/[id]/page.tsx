@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requirePerm } from "@/lib/auth";
 import { fmtDateTime, peso, termLabel } from "@/lib/format";
+import { qtyLabel } from "@/lib/units";
 import { PageHeader, StatusBadge } from "@/components/ui";
 import { convertToSO, cancelIncoming } from "../actions";
 
@@ -46,11 +47,17 @@ export default async function IncomingOrderPage({ params }: { params: { id: stri
             {order.lines.map((l) => (
               <tr key={l.id}>
                 <td className="table-td font-medium">{l.product.name}</td>
-                <td className="table-td text-right">{l.qty}</td>
-                <td className="table-td text-right">{peso(l.unitPrice)}</td>
+                <td className="table-td text-right">
+                  {qtyLabel(l.qty, l.unit)}
+                  {l.unit === "CARTON" && <p className="text-xs font-normal text-gray-400">= {l.baseQty.toLocaleString()} PCS</p>}
+                </td>
+                <td className="table-td text-right">
+                  {peso(l.unitPrice)}
+                  <span className="text-xs text-gray-400"> / {l.unit === "CARTON" ? "CTN" : "PC"}</span>
+                </td>
                 <td className="table-td text-right">{peso(l.qty * l.unitPrice)}</td>
-                <td className={`table-td text-right font-semibold ${l.product.stockQty < l.qty ? "text-red-600" : "text-emerald-700"}`}>
-                  {l.product.stockQty}
+                <td className={`table-td text-right font-semibold ${l.product.stockQty < l.baseQty ? "text-red-600" : "text-emerald-700"}`}>
+                  {l.product.stockQty} <span className="text-xs font-normal text-gray-400">PCS</span>
                 </td>
               </tr>
             ))}

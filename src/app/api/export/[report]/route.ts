@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getUser } from "@/lib/auth";
 import { sheetResponse } from "@/lib/xlsx-helpers";
 import { getSalesReport, getExpenseReport, getPnl, getArAging, getMovements, getDeliveryPerformance, getMonthlyProductSales, parseRange } from "@/lib/reports";
+import { cartonBreakdown } from "@/lib/units";
 import { prisma } from "@/lib/db";
 
 export async function GET(req: NextRequest, { params }: { params: { report: string } }) {
@@ -23,7 +24,7 @@ export async function GET(req: NextRequest, { params }: { params: { report: stri
         ...r.byCustomer.map((c) => [c.name, c.region, c.count, c.amount]),
         [],
         ["BY PRODUCT"],
-        ["SKU", "Product", "Qty Sold", "Amount"],
+        ["SKU", "Product", "Qty Sold (PCS)", "Amount"],
         ...r.byProduct.map((p) => [p.sku, p.name, p.qty, p.amount]),
         [],
         ["BY REGION"],
@@ -81,8 +82,12 @@ export async function GET(req: NextRequest, { params }: { params: { report: stri
       const rows: (string | number)[][] = [
         ["INVENTORY MOVEMENT", tag],
         [],
-        ["Date", "SKU", "Product", "Type", "Qty", "Balance After", "Ref", "User"],
-        ...moves.map((m) => [m.date.toISOString().slice(0, 10), m.product.sku, m.product.name, m.type, m.qty, m.balanceAfter, `${m.refType ?? ""} ${m.refNo ?? ""}`.trim(), m.user?.name ?? ""]),
+        ["Date", "SKU", "Product", "Type", "Qty (PCS)", "Entered As", "Balance After (PCS)", "Ref", "User"],
+        ...moves.map((m) => [
+          m.date.toISOString().slice(0, 10), m.product.sku, m.product.name, m.type, m.qty,
+          m.enteredUnit === "CARTON" ? `${m.enteredQty} CARTON` : `${m.enteredQty ?? m.qty} PCS`,
+          m.balanceAfter, `${m.refType ?? ""} ${m.refNo ?? ""}`.trim(), m.user?.name ?? "",
+        ]),
       ];
       return sheetResponse(rows, "Movements", `inventory-movement-${tag}.xlsx`);
     }
@@ -91,12 +96,17 @@ export async function GET(req: NextRequest, { params }: { params: { report: stri
       const rows: (string | number)[][] = [
         ["STOCK ON HAND", new Date().toISOString().slice(0, 10)],
         [],
-        ["SKU", "Product", "Category", "Pack", "Stock Qty", "Reorder Point", "Status", "Unit Cost", "Stock Value", "Supplier"],
-        ...products.map((p) => [
-          p.sku, p.name, p.category, p.packSize, p.stockQty, p.reorderPoint,
-          p.stockQty <= 0 ? "OUT" : p.stockQty <= p.reorderPoint ? "LOW" : "OK",
-          p.unitCost, Math.round(p.stockQty * p.unitCost * 100) / 100, p.supplier?.name ?? "",
-        ]),
+        ["SKU", "Product", "Category", "Pack", "Stock (PCS)", "PCS/Carton", "Complete Cartons", "Loose PCS", "Reorder Point", "Status", "Unit Cost", "Stock Value", "Supplier"],
+        ...products.map((p) => {
+          const b = cartonBreakdown(p.stockQty, p);
+          return [
+            p.sku, p.name, p.category, p.packSize, p.stockQty,
+            p.piecesPerCarton ?? "", b ? b.cartons : "", b ? b.loose : "",
+            p.reorderPoint,
+            p.stockQty <= 0 ? "OUT" : p.stockQty <= p.reorderPoint ? "LOW" : "OK",
+            p.unitCost, Math.round(p.stockQty * p.unitCost * 100) / 100, p.supplier?.name ?? "",
+          ];
+        }),
       ];
       return sheetResponse(rows, "Stock", `stock-on-hand.xlsx`);
     }
@@ -134,8 +144,11 @@ export async function GET(req: NextRequest, { params }: { params: { report: stri
       const rows: (string | number)[][] = [
         ["PRODUCT MASTERLIST — PHYSICAL COUNT SHEET", new Date().toISOString().slice(0, 10), category || "All categories"],
         [],
-        ["#", "SKU", "Product", "Category", "Pack", "Batch", "System Qty", "Physical Count", "Variance", "Remarks"],
-        ...products.map((p, i) => [i + 1, p.sku, p.name, p.category, p.packSize, p.batchNo ?? "", p.stockQty, "", "", ""]),
+        ["#", "SKU", "Product", "Category", "Pack", "Batch", "Stock (PCS)", "Complete Cartons", "Loose PCS", "Physical Count", "Variance", "Remarks"],
+        ...products.map((p, i) => {
+          const b = cartonBreakdown(p.stockQty, p);
+          return [i + 1, p.sku, p.name, p.category, p.packSize, p.batchNo ?? "", p.stockQty, b ? b.cartons : "", b ? b.loose : "", "", "", ""];
+        }),
         [],
         ["Counted by (Inventory Controller):", "", "", "Checked by (Supervisor):", "", "", "Noted by:"],
       ];

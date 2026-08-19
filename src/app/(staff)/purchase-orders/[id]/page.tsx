@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requirePerm } from "@/lib/auth";
 import { fmtDate, peso } from "@/lib/format";
+import { qtyLabel } from "@/lib/units";
 import { PageHeader, StatusBadge } from "@/components/ui";
 import { markPOSent, receivePO } from "../actions";
 
@@ -58,13 +59,22 @@ export default async function PODetailPage({ params }: { params: { id: string } 
                     <span className="font-mono text-xs text-gray-500">{l.product.sku}</span>{" "}
                     <span className="font-medium">{l.product.name}</span>
                   </td>
-                  <td className="table-td text-right">{l.qty}</td>
-                  <td className="table-td text-right">{l.receivedQty}</td>
-                  <td className="table-td text-right">{peso(l.unitCost)}</td>
+                  <td className="table-td text-right">
+                    {qtyLabel(l.qty, l.unit)}
+                    {l.unit === "CARTON" && <p className="text-xs font-normal text-gray-400">= {l.baseQty.toLocaleString()} PCS</p>}
+                  </td>
+                  <td className="table-td text-right">{qtyLabel(l.receivedQty, l.unit)}</td>
+                  <td className="table-td text-right">
+                    {peso(l.unitCost)}
+                    <span className="text-xs text-gray-400"> / {l.unit === "CARTON" ? "CTN" : "PC"}</span>
+                  </td>
                   {receivable && (
                     <td className="table-td text-right">
                       <input type="hidden" name="lineId" value={l.id} />
-                      <input name="recvQty" type="number" min={0} max={l.qty - l.receivedQty} defaultValue={l.qty - l.receivedQty} className="input w-24 text-right" />
+                      <div className="flex items-center justify-end gap-1">
+                        <input name="recvQty" type="number" min={0} max={l.qty - l.receivedQty} defaultValue={l.qty - l.receivedQty} className="input w-24 text-right" />
+                        <span className="text-xs text-gray-500">{l.unit === "CARTON" ? "CTN" : "PCS"}</span>
+                      </div>
                     </td>
                   )}
                 </tr>

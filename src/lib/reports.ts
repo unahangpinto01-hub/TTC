@@ -36,7 +36,7 @@ export async function getSalesReport({ from, to }: Range) {
     byRegion.set(sr.customer.region, round2((byRegion.get(sr.customer.region) ?? 0) + sr.amount));
     for (const l of sr.deliveryReceipt.lines) {
       const p = byProduct.get(l.productId) ?? { name: l.product.name, sku: l.product.sku, qty: 0, amount: 0 };
-      p.qty += l.qty;
+      p.qty += l.baseQty; // aggregate in base PCS — lines may be CARTON or PCS
       p.amount = round2(p.amount + l.qty * l.unitPrice);
       byProduct.set(l.productId, p);
     }
@@ -81,7 +81,7 @@ export async function getMonthlyProductSales(year: number, region?: string) {
         row = { name: key, category: l.product.category, monthsQty: Array(12).fill(0), monthsAmt: Array(12).fill(0) };
         map.set(key, row);
       }
-      row.monthsQty[mi] += l.qty;
+      row.monthsQty[mi] += l.baseQty; // base PCS
       row.monthsAmt[mi] = round2(row.monthsAmt[mi] + l.qty * l.unitPrice);
     }
   }
@@ -114,11 +114,11 @@ export async function getExpenseReport({ from, to }: Range) {
 export async function getPnl(range: Range) {
   const sales = await getSalesReport(range);
   const expenseReport = await getExpenseReport(range);
-  // COGS from delivered lines at product unit cost
+  // COGS from delivered lines at product unit cost (per PCS × base PCS quantity)
   let cogs = 0;
   for (const sr of sales.invoices) {
     for (const l of sr.deliveryReceipt.lines) {
-      cogs += l.qty * l.product.unitCost;
+      cogs += l.baseQty * l.product.unitCost;
     }
   }
   cogs = round2(cogs);

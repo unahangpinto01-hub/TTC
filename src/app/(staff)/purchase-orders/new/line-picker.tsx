@@ -2,29 +2,70 @@
 
 import { useState } from "react";
 
-type P = { id: string; sku: string; name: string; unitCost: number; stockQty: number };
+type P = { id: string; sku: string; name: string; unitCost: number; piecesPerCarton: number | null; stockQty: number };
+
+const peso = (n: number) => "₱" + n.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export function POLinePicker({ products }: { products: P[] }) {
-  const [rows, setRows] = useState([0, 1, 2]);
+  const [rows, setRows] = useState<{ key: number; productId: string; unit: string }[]>([
+    { key: 0, productId: "", unit: "CARTON" },
+    { key: 1, productId: "", unit: "CARTON" },
+    { key: 2, productId: "", unit: "CARTON" },
+  ]);
+  const setRow = (key: number, patch: Partial<{ productId: string; unit: string }>) =>
+    setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+
   return (
     <div>
       <label className="label">Lines</label>
       <div className="space-y-2">
-        {rows.map((r) => (
-          <div key={r} className="flex gap-2">
-            <select name="productId" className="input flex-1" defaultValue="">
-              <option value="">— select product —</option>
-              {products.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.sku} · {p.name} (stock: {p.stockQty})
-                </option>
-              ))}
-            </select>
-            <input name="qty" type="number" min={0} placeholder="Qty" className="input w-24" />
-          </div>
-        ))}
+        {rows.map((r) => {
+          const p = products.find((x) => x.id === r.productId);
+          const hasCarton = !!p && !!p.piecesPerCarton && p.piecesPerCarton > 0;
+          const unit = hasCarton ? r.unit : "PCS";
+          return (
+            <div key={r.key}>
+              <div className="flex gap-2">
+                <select
+                  name="productId"
+                  className="input flex-1"
+                  value={r.productId}
+                  onChange={(e) => {
+                    const next = products.find((x) => x.id === e.target.value);
+                    const nextHasCarton = !!next && !!next.piecesPerCarton && next.piecesPerCarton > 0;
+                    setRow(r.key, { productId: e.target.value, unit: nextHasCarton ? "CARTON" : "PCS" });
+                  }}
+                >
+                  <option value="">— select product —</option>
+                  {products.map((x) => (
+                    <option key={x.id} value={x.id}>
+                      {x.sku} · {x.name} (stock: {x.stockQty})
+                    </option>
+                  ))}
+                </select>
+                <input name="qty" type="number" min={0} placeholder="Qty" className="input w-24" />
+                {/* never disabled — a disabled select would drop its value from FormData and misalign the line arrays */}
+                <select name="unit" className="input w-28" value={unit} onChange={(e) => setRow(r.key, { unit: e.target.value })}>
+                  <option value="PCS">PCS</option>
+                  {hasCarton && <option value="CARTON">CARTON</option>}
+                </select>
+              </div>
+              {p && (
+                <p className="mt-0.5 pl-1 text-xs text-gray-500">
+                  {unit === "CARTON" && p.piecesPerCarton
+                    ? `1 CTN = ${p.piecesPerCarton} PCS · cost ${peso(p.unitCost * p.piecesPerCarton)} / CTN`
+                    : `cost ${peso(p.unitCost)} / PC`}
+                </p>
+              )}
+            </div>
+          );
+        })}
       </div>
-      <button type="button" className="btn-secondary mt-2" onClick={() => setRows((r) => [...r, r.length])}>
+      <button
+        type="button"
+        className="btn-secondary mt-2"
+        onClick={() => setRows((rs) => [...rs, { key: (rs[rs.length - 1]?.key ?? 0) + 1, productId: "", unit: "CARTON" }])}
+      >
         + Add line
       </button>
     </div>

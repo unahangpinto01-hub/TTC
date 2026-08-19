@@ -59,6 +59,8 @@ export async function importProducts(_prev: ImportResult, formData: FormData): P
         sku,
         name,
         parentItem: String(r.parentItem || "").trim() || null,
+        piecesPerCarton: Math.floor(Number(r.piecesPerCarton)) > 0 ? Math.floor(Number(r.piecesPerCarton)) : null,
+        cartonDealerPrice: Number(r.cartonDealerPrice) > 0 ? Number(r.cartonDealerPrice) : null,
         activeIngredient: String(r.activeIngredient || "").trim(),
         category,
         cropTags: String(r.cropTags || "").trim(),

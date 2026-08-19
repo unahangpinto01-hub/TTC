@@ -28,7 +28,7 @@ export default async function SRPrintPage({ params }: { params: { id: string } }
         ["Due Date", fmtDate(sr.dueDate)],
         ["VAT Treatment", sr.vatApplied ? "VAT 12% (inclusive)" : "VAT-exempt / Non-VAT"],
       ]}
-      lines={sr.deliveryReceipt.lines.map((l) => ({ name: l.product.name, qty: l.qty, unitPrice: l.unitPrice }))}
+      lines={sr.deliveryReceipt.lines.map((l) => ({ name: l.product.name, qty: l.qty, unitPrice: l.unitPrice, unit: l.unit, baseQty: l.baseQty }))}
       vatApplied={sr.vatApplied}
       signatures={[
         { label: "Prepared by (Accounting)" },

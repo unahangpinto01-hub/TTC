@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requirePerm } from "@/lib/auth";
 import { fmtDate, peso, termLabel, vatBreakdown } from "@/lib/format";
+import { cartonLabel, qtyLabel } from "@/lib/units";
 import { PageHeader, StatusBadge } from "@/components/ui";
 import { confirmSO, cancelSO, scheduleSO, generateDR, updateLineQty, removeLine } from "../actions";
 
@@ -23,7 +24,11 @@ export default async function SODetailPage({ params, searchParams }: { params: {
 
   const total = so.lines.reduce((s, l) => s + l.lineTotal, 0);
   const { net, vat } = vatBreakdown(total);
-  const anyShort = so.lines.some((l) => l.product.stockQty < l.qty);
+  // stock check in base PCS, aggregated per product across lines
+  const neededPcs = new Map<string, number>();
+  for (const l of so.lines) neededPcs.set(l.productId, (neededPcs.get(l.productId) ?? 0) + l.baseQty);
+  const isShort = (l: (typeof so.lines)[number]) => l.product.stockQty < (neededPcs.get(l.productId) ?? 0);
+  const anyShort = so.lines.some(isShort);
   const canApprove = user.perm === "READ_WRITE";
   const dr = so.deliveryReceipts[0];
   const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
@@ -70,7 +75,7 @@ export default async function SODetailPage({ params, searchParams }: { params: {
           </thead>
           <tbody className="divide-y divide-gray-100">
             {so.lines.map((l) => {
-              const short = l.product.stockQty < l.qty;
+              const short = isShort(l);
               return (
                 <tr key={l.id} className={short ? "bg-red-50/70" : ""}>
                   <td className="table-td font-medium">{l.product.name}</td>
@@ -79,15 +84,28 @@ export default async function SODetailPage({ params, searchParams }: { params: {
                       <form action={updateLineQty} className="flex items-center justify-end gap-1">
                         <input type="hidden" name="lineId" value={l.id} />
                         <input name="qty" type="number" min={1} defaultValue={l.qty} className="input w-20 text-right" />
+                        <span className="text-xs text-gray-500">{l.unit === "CARTON" ? "CTN" : "PCS"}</span>
                         <button className="btn-secondary px-2 py-1 text-xs" type="submit">Set</button>
                       </form>
                     ) : (
-                      l.qty
+                      qtyLabel(l.qty, l.unit)
+                    )}
+                    {l.unit === "CARTON" && (
+                      <p className="text-xs font-normal text-gray-400">= {l.baseQty.toLocaleString()} PCS</p>
                     )}
                   </td>
-                  <td className="table-td text-right">{peso(l.unitPrice)}</td>
+                  <td className="table-td text-right">
+                    {peso(l.unitPrice)}
+                    <span className="text-xs text-gray-400"> / {l.unit === "CARTON" ? "CTN" : "PC"}</span>
+                  </td>
                   <td className="table-td text-right">{peso(l.lineTotal)}</td>
-                  <td className="table-td text-right">{l.product.stockQty}</td>
+                  <td className="table-td text-right">
+                    {l.product.stockQty.toLocaleString()} <span className="text-xs text-gray-400">PCS</span>
+                    {(() => {
+                      const c = cartonLabel(l.product.stockQty, l.product);
+                      return c ? <p className="text-xs font-normal text-gray-400">{c}</p> : null;
+                    })()}
+                  </td>
                   <td className="table-td">
                     <StatusBadge status={short ? "Out" : "In Stock"} />
                   </td>
@@ -158,7 +176,7 @@ export default async function SODetailPage({ params, searchParams }: { params: {
                     <input type="hidden" name="lineId" value={l.id} />
                     <span className="w-72 truncate">{l.product.name}</span>
                     <input name="drQty" type="number" min={0} max={l.qty} defaultValue={l.qty} className="input w-24 text-right" />
-                    <span className="text-xs text-gray-400">of {l.qty}</span>
+                    <span className="text-xs text-gray-400">of {qtyLabel(l.qty, l.unit)}</span>
                   </div>
                 ))}
               </div>

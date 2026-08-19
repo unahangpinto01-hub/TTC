@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requirePerm } from "@/lib/auth";
 import { fmtDate, peso, termLabel, vatBreakdown } from "@/lib/format";
+import { qtyLabel } from "@/lib/units";
 import { getPerm } from "@/lib/permissions";
 import { PageHeader, StatusBadge } from "@/components/ui";
 import { recordPayment } from "../../finance/actions";
@@ -56,8 +57,14 @@ export default async function SRDetailPage({ params, searchParams }: { params: {
             {sr.deliveryReceipt.lines.map((l) => (
               <tr key={l.id}>
                 <td className="table-td font-medium">{l.product.name}</td>
-                <td className="table-td text-right">{l.qty}</td>
-                <td className="table-td text-right">{peso(l.unitPrice)}</td>
+                <td className="table-td text-right">
+                  {qtyLabel(l.qty, l.unit)}
+                  {l.unit === "CARTON" && <p className="text-xs font-normal text-gray-400">= {l.baseQty.toLocaleString()} PCS</p>}
+                </td>
+                <td className="table-td text-right">
+                  {peso(l.unitPrice)}
+                  <span className="text-xs text-gray-400"> / {l.unit === "CARTON" ? "CTN" : "PC"}</span>
+                </td>
                 <td className="table-td text-right">{peso(l.qty * l.unitPrice)}</td>
               </tr>
             ))}

@@ -27,7 +27,7 @@ export default async function DRPrintPage({ params }: { params: { id: string } }
         ["Delivery Date", dr.salesOrder.schedule ? fmtDate(dr.salesOrder.schedule.date) : fmtDate(dr.date)],
         ["Truck / Driver", `${dr.salesOrder.schedule?.truck ?? "—"} / ${dr.salesOrder.schedule?.driver ?? "—"}`],
       ]}
-      lines={dr.lines.map((l) => ({ name: l.product.name, qty: l.qty, unitPrice: l.unitPrice }))}
+      lines={dr.lines.map((l) => ({ name: l.product.name, qty: l.qty, unitPrice: l.unitPrice, unit: l.unit, baseQty: l.baseQty }))}
       showPrices={false}
       signatures={[
         { label: "Prepared by (Admin Clerk)", name: dr.preparedBy ?? undefined },

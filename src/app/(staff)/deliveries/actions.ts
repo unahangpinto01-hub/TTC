@@ -25,12 +25,24 @@ export async function markDelivered(formData: FormData) {
   });
   if (dr.status !== "Draft") redirect(`/deliveries/${drId}`);
 
+  // Validate first, in base PCS aggregated per product: stock must never go negative.
+  const neededPcs = new Map<string, number>();
+  for (const line of dr.lines) neededPcs.set(line.productId, (neededPcs.get(line.productId) ?? 0) + line.baseQty);
+  const short = dr.lines.filter((l) => l.product.stockQty < neededPcs.get(l.productId)!);
+  if (short.length) redirect(`/deliveries/${drId}?error=short`);
+
   const now = new Date();
+  const running = new Map<string, number>(); // per-product running balance across this DR's lines
   for (const line of dr.lines) {
-    const newQty = Math.max(0, line.product.stockQty - line.qty);
+    const newQty = (running.get(line.productId) ?? line.product.stockQty) - line.baseQty;
+    running.set(line.productId, newQty);
     await prisma.product.update({ where: { id: line.productId }, data: { stockQty: newQty } });
     await prisma.stockMovement.create({
-      data: { productId: line.productId, type: "OUT", qty: line.qty, balanceAfter: newQty, refType: "DR", refNo: dr.drNumber, date: now, userId: user.id },
+      data: {
+        productId: line.productId, type: "OUT", qty: line.baseQty, balanceAfter: newQty,
+        enteredQty: line.qty, enteredUnit: line.unit,
+        refType: "DR", refNo: dr.drNumber, date: now, userId: user.id,
+      },
     });
     if (newQty <= line.product.reorderPoint) {
       await notifyRoles(["ADMIN", "SUPER_ADMIN"], "LOW_STOCK", `${line.product.name} hit reorder point (${newQty} left)`, `/inventory/${line.productId}`);
@@ -64,11 +76,17 @@ export async function voidDR(formData: FormData) {
   if (dr.salesReceipt) redirect(`/deliveries/${drId}?error=invoiced`);
 
   if (dr.status === "Delivered") {
+    const running = new Map<string, number>();
     for (const line of dr.lines) {
-      const newQty = line.product.stockQty + line.qty;
+      const newQty = (running.get(line.productId) ?? line.product.stockQty) + line.baseQty;
+      running.set(line.productId, newQty);
       await prisma.product.update({ where: { id: line.productId }, data: { stockQty: newQty } });
       await prisma.stockMovement.create({
-        data: { productId: line.productId, type: "IN", qty: line.qty, balanceAfter: newQty, refType: "ADJUST", refNo: `VOID ${dr.drNumber}`, userId: user.id },
+        data: {
+          productId: line.productId, type: "IN", qty: line.baseQty, balanceAfter: newQty,
+          enteredQty: line.qty, enteredUnit: line.unit,
+          refType: "ADJUST", refNo: `VOID ${dr.drNumber}`, userId: user.id,
+        },
       });
     }
   }

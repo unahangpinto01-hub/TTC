@@ -34,8 +34,10 @@ export default async function NewProductPage() {
           <div><label className="label">Unit Cost (₱)</label><input name="unitCost" type="number" step="0.01" required className="input" /></div>
           <div><label className="label">Dealer Price (₱)</label><input name="dealerPrice" type="number" step="0.01" required className="input" /></div>
           <div><label className="label">SRP (₱)</label><input name="srp" type="number" step="0.01" required className="input" /></div>
-          <div><label className="label">Reorder Point</label><input name="reorderPoint" type="number" defaultValue={10} className="input" /></div>
-          <div><label className="label">Opening Stock</label><input name="openingStock" type="number" defaultValue={0} className="input" /></div>
+          <div><label className="label">Reorder Point (PCS)</label><input name="reorderPoint" type="number" defaultValue={10} className="input" /></div>
+          <div><label className="label">Opening Stock (PCS)</label><input name="openingStock" type="number" defaultValue={0} className="input" /></div>
+          <div><label className="label">Pieces per Carton</label><input name="piecesPerCarton" type="number" min={0} className="input" placeholder="blank = no carton" /></div>
+          <div><label className="label">Carton Dealer Price (₱)</label><input name="cartonDealerPrice" type="number" step="0.01" min={0} className="input" placeholder="blank = auto" /></div>
           <div><label className="label">Batch Number</label><input name="batchNo" className="input" placeholder="B26-0001" /></div>
           <div><label className="label">Manufacturing Date</label><input name="mfgDate" type="date" className="input" /></div>
           <div><label className="label">Expiration Date</label><input name="expDate" type="date" className="input" /></div>

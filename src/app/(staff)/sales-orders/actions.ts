@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db";
 import { requirePermWrite } from "@/lib/auth";
 import { nextDocNumber } from "@/lib/numbering";
 import { notifyRoles } from "@/lib/notify";
+import { convertToBaseUnit } from "@/lib/units";
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
@@ -13,11 +14,11 @@ export async function updateLineQty(formData: FormData) {
   await requirePermWrite("salesOrders");
   const lineId = String(formData.get("lineId"));
   const qty = Math.max(1, Math.floor(Number(formData.get("qty")) || 1));
-  const line = await prisma.salesOrderLine.findUniqueOrThrow({ where: { id: lineId }, include: { salesOrder: true } });
+  const line = await prisma.salesOrderLine.findUniqueOrThrow({ where: { id: lineId }, include: { salesOrder: true, product: true } });
   if (!["Draft"].includes(line.salesOrder.status)) redirect(`/sales-orders/${line.salesOrderId}`);
   await prisma.salesOrderLine.update({
     where: { id: lineId },
-    data: { qty, lineTotal: round2(qty * line.unitPrice * (1 - line.discount / 100)) },
+    data: { qty, baseQty: convertToBaseUnit(qty, line.unit, line.product), lineTotal: round2(qty * line.unitPrice * (1 - line.discount / 100)) },
   });
   revalidatePath(`/sales-orders/${line.salesOrderId}`);
   redirect(`/sales-orders/${line.salesOrderId}`);
@@ -42,7 +43,10 @@ export async function confirmSO(formData: FormData) {
     include: { lines: { include: { product: true } }, customer: true },
   });
   if (so.status !== "Draft") redirect(`/sales-orders/${soId}`);
-  const short = so.lines.filter((l) => l.product.stockQty < l.qty);
+  // stock check in base PCS, aggregated per product (an SO can mix CARTON and PCS lines of one product)
+  const neededPcs = new Map<string, number>();
+  for (const l of so.lines) neededPcs.set(l.productId, (neededPcs.get(l.productId) ?? 0) + l.baseQty);
+  const short = so.lines.filter((l) => l.product.stockQty < neededPcs.get(l.productId)!);
   if (short.length) redirect(`/sales-orders/${soId}?error=short`);
   await prisma.salesOrder.update({ where: { id: soId }, data: { status: "Confirmed" } });
   await notifyRoles(["ADMIN", "SUPER_ADMIN"], "ORDER_CONFIRMED", `${so.soNumber} confirmed for ${so.customer.businessName} — ready to schedule`, `/sales-orders/${soId}`);
@@ -112,8 +116,10 @@ export async function generateDR(formData: FormData) {
         create: so.lines
           .map((l, i) => {
             const idx = lineIds.indexOf(l.id);
+            // partial qty is entered in the SO line's unit; reuse that line's transaction-time factor
             const qty = idx >= 0 ? Math.max(0, Math.min(Math.floor(drQtys[idx] || 0), l.qty)) : l.qty;
-            return { productId: l.productId, qty, unitPrice: l.unitPrice };
+            const factor = l.qty > 0 ? l.baseQty / l.qty : 1;
+            return { productId: l.productId, qty, unit: l.unit, baseQty: Math.round(qty * factor), unitPrice: l.unitPrice };
           })
           .filter((l) => l.qty > 0),
       },

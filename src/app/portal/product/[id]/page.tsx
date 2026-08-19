@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requireDealer } from "@/lib/auth";
 import { peso } from "@/lib/format";
+import { unitDealerPrice, CARTON } from "@/lib/units";
 import { StatusBadge, stockStatus } from "@/components/ui";
 import { AddToCartButton } from "../../cart-ui";
 
@@ -21,17 +22,31 @@ export default async function ProductPage({ params }: { params: { id: string } }
           <dt className="text-gray-500">Active Ingredient</dt><dd className="font-medium">{p.activeIngredient}</dd>
           <dt className="text-gray-500">Category</dt><dd className="font-medium">{p.category}</dd>
           <dt className="text-gray-500">Pack Size</dt><dd className="font-medium">{p.packSize}</dd>
+          {!!p.piecesPerCarton && (
+            <>
+              <dt className="text-gray-500">Carton</dt><dd className="font-medium">{p.piecesPerCarton} pcs per carton</dd>
+            </>
+          )}
           <dt className="text-gray-500">Recommended Crops</dt><dd className="font-medium">{p.cropTags.split(",").join(", ")}</dd>
           <dt className="text-gray-500">SKU</dt><dd className="font-mono text-xs">{p.sku}</dd>
         </dl>
         <div className="flex items-center justify-between border-t border-gray-100 pt-4">
           <div>
             <p className="text-xs text-gray-500">Dealer Price</p>
-            <p className="text-2xl font-bold">{peso(p.dealerPrice)}</p>
+            <p className="text-2xl font-bold">{peso(p.dealerPrice)} <span className="text-sm font-normal text-gray-500">/ pc</span></p>
+            {!!p.piecesPerCarton && (
+              <p className="text-sm text-gray-600">{peso(unitDealerPrice(p, CARTON))} / carton of {p.piecesPerCarton}</p>
+            )}
           </div>
           <AddToCartButton
             disabled={status === "Out"}
-            item={{ id: p.id, sku: p.sku, name: p.name, packSize: p.packSize, price: p.dealerPrice, stock: p.stockQty }}
+            item={{
+              id: p.id, sku: p.sku, name: p.name, packSize: p.packSize,
+              price: p.dealerPrice,
+              cartonPrice: p.piecesPerCarton ? unitDealerPrice(p, CARTON) : null,
+              piecesPerCarton: p.piecesPerCarton,
+              stock: p.stockQty,
+            }}
           />
         </div>
       </div>

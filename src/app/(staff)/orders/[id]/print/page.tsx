@@ -26,7 +26,7 @@ export default async function IncomingOrderPrintPage({ params }: { params: { id:
         ["Status", order.status],
         ["Sales Order", order.salesOrders[0]?.soNumber ?? "—"],
       ]}
-      lines={order.lines.map((l) => ({ name: l.product.name, qty: l.qty, unitPrice: l.unitPrice }))}
+      lines={order.lines.map((l) => ({ name: l.product.name, qty: l.qty, unitPrice: l.unitPrice, unit: l.unit, baseQty: l.baseQty }))}
       signatures={[
         { label: "Encoded by (Admin Clerk)" },
         { label: "Approved by (Supervisor)" },

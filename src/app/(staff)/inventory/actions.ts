@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requirePermWrite } from "@/lib/auth";
 import { notifyRole } from "@/lib/notify";
+import { convertToBaseUnit, parseUnit, UnitError } from "@/lib/units";
 
 export async function createProduct(formData: FormData) {
   await requirePermWrite("inventory");
@@ -19,6 +20,8 @@ export async function createProduct(formData: FormData) {
     dealerPrice: Number(formData.get("dealerPrice")) || 0,
     srp: Number(formData.get("srp")) || 0,
     reorderPoint: Number(formData.get("reorderPoint")) || 10,
+    piecesPerCarton: Math.floor(Number(formData.get("piecesPerCarton"))) > 0 ? Math.floor(Number(formData.get("piecesPerCarton"))) : null,
+    cartonDealerPrice: Number(formData.get("cartonDealerPrice")) > 0 ? Number(formData.get("cartonDealerPrice")) : null,
     supplierId: String(formData.get("supplierId")) || null,
     batchNo: String(formData.get("batchNo") || "").trim() || null,
     mfgDate: formData.get("mfgDate") ? new Date(String(formData.get("mfgDate"))) : null,
@@ -56,6 +59,8 @@ export async function updateProduct(formData: FormData) {
       dealerPrice: Math.max(0, Number(formData.get("dealerPrice")) || 0),
       srp: Math.max(0, Number(formData.get("srp")) || 0),
       reorderPoint: Math.max(0, Number(formData.get("reorderPoint")) || 0),
+      piecesPerCarton: Math.floor(Number(formData.get("piecesPerCarton"))) > 0 ? Math.floor(Number(formData.get("piecesPerCarton"))) : null,
+      cartonDealerPrice: Number(formData.get("cartonDealerPrice")) > 0 ? Number(formData.get("cartonDealerPrice")) : null,
       supplierId: String(formData.get("supplierId")) || null,
       batchNo: String(formData.get("batchNo") || "").trim() || null,
       mfgDate: mfg ? new Date(mfg) : null,
@@ -94,18 +99,29 @@ export async function ungroupParentItem(formData: FormData) {
 export async function adjustStock(formData: FormData) {
   const user = await requirePermWrite("inventory");
   const productId = String(formData.get("productId"));
-  const delta = Number(formData.get("delta")) || 0;
+  const delta = Math.trunc(Number(formData.get("delta")) || 0);
+  const unit = parseUnit(formData.get("unit"));
   const reason = String(formData.get("reason") || "Manual adjustment");
   if (delta === 0) redirect(`/inventory/${productId}`);
   const product = await prisma.product.findUniqueOrThrow({ where: { id: productId } });
-  const newQty = Math.max(0, product.stockQty + delta);
+  let basePcs: number;
+  try {
+    basePcs = convertToBaseUnit(delta, unit, product);
+  } catch (e) {
+    if (e instanceof UnitError) redirect(`/inventory/${productId}?error=nocarton`);
+    throw e;
+  }
+  const newQty = product.stockQty + basePcs;
+  if (newQty < 0) redirect(`/inventory/${productId}?error=negative`);
   await prisma.product.update({ where: { id: productId }, data: { stockQty: newQty } });
   await prisma.stockMovement.create({
     data: {
       productId,
       type: "ADJUST",
-      qty: Math.abs(newQty - product.stockQty),
+      qty: Math.abs(basePcs),
       balanceAfter: newQty,
+      enteredQty: Math.abs(delta),
+      enteredUnit: unit,
       refType: "ADJUST",
       refNo: reason,
       userId: user.id,

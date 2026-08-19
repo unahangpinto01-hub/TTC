@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db";
 import { requirePermWrite } from "@/lib/auth";
 import { nextDocNumber } from "@/lib/numbering";
 import { notifyRoles } from "@/lib/notify";
+import { convertToBaseUnit, parseUnit, unitDealerPrice, UnitError } from "@/lib/units";
 
 export async function encodeOrder(formData: FormData) {
   await requirePermWrite("orders");
@@ -15,14 +16,32 @@ export async function encodeOrder(formData: FormData) {
   const notes = String(formData.get("notes") || "").trim() || null;
   const productIds = formData.getAll("productId").map(String);
   const qtys = formData.getAll("qty").map(Number);
+  const units = formData.getAll("unit").map(parseUnit);
 
   const lines = productIds
-    .map((pid, i) => ({ productId: pid, qty: Math.floor(qtys[i] || 0) }))
+    .map((pid, i) => ({ productId: pid, qty: Math.floor(qtys[i] || 0), unit: units[i] ?? "PCS" }))
     .filter((l) => l.productId && l.qty > 0);
   if (!lines.length) redirect("/orders/new?error=empty");
 
   const products = await prisma.product.findMany({ where: { id: { in: lines.map((l) => l.productId) } } });
   const customer = await prisma.customer.findUniqueOrThrow({ where: { id: customerId } });
+
+  let lineData;
+  try {
+    lineData = lines.map((l) => {
+      const product = products.find((p) => p.id === l.productId)!;
+      return {
+        productId: l.productId,
+        qty: l.qty,
+        unit: l.unit,
+        baseQty: convertToBaseUnit(l.qty, l.unit, product),
+        unitPrice: unitDealerPrice(product, l.unit),
+      };
+    });
+  } catch (e) {
+    if (e instanceof UnitError) redirect("/orders/new?error=nocarton");
+    throw e;
+  }
 
   const order = await prisma.incomingOrder.create({
     data: {
@@ -31,13 +50,7 @@ export async function encodeOrder(formData: FormData) {
       term,
       status: "Pending",
       notes,
-      lines: {
-        create: lines.map((l) => ({
-          productId: l.productId,
-          qty: l.qty,
-          unitPrice: products.find((p) => p.id === l.productId)?.dealerPrice ?? 0,
-        })),
-      },
+      lines: { create: lineData },
     },
   });
   await notifyRoles(["ADMIN", "SUPER_ADMIN"], "NEW_ORDER", `New ${source.toLowerCase()} order encoded for ${customer.businessName}`, `/orders/${order.id}`);
@@ -66,6 +79,8 @@ export async function convertToSO(formData: FormData) {
         create: order.lines.map((l) => ({
           productId: l.productId,
           qty: l.qty,
+          unit: l.unit,
+          baseQty: l.baseQty,
           unitPrice: l.unitPrice,
           lineTotal: Math.round(l.qty * l.unitPrice * 100) / 100,
         })),

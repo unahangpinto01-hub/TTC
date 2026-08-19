@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { readCart, writeCart, type CartItem } from "../cart-ui";
+import { readCart, writeCart, lineKey, linePrice, type CartItem } from "../cart-ui";
 import { placePortalOrder } from "../actions";
 
 function peso(n: number) {
@@ -28,12 +28,12 @@ export function CartView({ allowedTerms }: { allowedTerms: string[] }) {
     writeCart(next);
   };
 
-  const total = items.reduce((s, i) => s + i.price * i.qty, 0);
+  const total = items.reduce((s, i) => s + linePrice(i) * i.qty, 0);
 
   const checkout = async () => {
     setSubmitting(true);
     setError("");
-    const res = await placePortalOrder({ items: items.map((i) => ({ id: i.id, qty: i.qty })), term, notes });
+    const res = await placePortalOrder({ items: items.map((i) => ({ id: i.id, qty: i.qty, unit: i.unit })), term, notes });
     if (res.ok) {
       writeCart([]);
       router.push("/portal/orders?placed=1");
@@ -57,20 +57,27 @@ export function CartView({ allowedTerms }: { allowedTerms: string[] }) {
       <h1 className="mb-4 text-xl font-bold">Your Cart</h1>
       <div className="card mb-4 divide-y divide-gray-100 p-0">
         {items.map((i) => (
-          <div key={i.id} className="flex flex-wrap items-center gap-3 p-3">
+          <div key={lineKey(i)} className="flex flex-wrap items-center gap-3 p-3">
             <div className="min-w-0 flex-1">
               <p className="truncate font-medium">{i.name}</p>
-              <p className="text-xs text-gray-500">{i.sku} · {peso(i.price)} each</p>
+              <p className="text-xs text-gray-500">
+                {i.sku} · {peso(linePrice(i))} / {i.unit === "CARTON" ? `carton of ${i.piecesPerCarton}` : "pc"}
+              </p>
             </div>
-            <input
-              type="number"
-              min={1}
-              value={i.qty}
-              onChange={(e) => update(items.map((x) => (x.id === i.id ? { ...x, qty: Math.max(1, Number(e.target.value) || 1) } : x)))}
-              className="input w-20 text-right"
-            />
-            <p className="w-28 text-right font-semibold">{peso(i.price * i.qty)}</p>
-            <button type="button" onClick={() => update(items.filter((x) => x.id !== i.id))} className="text-sm text-red-600 hover:underline">
+            <div className="flex items-center gap-1">
+              <input
+                type="number"
+                min={1}
+                value={i.qty}
+                onChange={(e) =>
+                  update(items.map((x) => (lineKey(x) === lineKey(i) ? { ...x, qty: Math.max(1, Number(e.target.value) || 1) } : x)))
+                }
+                className="input w-20 text-right"
+              />
+              <span className="w-10 text-xs text-gray-500">{i.unit === "CARTON" ? "CTN" : "PCS"}</span>
+            </div>
+            <p className="w-28 text-right font-semibold">{peso(linePrice(i) * i.qty)}</p>
+            <button type="button" onClick={() => update(items.filter((x) => lineKey(x) !== lineKey(i)))} className="text-sm text-red-600 hover:underline">
               Remove
             </button>
           </div>

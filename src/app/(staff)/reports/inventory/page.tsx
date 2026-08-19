@@ -51,7 +51,12 @@ export default async function InventoryReportPage({ searchParams }: { searchPara
                 <td className="table-td text-sm">{fmtDate(m.date)}</td>
                 <td className="table-td text-sm"><span className="font-mono text-xs text-gray-400">{m.product.sku}</span> {m.product.name}</td>
                 <td className={`table-td font-semibold ${m.type === "IN" ? "text-emerald-700" : m.type === "OUT" ? "text-red-600" : "text-amber-600"}`}>{m.type}</td>
-                <td className="table-td text-right">{m.type === "OUT" ? "−" : "+"}{m.qty}</td>
+                <td className="table-td text-right">
+                  {m.type === "OUT" ? "−" : "+"}{m.qty}
+                  {m.enteredUnit === "CARTON" && m.enteredQty != null && (
+                    <span className="text-xs text-gray-400"> ({m.enteredQty} CTN)</span>
+                  )}
+                </td>
                 <td className="table-td text-right">{m.balanceAfter}</td>
                 <td className="table-td text-xs text-gray-500">{`${m.refType ?? ""} ${m.refNo ?? ""}`.trim()}</td>
                 <td className="table-td text-sm text-gray-600">{m.user?.name ?? "—"}</td>

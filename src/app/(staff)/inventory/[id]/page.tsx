@@ -3,11 +3,12 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requirePerm } from "@/lib/auth";
 import { peso, fmtDate, daysUntil, EXPIRY_WARN_DAYS } from "@/lib/format";
+import { cartonLabel, unitDealerPrice, CARTON } from "@/lib/units";
 import { PageHeader, StatusBadge, stockStatus } from "@/components/ui";
 import { adjustStock } from "../actions";
 import { ProductEditForm } from "./product-edit-form";
 
-export default async function ProductDetailPage({ params }: { params: { id: string } }) {
+export default async function ProductDetailPage({ params, searchParams }: { params: { id: string }; searchParams: { error?: string } }) {
   const user = await requirePerm("inventory");
   const product = await prisma.product.findUnique({
     where: { id: params.id },
@@ -43,6 +44,17 @@ export default async function ProductDetailPage({ params }: { params: { id: stri
         <StatusBadge status={stockStatus(product.stockQty, product.reorderPoint)} />
       </PageHeader>
 
+      {searchParams.error === "negative" && (
+        <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+          ⚠ Adjustment rejected — it would make stock negative. Stock is {product.stockQty} PCS.
+        </p>
+      )}
+      {searchParams.error === "nocarton" && (
+        <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+          ⚠ This product has no pieces-per-carton configured — set it before adjusting in CARTON.
+        </p>
+      )}
+
       <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4">
         {[
           ["SKU", product.sku],
@@ -52,10 +64,26 @@ export default async function ProductDetailPage({ params }: { params: { id: stri
           ["Crops", product.cropTags.split(",").join(", ")],
           ["Supplier", product.supplier?.name ?? "—"],
           ["Unit Cost", peso(product.unitCost)],
-          ["Dealer Price", peso(product.dealerPrice)],
+          ["Dealer Price (PCS)", peso(product.dealerPrice)],
+          [
+            "Pieces per Carton",
+            product.piecesPerCarton ? `${product.piecesPerCarton} PCS = 1 CTN` : "— (not sold by carton)",
+          ],
+          [
+            "Dealer Price (Carton)",
+            product.piecesPerCarton
+              ? `${peso(unitDealerPrice(product, CARTON))}${product.cartonDealerPrice == null ? " (auto)" : ""}`
+              : "—",
+          ],
           ["SRP", peso(product.srp)],
-          ["Reorder Point", String(product.reorderPoint)],
-          ["Stock on Hand", String(product.stockQty)],
+          ["Reorder Point", `${product.reorderPoint} PCS`],
+          [
+            "Stock on Hand",
+            `${product.stockQty.toLocaleString()} PCS${(() => {
+              const c = cartonLabel(product.stockQty, product);
+              return c ? ` = ${c}` : "";
+            })()}`,
+          ],
           ["Batch Number", product.batchNo ?? "—"],
           ["Manufacturing Date", product.mfgDate ? fmtDate(product.mfgDate) : "—"],
           ["Parent Item", product.parentItem ?? "—"],
@@ -103,6 +131,8 @@ export default async function ProductDetailPage({ params }: { params: { id: stri
             dealerPrice: product.dealerPrice,
             srp: product.srp,
             reorderPoint: product.reorderPoint,
+            piecesPerCarton: product.piecesPerCarton,
+            cartonDealerPrice: product.cartonDealerPrice,
             supplierId: product.supplierId,
             batchNo: product.batchNo,
             mfgDate: product.mfgDate ? product.mfgDate.toISOString().slice(0, 10) : "",
@@ -120,6 +150,13 @@ export default async function ProductDetailPage({ params }: { params: { id: stri
           <div>
             <label className="label">Adjust Stock (+/−)</label>
             <input name="delta" type="number" className="input w-32" placeholder="+10 or -5" required />
+          </div>
+          <div>
+            <label className="label">Unit</label>
+            <select name="unit" className="input w-28" defaultValue="PCS">
+              <option value="PCS">PCS</option>
+              {!!product.piecesPerCarton && <option value="CARTON">CARTON</option>}
+            </select>
           </div>
           <div className="flex-1">
             <label className="label">Reason</label>
@@ -150,7 +187,12 @@ export default async function ProductDetailPage({ params }: { params: { id: stri
                   <span className={`font-semibold ${m.type === "IN" ? "text-emerald-700" : m.type === "OUT" ? "text-red-600" : "text-amber-600"}`}>{m.type}</span>
                 </td>
                 <td className="table-td text-sm text-gray-600">{m.refType === "ADJUST" ? m.refNo : `${m.refType ?? ""} ${m.refNo ?? ""}`}</td>
-                <td className="table-td text-right">{m.type === "OUT" ? "−" : "+"}{m.qty}</td>
+                <td className="table-td text-right">
+                  {m.type === "OUT" ? "−" : "+"}{m.qty}
+                  {m.enteredUnit === "CARTON" && m.enteredQty != null && (
+                    <span className="text-xs text-gray-400"> ({m.enteredQty} CTN)</span>
+                  )}
+                </td>
                 <td className="table-td text-right font-semibold">{m.balanceAfter}</td>
                 <td className="table-td text-sm text-gray-600">{m.user?.name ?? "—"}</td>
               </tr>

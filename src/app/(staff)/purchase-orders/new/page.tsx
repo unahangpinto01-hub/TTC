@@ -8,7 +8,7 @@ export default async function NewPOPage() {
   await requirePerm("purchaseOrders");
   const [suppliers, products] = await Promise.all([
     prisma.supplier.findMany({ where: { status: "Active" }, orderBy: { name: "asc" } }),
-    prisma.product.findMany({ orderBy: { sku: "asc" }, select: { id: true, sku: true, name: true, unitCost: true, stockQty: true } }),
+    prisma.product.findMany({ orderBy: { sku: "asc" }, select: { id: true, sku: true, name: true, unitCost: true, piecesPerCarton: true, stockQty: true } }),
   ]);
   return (
     <div className="max-w-3xl">

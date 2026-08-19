@@ -2,6 +2,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { requirePerm } from "@/lib/auth";
 import { peso, fmtDate, daysUntil, EXPIRY_WARN_DAYS } from "@/lib/format";
+import { cartonLabel } from "@/lib/units";
 import { getPage, pageCount, PAGE_SIZE } from "@/lib/paginate";
 import { PageHeader, Pagination, StatusBadge, stockStatus } from "@/components/ui";
 import { renameParentItem, ungroupParentItem } from "./actions";
@@ -133,7 +134,13 @@ export default async function InventoryPage({ searchParams }: { searchParams: { 
                 <td className="table-td text-sm text-gray-600">{p.category}</td>
                 <td className="table-td">{p.packSize}</td>
                 <td className="table-td text-right">{peso(p.dealerPrice)}</td>
-                <td className="table-td text-right font-semibold">{p.stockQty}</td>
+                <td className="table-td text-right font-semibold">
+                  {p.stockQty.toLocaleString()}
+                  {(() => {
+                    const c = cartonLabel(p.stockQty, p);
+                    return c ? <p className="text-xs font-normal text-gray-500">{c}</p> : null;
+                  })()}
+                </td>
                 <td className="table-td">
                   {p.expDate ? (
                     (() => {

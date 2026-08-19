@@ -2,6 +2,7 @@ import { Fragment } from "react";
 import { prisma } from "@/lib/db";
 import { requirePerm } from "@/lib/auth";
 import { fmtDate } from "@/lib/format";
+import { cartonBreakdown } from "@/lib/units";
 import { PageHeader } from "@/components/ui";
 import { PrintButton, BackButton } from "@/components/print-button";
 
@@ -55,7 +56,9 @@ export default async function CountSheetPage({ searchParams }: { searchParams: {
             <th className="py-1.5 pr-2">Product</th>
             <th className="py-1.5 pr-2">Pack</th>
             <th className="py-1.5 pr-2">Batch</th>
-            <th className="py-1.5 pr-2 text-right">System Qty</th>
+            <th className="py-1.5 pr-2 text-right">Stock (PCS)</th>
+            <th className="py-1.5 pr-2 text-right">Cartons</th>
+            <th className="py-1.5 pr-2 text-right">Loose PCS</th>
             <th className="w-28 py-1.5 pr-2 text-center">Physical Count</th>
             <th className="w-24 py-1.5 pr-2 text-center">Variance</th>
             <th className="w-32 py-1.5 text-center">Remarks</th>
@@ -69,7 +72,7 @@ export default async function CountSheetPage({ searchParams }: { searchParams: {
               <Fragment key={p.id}>
                 {showCat && !category && (
                   <tr className="bg-gray-100 print:bg-gray-100">
-                    <td colSpan={9} className="py-1 pl-1 text-xs font-bold uppercase tracking-wide text-emerald-900">{p.category}</td>
+                    <td colSpan={11} className="py-1 pl-1 text-xs font-bold uppercase tracking-wide text-emerald-900">{p.category}</td>
                   </tr>
                 )}
                 <tr className="border-b border-gray-200">
@@ -78,7 +81,16 @@ export default async function CountSheetPage({ searchParams }: { searchParams: {
                   <td className="py-1.5 pr-2">{p.name}</td>
                   <td className="py-1.5 pr-2">{p.packSize}</td>
                   <td className="py-1.5 pr-2 font-mono text-xs">{p.batchNo ?? "—"}</td>
-                  <td className="py-1.5 pr-2 text-right font-semibold">{p.stockQty}</td>
+                  <td className="py-1.5 pr-2 text-right font-semibold">{p.stockQty.toLocaleString()}</td>
+                  {(() => {
+                    const b = cartonBreakdown(p.stockQty, p);
+                    return (
+                      <>
+                        <td className="py-1.5 pr-2 text-right">{b ? `${b.cartons.toLocaleString()} × ${p.piecesPerCarton}` : "—"}</td>
+                        <td className="py-1.5 pr-2 text-right">{b ? b.loose : "—"}</td>
+                      </>
+                    );
+                  })()}
                   <td className="py-1.5 pr-2"><div className="mx-auto h-6 w-24 rounded border border-gray-400" /></td>
                   <td className="py-1.5 pr-2"><div className="mx-auto h-6 w-20 rounded border border-gray-400" /></td>
                   <td className="py-1.5"><div className="h-6 w-full rounded border border-gray-400" /></td>
@@ -87,7 +99,7 @@ export default async function CountSheetPage({ searchParams }: { searchParams: {
             );
           })}
           {!products.length && (
-            <tr><td colSpan={9} className="p-8 text-center text-gray-500">No active products in this category.</td></tr>
+            <tr><td colSpan={11} className="p-8 text-center text-gray-500">No active products in this category.</td></tr>
           )}
         </tbody>
       </table>

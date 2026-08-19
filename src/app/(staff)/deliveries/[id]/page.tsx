@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requirePerm } from "@/lib/auth";
 import { fmtDate, peso, vatBreakdown } from "@/lib/format";
+import { qtyLabel } from "@/lib/units";
 import { PageHeader, StatusBadge } from "@/components/ui";
 import { markDelivered, voidDR } from "../actions";
 
@@ -27,6 +28,11 @@ export default async function DRDetailPage({ params, searchParams }: { params: {
         <Link href={`/deliveries/${dr.id}/print`} className="btn-secondary">🖨 Print / PDF</Link>
       </PageHeader>
 
+      {searchParams.error === "short" && (
+        <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+          ⚠ Cannot deliver — stock on hand is not enough for one or more lines (stock can never go negative). Adjust stock or void this DR and generate a smaller one.
+        </p>
+      )}
       {searchParams.error === "reason" && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">A void reason is required.</p>}
       {searchParams.error === "invoiced" && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">Cannot void — an invoice already exists for this DR. Void the SR first.</p>}
       {dr.status === "Void" && <p className="mb-4 rounded-xl bg-red-50 p-3 text-sm text-red-700">Voided: {dr.voidReason}</p>}
@@ -54,8 +60,14 @@ export default async function DRDetailPage({ params, searchParams }: { params: {
             {dr.lines.map((l) => (
               <tr key={l.id}>
                 <td className="table-td font-medium">{l.product.name}</td>
-                <td className="table-td text-right">{l.qty}</td>
-                <td className="table-td text-right">{peso(l.unitPrice)}</td>
+                <td className="table-td text-right">
+                  {qtyLabel(l.qty, l.unit)}
+                  {l.unit === "CARTON" && <p className="text-xs font-normal text-gray-400">= {l.baseQty.toLocaleString()} PCS</p>}
+                </td>
+                <td className="table-td text-right">
+                  {peso(l.unitPrice)}
+                  <span className="text-xs text-gray-400"> / {l.unit === "CARTON" ? "CTN" : "PC"}</span>
+                </td>
                 <td className="table-td text-right">{peso(l.qty * l.unitPrice)}</td>
               </tr>
             ))}

@@ -1,7 +1,9 @@
 import { peso, fmtDate, vatBreakdown } from "@/lib/format";
 import { PrintButton, BackButton } from "./print-button";
 
-type Line = { name: string; qty: number; unitPrice: number };
+type Line = { name: string; qty: number; unitPrice: number; unit?: string; baseQty?: number };
+
+const unitTag = (unit?: string) => (unit === "CARTON" ? " CTN" : unit === "PCS" ? " PCS" : "");
 
 export function PrintDoc({
   title,
@@ -75,7 +77,10 @@ export function PrintDoc({
             <tr key={i} className="border-b border-gray-100">
               <td className="py-1.5 text-gray-400">{i + 1}</td>
               <td className="py-1.5">{l.name}</td>
-              <td className={`py-1.5 text-right ${showPrices ? "" : "pr-16"}`}>{l.qty}</td>
+              <td className={`py-1.5 text-right ${showPrices ? "" : "pr-16"}`}>
+                {l.qty}{unitTag(l.unit)}
+                {l.unit === "CARTON" && l.baseQty != null && <span className="text-xs text-gray-500"> ({l.baseQty} pcs)</span>}
+              </td>
               {showPrices && <td className="py-1.5 text-right">{peso(l.unitPrice)}</td>}
               {showPrices && <td className="py-1.5 text-right">{peso(l.qty * l.unitPrice)}</td>}
             </tr>
@@ -99,8 +104,8 @@ export function PrintDoc({
         ) : (
           <tfoot>
             <tr className="border-t-2 border-gray-300 font-bold">
-              <td colSpan={2} className="py-2 text-right">TOTAL QTY</td>
-              <td className="py-2 pr-16 text-right">{lines.reduce((s, l) => s + l.qty, 0)}</td>
+              <td colSpan={2} className="py-2 text-right">TOTAL QTY{lines.some((l) => l.baseQty != null) ? " (PCS)" : ""}</td>
+              <td className="py-2 pr-16 text-right">{lines.reduce((s, l) => s + (l.baseQty ?? l.qty), 0)}</td>
             </tr>
           </tfoot>
         )}

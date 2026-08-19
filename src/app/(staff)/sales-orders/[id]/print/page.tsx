@@ -22,7 +22,7 @@ export default async function SOPrintPage({ params }: { params: { id: string } }
         ["Payment Term", termLabel(so.term)],
         ["Status", so.status],
       ]}
-      lines={so.lines.map((l) => ({ name: `${l.product.name}`, qty: l.qty, unitPrice: l.unitPrice }))}
+      lines={so.lines.map((l) => ({ name: `${l.product.name}`, qty: l.qty, unitPrice: l.unitPrice, unit: l.unit, baseQty: l.baseQty }))}
       signatures={[
         { label: "Prepared by (Admin Clerk)", name: so.preparedBy?.name },
         { label: "Approved by (Supervisor)" },

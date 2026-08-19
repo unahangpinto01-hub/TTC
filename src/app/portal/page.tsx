@@ -2,6 +2,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { requireDealer } from "@/lib/auth";
 import { peso } from "@/lib/format";
+import { unitDealerPrice, CARTON } from "@/lib/units";
 import { getPage, pageCount } from "@/lib/paginate";
 import { Pagination, StatusBadge, stockStatus } from "@/components/ui";
 import { AddToCartButton } from "./cart-ui";
@@ -58,11 +59,22 @@ export default async function CatalogPage({ searchParams }: { searchParams: { q?
               </div>
               <p className="text-xs text-gray-500">{p.activeIngredient} · {p.category}</p>
               <p className="mb-2 text-xs text-gray-400">For: {p.cropTags.split(",").join(", ")}</p>
-              <div className="mt-auto flex items-center justify-between">
-                <p className="text-lg font-bold text-gray-900">{peso(p.dealerPrice)}</p>
+              <div className="mt-auto flex items-end justify-between gap-2">
+                <div>
+                  <p className="text-lg font-bold text-gray-900">{peso(p.dealerPrice)} <span className="text-xs font-normal text-gray-500">/ pc</span></p>
+                  {!!p.piecesPerCarton && (
+                    <p className="text-xs text-gray-500">{peso(unitDealerPrice(p, CARTON))} / carton of {p.piecesPerCarton}</p>
+                  )}
+                </div>
                 <AddToCartButton
                   disabled={status === "Out"}
-                  item={{ id: p.id, sku: p.sku, name: p.name, packSize: p.packSize, price: p.dealerPrice, stock: p.stockQty }}
+                  item={{
+                    id: p.id, sku: p.sku, name: p.name, packSize: p.packSize,
+                    price: p.dealerPrice,
+                    cartonPrice: p.piecesPerCarton ? unitDealerPrice(p, CARTON) : null,
+                    piecesPerCarton: p.piecesPerCarton,
+                    stock: p.stockQty,
+                  }}
                 />
               </div>
             </div>
