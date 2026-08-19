@@ -110,7 +110,8 @@ export async function adjustStock(formData: FormData) {
   const productId = String(formData.get("productId"));
   const delta = Math.trunc(Number(formData.get("delta")) || 0);
   const unit = parseUnit(formData.get("unit"));
-  const reason = String(formData.get("reason") || "Manual adjustment");
+  const reason = String(formData.get("reason") || "").trim();
+  if (!reason) redirect(`/inventory/${productId}?error=noreason`);
   if (delta === 0) redirect(`/inventory/${productId}`);
   const product = await prisma.product.findUniqueOrThrow({ where: { id: productId } });
   let basePcs: number;

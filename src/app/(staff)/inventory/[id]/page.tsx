@@ -5,8 +5,8 @@ import { requirePerm } from "@/lib/auth";
 import { peso, fmtDate, daysUntil, EXPIRY_WARN_DAYS } from "@/lib/format";
 import { cartonLabel, unitDealerPrice, CARTON } from "@/lib/units";
 import { PageHeader, StatusBadge, stockStatus } from "@/components/ui";
-import { adjustStock } from "../actions";
 import { ProductEditForm } from "./product-edit-form";
+import { AdjustStockForm } from "./adjust-stock-form";
 
 export default async function ProductDetailPage({ params, searchParams }: { params: { id: string }; searchParams: { error?: string } }) {
   const user = await requirePerm("inventory");
@@ -52,6 +52,11 @@ export default async function ProductDetailPage({ params, searchParams }: { para
       {searchParams.error === "nocarton" && (
         <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
           ⚠ This product has no pieces-per-carton configured — set it before adjusting in CARTON.
+        </p>
+      )}
+      {searchParams.error === "noreason" && (
+        <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+          ⚠ Adjustment rejected — a reason is required.
         </p>
       )}
 
@@ -150,38 +155,7 @@ export default async function ProductDetailPage({ params, searchParams }: { para
         />
       )}
 
-      {canEdit && (
-        <form action={adjustStock} className="card mb-4 flex flex-wrap items-end gap-3">
-          <input type="hidden" name="productId" value={product.id} />
-          <div>
-            <label className="label">Effective Date</label>
-            <input
-              name="effectiveDate"
-              type="date"
-              defaultValue={new Date().toISOString().slice(0, 10)}
-              max={new Date().toISOString().slice(0, 10)}
-              className="input"
-              title="The date the movement applies to — backdate for beginning balances"
-            />
-          </div>
-          <div>
-            <label className="label">Adjust Stock (+/−)</label>
-            <input name="delta" type="number" className="input w-32" placeholder="+10 or -5" required />
-          </div>
-          <div>
-            <label className="label">Unit</label>
-            <select name="unit" className="input w-28" defaultValue="PCS">
-              <option value="PCS">PCS</option>
-              {!!product.piecesPerCarton && <option value="CARTON">CARTON</option>}
-            </select>
-          </div>
-          <div className="flex-1">
-            <label className="label">Reason</label>
-            <input name="reason" className="input" placeholder="Physical count correction / Beginning Balance" />
-          </div>
-          <button className="btn-secondary" type="submit">Apply Adjustment</button>
-        </form>
-      )}
+      {canEdit && <AdjustStockForm productId={product.id} hasCarton={!!product.piecesPerCarton} />}
 
       <h2 className="mb-2 text-lg font-semibold">Stock Card</h2>
       <div className="card overflow-x-auto p-0">
