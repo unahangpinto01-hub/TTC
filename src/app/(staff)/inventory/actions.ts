@@ -18,13 +18,16 @@ function resolveUnitCost(formData: FormData): number {
 
 export async function createProduct(formData: FormData) {
   await requirePermWrite("inventory");
+  const sku = String(formData.get("sku") || "").trim();
+  const name = String(formData.get("name") || "").trim();
+  if (!sku || !name) redirect("/inventory/new?error=required");
   const data = {
-    sku: String(formData.get("sku")).trim(),
-    name: String(formData.get("name")).trim(),
-    activeIngredient: String(formData.get("activeIngredient")).trim(),
+    sku,
+    name,
+    activeIngredient: String(formData.get("activeIngredient") || "").trim(),
     category: String(formData.get("category")),
     cropTags: String(formData.get("cropTags") || "").trim(),
-    packSize: String(formData.get("packSize")).trim(),
+    packSize: String(formData.get("packSize") || "").trim(),
     unitCost: resolveUnitCost(formData),
     dealerPrice: Number(formData.get("dealerPrice")) || 0,
     srp: Number(formData.get("srp")) || 0,
@@ -37,7 +40,13 @@ export async function createProduct(formData: FormData) {
     expDate: formData.get("expDate") ? new Date(String(formData.get("expDate"))) : null,
     parentItem: String(formData.get("parentItem") || "").trim() || null,
   };
-  const product = await prisma.product.create({ data });
+  let product;
+  try {
+    product = await prisma.product.create({ data });
+  } catch (e: any) {
+    if (e?.code === "P2002") redirect("/inventory/new?error=sku"); // SKU already taken
+    throw e;
+  }
   const opening = Number(formData.get("openingStock")) || 0;
   if (opening > 0) {
     const user = await requirePermWrite("inventory");

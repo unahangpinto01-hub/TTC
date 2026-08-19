@@ -3,38 +3,55 @@ import { requirePerm } from "@/lib/auth";
 import { PageHeader } from "@/components/ui";
 import { createProduct } from "../actions";
 import { ParentItemField } from "../parent-item-field";
+import { SkuCategoryFields } from "./sku-category-fields";
 
-const CATEGORIES = ["Insecticide", "Herbicide", "Fungicide", "Molluscicide", "Foliar Fertilizer", "Others"];
+const PREFIXES = ["INS", "HER", "FNG", "MOL", "FOL", "OTH"];
 
-export default async function NewProductPage() {
+export default async function NewProductPage({ searchParams }: { searchParams: { error?: string } }) {
   await requirePerm("inventory");
-  const suppliers = await prisma.supplier.findMany({ where: { status: "Active" }, orderBy: { name: "asc" } });
-  const parentOptions = (
-    await prisma.product.findMany({
+  const [suppliers, skus, parentRows] = await Promise.all([
+    prisma.supplier.findMany({ where: { status: "Active" }, orderBy: { name: "asc" } }),
+    prisma.product.findMany({ select: { sku: true } }),
+    prisma.product.findMany({
       where: { parentItem: { not: null } },
       select: { parentItem: true },
       distinct: ["parentItem"],
       orderBy: { parentItem: "asc" },
-    })
-  ).map((p) => p.parentItem!);
+    }),
+  ]);
+  const parentOptions = parentRows.map((p) => p.parentItem!);
+
+  // next SKU per category prefix, following the existing PREFIX-### numbering
+  const nextSku: Record<string, string> = {};
+  for (const pre of PREFIXES) {
+    const re = new RegExp(`^${pre}-(\\d+)$`);
+    const max = skus.reduce((m, p) => {
+      const match = p.sku.match(re);
+      return match ? Math.max(m, Number(match[1])) : m;
+    }, 0);
+    nextSku[pre] = `${pre}-${String(max + 1).padStart(3, "0")}`;
+  }
+
   return (
     <div className="max-w-2xl">
       <PageHeader title="New Product" />
+      {searchParams.error === "sku" && (
+        <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">⚠ That SKU is already taken — it has been renumbered; please try again.</p>
+      )}
+      {searchParams.error === "required" && (
+        <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">⚠ SKU and Product Name are required.</p>
+      )}
       <form action={createProduct} className="card space-y-4">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <div><label className="label">SKU</label><input name="sku" required className="input" placeholder="INS-101" /></div>
+          <SkuCategoryFields nextSku={nextSku} />
           <div><label className="label">Product Name</label><input name="name" required className="input" /></div>
-          <div><label className="label">Active Ingredient</label><input name="activeIngredient" required className="input" /></div>
-          <div>
-            <label className="label">Category</label>
-            <select name="category" className="input">{CATEGORIES.map((c) => <option key={c}>{c}</option>)}</select>
-          </div>
+          <div><label className="label">Active Ingredient</label><input name="activeIngredient" className="input" /></div>
           <div><label className="label">Crop Tags (comma-separated)</label><input name="cropTags" className="input" placeholder="Rice,Corn" /></div>
-          <div><label className="label">Pack Size</label><input name="packSize" required className="input" placeholder="500ml" /></div>
-          <div><label className="label">Unit Cost per PCS (₱)</label><input name="unitCost" type="number" step="any" required className="input" /></div>
+          <div><label className="label">Pack Size</label><input name="packSize" className="input" placeholder="500ml" /></div>
+          <div><label className="label">Unit Cost per PCS (₱)</label><input name="unitCost" type="number" step="any" min={0} className="input" /></div>
           <div><label className="label">…or Cost per Carton (₱)</label><input name="costPerCarton" type="number" step="any" min={0} className="input" placeholder="auto ÷ pieces per carton" /></div>
-          <div><label className="label">Dealer Price (₱)</label><input name="dealerPrice" type="number" step="0.01" required className="input" /></div>
-          <div><label className="label">SRP (₱)</label><input name="srp" type="number" step="0.01" required className="input" /></div>
+          <div><label className="label">Dealer Price (₱)</label><input name="dealerPrice" type="number" step="0.01" min={0} className="input" /></div>
+          <div><label className="label">SRP (₱)</label><input name="srp" type="number" step="0.01" min={0} className="input" /></div>
           <div><label className="label">Reorder Point (PCS)</label><input name="reorderPoint" type="number" defaultValue={10} className="input" /></div>
           <div><label className="label">Opening Stock (PCS)</label><input name="openingStock" type="number" defaultValue={0} className="input" /></div>
           <div><label className="label">Pieces per Carton</label><input name="piecesPerCarton" type="number" min={0} className="input" placeholder="blank = no carton" /></div>
