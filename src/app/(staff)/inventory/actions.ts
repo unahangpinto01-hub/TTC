@@ -7,6 +7,15 @@ import { requirePermWrite } from "@/lib/auth";
 import { notifyRole } from "@/lib/notify";
 import { convertToBaseUnit, parseUnit, UnitError } from "@/lib/units";
 
+/** Unit cost per PCS at FULL precision: entered directly, or derived as carton cost ÷ pieces per carton.
+    Never round the stored cost — 2 decimals are for display only. */
+function resolveUnitCost(formData: FormData): number {
+  const ppc = Math.floor(Number(formData.get("piecesPerCarton")));
+  const cartonCost = Number(formData.get("costPerCarton"));
+  if (cartonCost > 0 && ppc > 0) return cartonCost / ppc;
+  return Math.max(0, Number(formData.get("unitCost")) || 0);
+}
+
 export async function createProduct(formData: FormData) {
   await requirePermWrite("inventory");
   const data = {
@@ -16,7 +25,7 @@ export async function createProduct(formData: FormData) {
     category: String(formData.get("category")),
     cropTags: String(formData.get("cropTags") || "").trim(),
     packSize: String(formData.get("packSize")).trim(),
-    unitCost: Number(formData.get("unitCost")) || 0,
+    unitCost: resolveUnitCost(formData),
     dealerPrice: Number(formData.get("dealerPrice")) || 0,
     srp: Number(formData.get("srp")) || 0,
     reorderPoint: Number(formData.get("reorderPoint")) || 10,
@@ -55,7 +64,7 @@ export async function updateProduct(formData: FormData) {
       category: String(formData.get("category")),
       cropTags: String(formData.get("cropTags") || "").trim(),
       packSize: String(formData.get("packSize")).trim(),
-      unitCost: Math.max(0, Number(formData.get("unitCost")) || 0),
+      unitCost: resolveUnitCost(formData),
       dealerPrice: Math.max(0, Number(formData.get("dealerPrice")) || 0),
       srp: Math.max(0, Number(formData.get("srp")) || 0),
       reorderPoint: Math.max(0, Number(formData.get("reorderPoint")) || 0),

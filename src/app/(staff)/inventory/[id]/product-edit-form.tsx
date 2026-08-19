@@ -75,7 +75,16 @@ export function ProductEditForm({
         </div>
         <div><label className="label">Crop Tags (comma-separated)</label><input name="cropTags" defaultValue={product.cropTags} className="input" placeholder="Rice,Corn" /></div>
         <div><label className="label">Pack Size</label><input name="packSize" required defaultValue={product.packSize} className="input" placeholder="500ml" /></div>
-        <div><label className="label">Unit Cost (₱)</label><input name="unitCost" type="number" step="0.01" min="0" defaultValue={product.unitCost} className="input" /></div>
+        <div>
+          <label className="label">Unit Cost per PCS (₱)</label>
+          <input name="unitCost" type="number" step="any" min="0" defaultValue={product.unitCost} className="input" />
+          <p className="mt-0.5 text-xs text-gray-400">full decimals kept, e.g. 100.429167</p>
+        </div>
+        <div>
+          <label className="label">…or Cost per Carton (₱)</label>
+          <input name="costPerCarton" type="number" step="any" min="0" className="input" placeholder="auto ÷ pieces per carton" />
+          <p className="mt-0.5 text-xs text-gray-400">if filled, overrides unit cost at full precision</p>
+        </div>
         <div><label className="label">Dealer Price (₱)</label><input name="dealerPrice" type="number" step="0.01" min="0" defaultValue={product.dealerPrice} className="input" /></div>
         <div><label className="label">SRP (₱)</label><input name="srp" type="number" step="0.01" min="0" defaultValue={product.srp} className="input" /></div>
         <div><label className="label">Reorder Point (PCS)</label><input name="reorderPoint" type="number" min="0" defaultValue={product.reorderPoint} className="input" /></div>

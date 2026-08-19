@@ -258,7 +258,8 @@ export async function getMerchandiseInventory(opts: {
       piecesPerCarton: p.piecesPerCarton,
       unitCost: p.unitCost,
       stock,
-      amount: round2(stock * p.unitCost),
+      // full precision — rounding to 2 decimals happens only at display time
+      amount: stock * p.unitCost,
     };
   });
   // zero stock hidden by default; negative stock is always shown (never silently dropped)
@@ -268,6 +269,7 @@ export async function getMerchandiseInventory(opts: {
     rows,
     items: rows.length,
     totalStock: rows.reduce((s, r) => s + r.stock, 0),
+    // total = SUM of full-precision amounts, rounded once at the end
     totalValue: round2(rows.reduce((s, r) => s + r.amount, 0)),
     historical: !!asOfEnd,
   };

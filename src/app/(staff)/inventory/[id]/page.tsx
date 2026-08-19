@@ -63,7 +63,13 @@ export default async function ProductDetailPage({ params, searchParams }: { para
           ["Pack Size", product.packSize],
           ["Crops", product.cropTags.split(",").join(", ")],
           ["Supplier", product.supplier?.name ?? "—"],
-          ["Unit Cost", peso(product.unitCost)],
+          [
+            "Unit Cost",
+            // show extra decimals when the stored cost isn't clean at 2dp, so full precision is visible
+            Math.round(product.unitCost * 100) / 100 === product.unitCost
+              ? peso(product.unitCost)
+              : `₱${product.unitCost.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 6 })}`,
+          ],
           ["Dealer Price (PCS)", peso(product.dealerPrice)],
           [
             "Pieces per Carton",

@@ -31,7 +31,8 @@ export default async function NewProductPage() {
           </div>
           <div><label className="label">Crop Tags (comma-separated)</label><input name="cropTags" className="input" placeholder="Rice,Corn" /></div>
           <div><label className="label">Pack Size</label><input name="packSize" required className="input" placeholder="500ml" /></div>
-          <div><label className="label">Unit Cost (₱)</label><input name="unitCost" type="number" step="0.01" required className="input" /></div>
+          <div><label className="label">Unit Cost per PCS (₱)</label><input name="unitCost" type="number" step="any" required className="input" /></div>
+          <div><label className="label">…or Cost per Carton (₱)</label><input name="costPerCarton" type="number" step="any" min={0} className="input" placeholder="auto ÷ pieces per carton" /></div>
           <div><label className="label">Dealer Price (₱)</label><input name="dealerPrice" type="number" step="0.01" required className="input" /></div>
           <div><label className="label">SRP (₱)</label><input name="srp" type="number" step="0.01" required className="input" /></div>
           <div><label className="label">Reorder Point (PCS)</label><input name="reorderPoint" type="number" defaultValue={10} className="input" /></div>
