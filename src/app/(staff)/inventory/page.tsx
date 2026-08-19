@@ -6,8 +6,8 @@ import { cartonLabel } from "@/lib/units";
 import { getPage, pageCount, PAGE_SIZE } from "@/lib/paginate";
 import { PageHeader, Pagination, StatusBadge, stockStatus } from "@/components/ui";
 import { renameParentItem, ungroupParentItem } from "./actions";
+import { InventorySearchBar } from "./search-bar";
 
-const CATEGORIES = ["Insecticide", "Herbicide", "Fungicide", "Molluscicide", "Foliar Fertilizer", "Others"];
 
 export default async function InventoryPage({ searchParams }: { searchParams: { q?: string; category?: string; stock?: string; page?: string; renameParent?: string } }) {
   const user = await requirePerm("inventory");
@@ -17,19 +17,34 @@ export default async function InventoryPage({ searchParams }: { searchParams: { 
   const stockFilter = searchParams.stock || "";
 
   const where: any = {};
-  if (q) where.OR = [{ name: { contains: q } }, { sku: { contains: q } }, { activeIngredient: { contains: q } }, { parentItem: { contains: q } }];
+  if (q) {
+    where.OR = [
+      { name: { contains: q, mode: "insensitive" } },
+      { sku: { contains: q, mode: "insensitive" } },
+      { activeIngredient: { contains: q, mode: "insensitive" } },
+      { parentItem: { contains: q, mode: "insensitive" } },
+      { packSize: { contains: q, mode: "insensitive" } },
+    ];
+  }
   if (category) where.category = category;
   if (stockFilter === "out") where.stockQty = { lte: 0 };
 
   // grouped ordering: parented products cluster under their parent label, standalone rows follow by SKU
   const orderBy: any = [{ parentItem: { sort: "asc", nulls: "last" } }, { sku: "asc" }];
   let products, total;
-  if (stockFilter === "low") {
-    // low = qty > 0 and qty <= reorderPoint; needs raw comparison across columns
+  if (q || stockFilter === "low") {
+    // fetch all matches: "low" needs a cross-column filter, and search prioritizes SKU-prefix hits
     const all = await prisma.product.findMany({ where, orderBy, include: { supplier: true } });
-    const low = all.filter((p) => p.stockQty > 0 && p.stockQty <= p.reorderPoint);
-    total = low.length;
-    products = low.slice(skip, skip + take);
+    let filtered = stockFilter === "low" ? all.filter((p) => p.stockQty > 0 && p.stockQty <= p.reorderPoint) : all;
+    if (q) {
+      const ql = q.toLowerCase();
+      filtered = [
+        ...filtered.filter((p) => p.sku.toLowerCase().startsWith(ql)),
+        ...filtered.filter((p) => !p.sku.toLowerCase().startsWith(ql)),
+      ];
+    }
+    total = filtered.length;
+    products = filtered.slice(skip, skip + take);
   } else {
     [products, total] = await Promise.all([
       prisma.product.findMany({ where, orderBy, skip, take, include: { supplier: true } }),
@@ -55,19 +70,7 @@ export default async function InventoryPage({ searchParams }: { searchParams: { 
         )}
       </PageHeader>
 
-      <form method="GET" className="mb-4 flex flex-wrap items-center gap-2">
-        <input name="q" defaultValue={q} placeholder="Search name, SKU, ingredient…" className="input max-w-xs" />
-        <select name="category" defaultValue={category} className="input max-w-[180px]">
-          <option value="">All categories</option>
-          {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-        </select>
-        <select name="stock" defaultValue={stockFilter} className="input max-w-[140px]">
-          <option value="">All stock</option>
-          <option value="low">Low stock</option>
-          <option value="out">Out of stock</option>
-        </select>
-        <button className="btn-secondary" type="submit">Filter</button>
-      </form>
+      <InventorySearchBar />
 
       <div className="card overflow-x-auto p-0">
         <table className="w-full min-w-[800px]">
@@ -166,7 +169,11 @@ export default async function InventoryPage({ searchParams }: { searchParams: { 
               return rows;
             })}
             {!products.length && (
-              <tr><td colSpan={8} className="p-8 text-center text-sm text-gray-500">No products match your filters.</td></tr>
+              <tr>
+                <td colSpan={8} className="p-8 text-center text-sm text-gray-500">
+                  {q ? <>No products found for &ldquo;{q}&rdquo;.</> : "No products match your filters."}
+                </td>
+              </tr>
             )}
           </tbody>
         </table>
