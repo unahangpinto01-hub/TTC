@@ -1,5 +1,5 @@
 import { requirePerm } from "@/lib/auth";
-import { getCompany } from "@/lib/company";
+import { getCompany, getDocVisibility, DOC_TYPES, PRINT_FIELDS } from "@/lib/company";
 import { fmtDateTime } from "@/lib/format";
 import { PageHeader } from "@/components/ui";
 import { updateCompany } from "./actions";
@@ -50,6 +50,43 @@ export default async function CompanyPage({ searchParams }: { searchParams: { sa
               />
             </div>
           ))}
+        </div>
+
+        <div>
+          <label className="label">Show on Printed Documents</label>
+          <p className="mb-2 text-xs text-gray-500">
+            Tick which details appear in each document&apos;s header. Company name and logo always print.
+          </p>
+          <div className="overflow-x-auto rounded-lg border border-gray-200">
+            <table className="w-full min-w-[560px] text-sm">
+              <thead className="border-b border-gray-200 bg-gray-50">
+                <tr>
+                  <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Detail</th>
+                  {DOC_TYPES.map(([key, label]) => (
+                    <th key={key} className="px-2 py-2 text-center text-xs font-semibold uppercase tracking-wide text-gray-500">{label}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {PRINT_FIELDS.map(([field, label]) => (
+                  <tr key={field}>
+                    <td className="px-3 py-1.5 font-medium">{label}</td>
+                    {DOC_TYPES.map(([doc]) => (
+                      <td key={doc} className="px-2 py-1.5 text-center">
+                        <input
+                          type="checkbox"
+                          name={`vis_${doc}_${field}`}
+                          defaultChecked={getDocVisibility(company, doc)[field]}
+                          disabled={readOnly}
+                          className="h-4 w-4 accent-emerald-700"
+                        />
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
 
         {readOnly ? (

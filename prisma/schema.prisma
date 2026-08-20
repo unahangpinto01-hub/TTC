@@ -404,6 +404,7 @@ model CompanySetting {
   phicNo      String   @default("")
   hdmfNo      String   @default("")
   logoDataUrl String?  // 160x160 image stored inline (no persistent disk on the host)
+  printVisibilityJson String? // {docType: {field: bool}} — which details print on which document
   updatedAt   DateTime @updatedAt
 }
 

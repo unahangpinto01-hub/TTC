@@ -13,6 +13,7 @@ export default async function IncomingOrderPrintPage({ params }: { params: { id:
   if (!order) notFound();
   return (
     <PrintDoc
+      docType="ORDER"
       title="Incoming Order"
       docNumber={`ORD-${order.id.slice(-6).toUpperCase()}`}
       date={order.createdAt}

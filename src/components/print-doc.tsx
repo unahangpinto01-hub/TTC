@@ -1,5 +1,5 @@
 import { peso, fmtDate, vatBreakdown } from "@/lib/format";
-import { getCompany } from "@/lib/company";
+import { getCompany, getDocVisibility, type DocTypeKey } from "@/lib/company";
 import { PrintButton, BackButton } from "./print-button";
 
 type Line = { name: string; qty: number; unitPrice: number; unit?: string; baseQty?: number };
@@ -17,6 +17,7 @@ export async function PrintDoc({
   showPrices = true,
   vatApplied = true,
   showVat = true,
+  docType = "SO",
 }: {
   title: string;
   docNumber: string;
@@ -31,8 +32,20 @@ export async function PrintDoc({
   vatApplied?: boolean;
   /** false = non-sales document (e.g. Purchase Order): totals show only the TOTAL row, no VAT lines */
   showVat?: boolean;
+  /** which document this is — controls which company details print (Company Details matrix) */
+  docType?: DocTypeKey;
 }) {
   const company = await getCompany(); // single source of truth — never hard-coded per document
+  const vis = getDocVisibility(company, docType);
+  const contactLine = [
+    vis.contactNo && company.contactNo && `Contact No. ${company.contactNo}`,
+    vis.tin && company.tin && `TIN ${company.tin}`,
+  ].filter(Boolean).join(" · ");
+  const govLine = [
+    vis.sssNo && company.sssNo && `SSS ${company.sssNo}`,
+    vis.phicNo && company.phicNo && `PHIC ${company.phicNo}`,
+    vis.hdmfNo && company.hdmfNo && `HDMF ${company.hdmfNo}`,
+  ].filter(Boolean).join(" · ");
   const total = lines.reduce((s, l) => s + l.qty * l.unitPrice, 0);
   const { net, vat } = vatBreakdown(total);
   return (
@@ -54,12 +67,9 @@ export async function PrintDoc({
           )}
           <div>
             <h1 className="text-xl font-bold uppercase text-emerald-900">{company.companyName}</h1>
-            {company.address && <p className="text-xs text-gray-500">{company.address}</p>}
-            <p className="text-xs text-gray-500">
-              {[company.contactNo && `Contact No. ${company.contactNo}`, company.tin && `TIN ${company.tin}`]
-                .filter(Boolean)
-                .join(" · ")}
-            </p>
+            {vis.address && company.address && <p className="text-xs text-gray-500">{company.address}</p>}
+            {contactLine && <p className="text-xs text-gray-500">{contactLine}</p>}
+            {govLine && <p className="text-xs text-gray-500">{govLine}</p>}
           </div>
         </div>
         <div className="text-right">

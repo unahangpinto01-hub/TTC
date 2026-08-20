@@ -16,6 +16,7 @@ export default async function SRPrintPage({ params }: { params: { id: string } }
   if (!sr) notFound();
   return (
     <PrintDoc
+      docType="SR"
       title="Sales Receipt / Charge Invoice"
       docNumber={sr.srNumber}
       date={sr.invoiceDate}

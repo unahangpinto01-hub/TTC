@@ -16,6 +16,7 @@ export default async function DRPrintPage({ params }: { params: { id: string } }
   if (!dr) notFound();
   return (
     <PrintDoc
+      docType="DR"
       title="Delivery Receipt"
       docNumber={dr.drNumber}
       date={dr.date}

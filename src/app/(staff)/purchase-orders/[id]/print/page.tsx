@@ -12,6 +12,7 @@ export default async function POPrintPage({ params }: { params: { id: string } }
   if (!po) notFound();
   return (
     <PrintDoc
+      docType="PO"
       title="Purchase Order"
       docNumber={po.poNumber}
       date={po.date}

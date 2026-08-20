@@ -13,6 +13,7 @@ export default async function SOPrintPage({ params }: { params: { id: string } }
   if (!so) notFound();
   return (
     <PrintDoc
+      docType="SO"
       title="Sales Order"
       docNumber={so.soNumber}
       date={so.orderDate}
