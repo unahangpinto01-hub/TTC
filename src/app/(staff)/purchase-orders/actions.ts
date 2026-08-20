@@ -37,9 +37,14 @@ export async function createPO(formData: FormData) {
     throw e;
   }
 
+  // PO date from the form (defaults to today when blank/invalid)
+  const dateRaw = String(formData.get("date") || "");
+  const parsed = dateRaw ? new Date(`${dateRaw}T12:00:00`) : null;
+  const date = parsed && !Number.isNaN(parsed.getTime()) ? parsed : new Date();
+
   const poNumber = await nextDocNumber("PO");
   const po = await prisma.purchaseOrder.create({
-    data: { poNumber, supplierId, status: "Draft", lines: { create: lineData } },
+    data: { poNumber, supplierId, status: "Draft", date, lines: { create: lineData } },
   });
   redirect(`/purchase-orders/${po.id}`);
 }

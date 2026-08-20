@@ -15,6 +15,7 @@ export function PrintDoc({
   footnote,
   showPrices = true,
   vatApplied = true,
+  showVat = true,
 }: {
   title: string;
   docNumber: string;
@@ -27,6 +28,8 @@ export function PrintDoc({
   showPrices?: boolean;
   /** false = VAT-exempt / non-VAT sale: totals show a VAT-exempt line instead of the 12% breakdown */
   vatApplied?: boolean;
+  /** false = non-sales document (e.g. Purchase Order): totals show only the TOTAL row, no VAT lines */
+  showVat?: boolean;
 }) {
   const total = lines.reduce((s, l) => s + l.qty * l.unitPrice, 0);
   const { net, vat } = vatBreakdown(total);
@@ -88,14 +91,15 @@ export function PrintDoc({
         </tbody>
         {showPrices ? (
           <tfoot>
-            {vatApplied ? (
-              <>
-                <tr><td colSpan={4} className="py-1 text-right text-gray-500">VATable Sales (net)</td><td className="py-1 text-right">{peso(net)}</td></tr>
-                <tr><td colSpan={4} className="py-1 text-right text-gray-500">VAT (12%)</td><td className="py-1 text-right">{peso(vat)}</td></tr>
-              </>
-            ) : (
-              <tr><td colSpan={4} className="py-1 text-right text-gray-500">VAT-exempt Sales</td><td className="py-1 text-right">{peso(total)}</td></tr>
-            )}
+            {showVat &&
+              (vatApplied ? (
+                <>
+                  <tr><td colSpan={4} className="py-1 text-right text-gray-500">VATable Sales (net)</td><td className="py-1 text-right">{peso(net)}</td></tr>
+                  <tr><td colSpan={4} className="py-1 text-right text-gray-500">VAT (12%)</td><td className="py-1 text-right">{peso(vat)}</td></tr>
+                </>
+              ) : (
+                <tr><td colSpan={4} className="py-1 text-right text-gray-500">VAT-exempt Sales</td><td className="py-1 text-right">{peso(total)}</td></tr>
+              ))}
             <tr className="border-t-2 border-gray-300 text-base font-bold">
               <td colSpan={4} className="py-2 text-right">TOTAL</td>
               <td className="py-2 text-right">{peso(total)}</td>

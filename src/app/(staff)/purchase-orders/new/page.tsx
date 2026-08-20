@@ -14,11 +14,17 @@ export default async function NewPOPage() {
     <div className="max-w-3xl">
       <PageHeader title="New Purchase Order" />
       <form action={createPO} className="card space-y-4">
-        <div>
-          <label className="label">Supplier</label>
-          <select name="supplierId" required className="input max-w-sm">
-            {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-          </select>
+        <div className="flex flex-wrap gap-4">
+          <div>
+            <label className="label">Supplier</label>
+            <select name="supplierId" required className="input max-w-sm">
+              {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="label">PO Date</label>
+            <input name="date" type="date" defaultValue={new Date().toISOString().slice(0, 10)} className="input" />
+          </div>
         </div>
         <POLinePicker products={products} />
         <button className="btn-primary" type="submit">Create PO (Draft)</button>

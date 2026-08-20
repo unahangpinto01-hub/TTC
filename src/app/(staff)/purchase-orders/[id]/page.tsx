@@ -25,6 +25,7 @@ export default async function PODetailPage({ params }: { params: { id: string } 
       </Link>
       <PageHeader title={`Purchase Order ${po.poNumber}`}>
         <StatusBadge status={po.status} />
+        <Link href={`/purchase-orders/${po.id}/print`} className="btn-secondary">🖨 Print / PDF</Link>
         {canEdit && po.status === "Draft" && (
           <form action={markPOSent}>
             <input type="hidden" name="id" value={po.id} />
