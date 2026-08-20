@@ -245,6 +245,7 @@ model PurchaseOrder {
   supplierId String
   supplier   Supplier @relation(fields: [supplierId], references: [id])
   status     String   @default("Draft") // Draft | Sent | Partially Received | Received | Cancelled
+  voidReason String?
   date       DateTime @default(now())
 
   lines POLine[]

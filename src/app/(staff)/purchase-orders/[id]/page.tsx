@@ -5,9 +5,9 @@ import { requirePerm } from "@/lib/auth";
 import { fmtDate, peso } from "@/lib/format";
 import { qtyLabel } from "@/lib/units";
 import { PageHeader, StatusBadge } from "@/components/ui";
-import { markPOSent, receivePO } from "../actions";
+import { markPOSent, receivePO, cancelPO } from "../actions";
 
-export default async function PODetailPage({ params }: { params: { id: string } }) {
+export default async function PODetailPage({ params, searchParams }: { params: { id: string }; searchParams: { error?: string } }) {
   const user = await requirePerm("purchaseOrders");
   const po = await prisma.purchaseOrder.findUnique({
     where: { id: params.id },
@@ -16,6 +16,8 @@ export default async function PODetailPage({ params }: { params: { id: string } 
   if (!po) notFound();
   const canEdit = user.perm === "READ_WRITE";
   const receivable = canEdit && ["Sent", "Partially Received"].includes(po.status);
+  const anyReceived = po.lines.some((l) => l.receivedQty > 0);
+  const cancellable = canEdit && !["Received", "Cancelled"].includes(po.status) && !anyReceived;
   const total = po.lines.reduce((s, l) => s + l.qty * l.unitCost, 0);
 
   return (
@@ -33,6 +35,19 @@ export default async function PODetailPage({ params }: { params: { id: string } 
           </form>
         )}
       </PageHeader>
+
+      {searchParams.error === "reason" && (
+        <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">A cancellation reason is required.</p>
+      )}
+      {searchParams.error === "received" && (
+        <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+          Cannot cancel — items were already received against this PO and stock has moved.
+        </p>
+      )}
+      {po.status === "Cancelled" && (
+        <p className="mb-4 rounded-xl bg-red-50 p-3 text-sm text-red-700">Cancelled: {po.voidReason}</p>
+      )}
+
       <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4">
         <div className="card py-3"><p className="text-xs text-gray-500">Supplier</p><p className="text-sm font-semibold">{po.supplier.name}</p></div>
         <div className="card py-3"><p className="text-xs text-gray-500">Date</p><p className="text-sm font-semibold">{fmtDate(po.date)}</p></div>
@@ -87,6 +102,14 @@ export default async function PODetailPage({ params }: { params: { id: string } 
           <button className="btn-primary mt-3" type="submit">Receive Items (adds stock IN)</button>
         )}
       </form>
+
+      {cancellable && (
+        <form action={cancelPO} className="mt-4 flex flex-wrap items-center justify-end gap-2">
+          <input type="hidden" name="id" value={po.id} />
+          <input name="reason" placeholder="Cancel reason (required)" className="input w-64" />
+          <button className="btn-danger" type="submit">Cancel PO</button>
+        </form>
+      )}
     </div>
   );
 }
