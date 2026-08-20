@@ -114,11 +114,12 @@ export async function getExpenseReport({ from, to }: Range) {
 export async function getPnl(range: Range) {
   const sales = await getSalesReport(range);
   const expenseReport = await getExpenseReport(range);
-  // COGS from delivered lines at product unit cost (per PCS × base PCS quantity)
+  // COGS at the weighted-average cost captured when the goods were delivered (per PCS × base PCS).
+  // Pre-feature lines have no snapshot (0) and fall back to the product's current cost.
   let cogs = 0;
   for (const sr of sales.invoices) {
     for (const l of sr.deliveryReceipt.lines) {
-      cogs += l.baseQty * l.product.unitCost;
+      cogs += l.baseQty * (l.unitCostAtSale > 0 ? l.unitCostAtSale : l.product.unitCost);
     }
   }
   cogs = round2(cogs);

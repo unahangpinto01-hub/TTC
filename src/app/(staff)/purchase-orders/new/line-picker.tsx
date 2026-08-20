@@ -49,12 +49,26 @@ export function POLinePicker({ products }: { products: P[] }) {
                   <option value="PCS">PCS</option>
                   {hasCarton && <option value="CARTON">CARTON</option>}
                 </select>
+                <input
+                  name="cost"
+                  type="number"
+                  min={0}
+                  step="any"
+                  placeholder={
+                    p
+                      ? `₱${(unit === "CARTON" && p.piecesPerCarton ? p.unitCost * p.piecesPerCarton : p.unitCost).toFixed(2)}`
+                      : "Unit cost"
+                  }
+                  className="input w-32"
+                  title={`Cost per ${unit === "CARTON" ? "carton" : "piece"} — leave blank to use the product's current cost`}
+                />
               </div>
               {p && (
                 <p className="mt-0.5 pl-1 text-xs text-gray-500">
                   {unit === "CARTON" && p.piecesPerCarton
-                    ? `1 CTN = ${p.piecesPerCarton} PCS · cost ${peso(p.unitCost * p.piecesPerCarton)} / CTN`
-                    : `cost ${peso(p.unitCost)} / PC`}
+                    ? `1 CTN = ${p.piecesPerCarton} PCS · current cost ${peso(p.unitCost * p.piecesPerCarton)} / CTN`
+                    : `current cost ${peso(p.unitCost)} / PC`}
+                  {" · blank cost box = use current; enter a new cost for supplier price changes"}
                 </p>
               )}
             </div>

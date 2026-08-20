@@ -209,6 +209,7 @@ model DRLine {
   unit              String @default("PCS") // PCS | CARTON
   baseQty           Int    @default(0) // qty converted to PCS; stock is deducted by this
   unitPrice         Float  // price per `unit`
+  unitCostAtSale    Float  @default(0) // weighted-average cost per PCS captured when delivered (0 = pre-feature row; COGS falls back to current product cost)
 }
 
 model SalesReceipt {

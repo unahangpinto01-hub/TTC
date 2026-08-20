@@ -16,9 +16,10 @@ export async function createPO(formData: FormData) {
   const productIds = formData.getAll("productId").map(String);
   const qtys = formData.getAll("qty").map(Number);
   const units = formData.getAll("unit").map(parseUnit);
+  const costs = formData.getAll("cost").map(Number);
 
   const lines = productIds
-    .map((pid, i) => ({ productId: pid, qty: Math.floor(qtys[i] || 0), unit: units[i] ?? "PCS" }))
+    .map((pid, i) => ({ productId: pid, qty: Math.floor(qtys[i] || 0), unit: units[i] ?? "PCS", cost: costs[i] || 0 }))
     .filter((l) => l.productId && l.qty > 0);
   if (!lines.length) redirect("/purchase-orders/new?error=empty");
 
@@ -28,8 +29,10 @@ export async function createPO(formData: FormData) {
     lineData = lines.map((l) => {
       const product = products.find((p) => p.id === l.productId)!;
       const baseQty = convertToBaseUnit(l.qty, l.unit, product);
-      // cost is per entered unit: carton cost = PCS cost × pieces per carton
-      const unitCost = l.unit === CARTON ? round2(product.unitCost * (baseQty / l.qty)) : product.unitCost;
+      // cost per entered unit: the typed override wins (supplier price changes);
+      // blank = product's current cost (carton = PCS cost × pieces per carton)
+      const unitCost =
+        l.cost > 0 ? l.cost : l.unit === CARTON ? round2(product.unitCost * (baseQty / l.qty)) : product.unitCost;
       return { productId: l.productId, qty: l.qty, unit: l.unit, baseQty, unitCost };
     });
   } catch (e) {
@@ -93,8 +96,18 @@ export async function receivePO(formData: FormData) {
     const factor = line.qty > 0 ? line.baseQty / line.qty : 1;
     const basePcs = Math.round(qty * factor);
     const newStock = line.product.stockQty + basePcs;
+
+    // Weighted average cost, full precision (rounding is display-only):
+    // ((old qty × old cost) + (received qty × received cost per PCS)) ÷ total qty
+    const oldQty = Math.max(0, line.product.stockQty);
+    const receivedCostPerPcs = line.unitCost / factor;
+    const newAvgCost =
+      oldQty > 0
+        ? (oldQty * line.product.unitCost + basePcs * receivedCostPerPcs) / (oldQty + basePcs)
+        : receivedCostPerPcs;
+
     await prisma.pOLine.update({ where: { id: line.id }, data: { receivedQty: line.receivedQty + qty } });
-    await prisma.product.update({ where: { id: line.productId }, data: { stockQty: newStock } });
+    await prisma.product.update({ where: { id: line.productId }, data: { stockQty: newStock, unitCost: newAvgCost } });
     await prisma.stockMovement.create({
       data: {
         productId: line.productId, type: "IN", qty: basePcs, balanceAfter: newStock,

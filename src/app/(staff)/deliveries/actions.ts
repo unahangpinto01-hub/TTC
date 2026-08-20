@@ -36,6 +36,8 @@ export async function markDelivered(formData: FormData) {
   for (const line of dr.lines) {
     const newQty = (running.get(line.productId) ?? line.product.stockQty) - line.baseQty;
     running.set(line.productId, newQty);
+    // snapshot the weighted-average cost per PCS at the moment of sale — COGS uses this, not later costs
+    await prisma.dRLine.update({ where: { id: line.id }, data: { unitCostAtSale: line.product.unitCost } });
     await prisma.product.update({ where: { id: line.productId }, data: { stockQty: newQty } });
     await prisma.stockMovement.create({
       data: {
