@@ -52,6 +52,23 @@ export async function createPO(formData: FormData) {
   redirect(`/purchase-orders/${po.id}`);
 }
 
+/** Cancel a PO. Allowed only before any stock is received — received goods already moved inventory. */
+export async function cancelPO(formData: FormData) {
+  const user = await requirePermWrite("purchaseOrders");
+  const id = String(formData.get("id"));
+  const reason = String(formData.get("reason") || "").trim();
+  if (!reason) redirect(`/purchase-orders/${id}?error=reason`);
+  const po = await prisma.purchaseOrder.findUniqueOrThrow({ where: { id }, include: { lines: true } });
+  if (["Received", "Cancelled"].includes(po.status)) redirect(`/purchase-orders/${id}`);
+  if (po.lines.some((l) => l.receivedQty > 0)) redirect(`/purchase-orders/${id}?error=received`);
+  await prisma.purchaseOrder.update({
+    where: { id },
+    data: { status: "Cancelled", voidReason: `${reason} — by ${user.name}` },
+  });
+  revalidatePath(`/purchase-orders/${id}`);
+  redirect(`/purchase-orders/${id}`);
+}
+
 export async function markPOSent(formData: FormData) {
   await requirePermWrite("purchaseOrders");
   const id = String(formData.get("id"));
