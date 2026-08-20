@@ -18,7 +18,9 @@ export type DocTypeKey = (typeof DOC_TYPES)[number][0];
 
 export const PRINT_FIELDS = [
   ["address", "Address"],
-  ["contactNo", "Contact No."],
+  ["mobileNo", "Mobile No."],
+  ["telephoneNo", "Telephone No."],
+  ["email", "Email Address"],
   ["tin", "TIN"],
   ["sssNo", "SSS No."],
   ["phicNo", "PHIC No."],
@@ -29,7 +31,9 @@ export type PrintFieldKey = (typeof PRINT_FIELDS)[number][0];
 /** Default: what documents already showed before this option existed. */
 export const DEFAULT_VISIBILITY: Record<PrintFieldKey, boolean> = {
   address: true,
-  contactNo: true,
+  mobileNo: true,
+  telephoneNo: true,
+  email: true,
   tin: true,
   sssNo: false,
   phicNo: false,

@@ -12,7 +12,7 @@ export async function updateCompany(formData: FormData) {
   await requirePermWrite("company");
 
   const data: Record<string, string> = {};
-  for (const key of ["companyName", "address", "contactNo", "tin", "sssNo", "phicNo", "hdmfNo"]) {
+  for (const key of ["companyName", "address", "mobileNo", "telephoneNo", "email", "tin", "sssNo", "phicNo", "hdmfNo"]) {
     data[key] = String(formData.get(key) || "").trim();
   }
   if (!data.companyName) redirect("/company?error=name");

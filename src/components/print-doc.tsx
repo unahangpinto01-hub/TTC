@@ -38,7 +38,9 @@ export async function PrintDoc({
   const company = await getCompany(); // single source of truth — never hard-coded per document
   const vis = getDocVisibility(company, docType);
   const contactLine = [
-    vis.contactNo && company.contactNo && `Contact No. ${company.contactNo}`,
+    vis.mobileNo && company.mobileNo && `Mobile ${company.mobileNo}`,
+    vis.telephoneNo && company.telephoneNo && `Tel ${company.telephoneNo}`,
+    vis.email && company.email && company.email,
     vis.tin && company.tin && `TIN ${company.tin}`,
   ].filter(Boolean).join(" · ");
   const govLine = [

@@ -13,7 +13,9 @@ export default async function CompanyPage({ searchParams }: { searchParams: { sa
   const FIELDS: [string, string, string][] = [
     ["companyName", "Company Name", company.companyName],
     ["address", "Company Address", company.address],
-    ["contactNo", "Contact Number", company.contactNo],
+    ["mobileNo", "Mobile Phone", company.mobileNo],
+    ["telephoneNo", "Telephone Number", company.telephoneNo],
+    ["email", "Email Address", company.email],
     ["tin", "TIN", company.tin],
     ["sssNo", "SSS Number", company.sssNo],
     ["phicNo", "PHIC Number", company.phicNo],
@@ -46,7 +48,13 @@ export default async function CompanyPage({ searchParams }: { searchParams: { sa
                 required={name === "companyName"}
                 disabled={readOnly}
                 className="input"
-                placeholder={name === "contactNo" ? "0917-XXXXXXX" : name === "tin" ? "XXX-XXX-XXX-XXX" : ""}
+                placeholder={
+                  name === "mobileNo" ? "0917-XXXXXXX"
+                  : name === "telephoneNo" ? "(049) XXX-XXXX"
+                  : name === "email" ? "info@company.com"
+                  : name === "tin" ? "XXX-XXX-XXX-XXX"
+                  : ""
+                }
               />
             </div>
           ))}
