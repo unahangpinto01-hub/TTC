@@ -3,6 +3,12 @@
   "configurations": [
     {
       "name": "teamagro-dev",
+      "runtimeExecutable": "C:\\Users\\Workstation01\\AppData\\Local\\node\\node.exe",
+      "runtimeArgs": ["node_modules/next/dist/bin/next", "dev"],
+      "port": 3000
+    },
+    {
+      "name": "teamagro-dev-office",
       "runtimeExecutable": "C:\\Program Files\\nodejs\\node.exe",
       "runtimeArgs": ["node_modules/next/dist/bin/next", "dev"],
       "port": 3000

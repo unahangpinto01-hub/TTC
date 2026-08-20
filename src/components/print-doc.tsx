@@ -1,11 +1,12 @@
 import { peso, fmtDate, vatBreakdown } from "@/lib/format";
+import { getCompany } from "@/lib/company";
 import { PrintButton, BackButton } from "./print-button";
 
 type Line = { name: string; qty: number; unitPrice: number; unit?: string; baseQty?: number };
 
 const unitTag = (unit?: string) => (unit === "CARTON" ? " CTN" : unit === "PCS" ? " PCS" : "");
 
-export function PrintDoc({
+export async function PrintDoc({
   title,
   docNumber,
   date,
@@ -31,6 +32,7 @@ export function PrintDoc({
   /** false = non-sales document (e.g. Purchase Order): totals show only the TOTAL row, no VAT lines */
   showVat?: boolean;
 }) {
+  const company = await getCompany(); // single source of truth — never hard-coded per document
   const total = lines.reduce((s, l) => s + l.qty * l.unitPrice, 0);
   const { net, vat } = vatBreakdown(total);
   return (
@@ -42,11 +44,22 @@ export function PrintDoc({
 
       <header className="mb-6 flex items-start justify-between border-b-2 border-emerald-800 pb-4">
         <div className="flex items-center gap-3">
-          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-800 text-xl font-bold text-white">T</div>
+          {company.logoDataUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={company.logoDataUrl} alt="Company logo" className="h-14 w-14 shrink-0 object-contain" />
+          ) : (
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-emerald-800 text-xl font-bold text-white">
+              {(company.companyName || "T").charAt(0).toUpperCase()}
+            </div>
+          )}
           <div>
-            <h1 className="text-xl font-bold text-emerald-900">TEAMAGRO TRADING CORP.</h1>
-            <p className="text-xs text-gray-500">Agricultural Chemicals & Foliar Fertilizers</p>
-            <p className="text-xs text-gray-500">Philippines · VAT Reg. TIN 000-000-000-000</p>
+            <h1 className="text-xl font-bold uppercase text-emerald-900">{company.companyName}</h1>
+            {company.address && <p className="text-xs text-gray-500">{company.address}</p>}
+            <p className="text-xs text-gray-500">
+              {[company.contactNo && `Contact No. ${company.contactNo}`, company.tin && `TIN ${company.tin}`]
+                .filter(Boolean)
+                .join(" · ")}
+            </p>
           </div>
         </div>
         <div className="text-right">

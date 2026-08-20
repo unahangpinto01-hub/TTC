@@ -393,6 +393,20 @@ model ForecastLine {
   @@unique([forecastId, parentItem])
 }
 
+// Singleton (id = "company"): the one source of truth for company info on documents
+model CompanySetting {
+  id          String   @id @default("company")
+  companyName String   @default("Teamagro Trading Corp.")
+  address     String   @default("Philippines")
+  contactNo   String   @default("")
+  tin         String   @default("000-000-000-000")
+  sssNo       String   @default("")
+  phicNo      String   @default("")
+  hdmfNo      String   @default("")
+  logoDataUrl String?  // 160x160 image stored inline (no persistent disk on the host)
+  updatedAt   DateTime @updatedAt
+}
+
 model DocumentCounter {
   docType    String
   year       Int

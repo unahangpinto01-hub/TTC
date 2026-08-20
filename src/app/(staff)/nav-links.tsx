@@ -48,6 +48,7 @@ const NAV: { section: string; items: Item[] }[] = [
     items: [
       { href: "/hr", label: "HR", fn: "hr" },
       { href: "/users", label: "Users", fn: "users" },
+      { href: "/company", label: "Company Details", fn: "company" },
     ],
   },
 ];
