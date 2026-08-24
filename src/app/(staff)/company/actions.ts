@@ -3,13 +3,14 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
-import { requirePermWrite } from "@/lib/auth";
+import { requirePermWrite, requireStepUp } from "@/lib/auth";
 import { DOC_TYPES, PRINT_FIELDS } from "@/lib/company";
 
 const MAX_LOGO_BYTES = 300 * 1024; // stored inline; 160x160 PNG is far below this
 
 export async function updateCompany(formData: FormData) {
   await requirePermWrite("company");
+  await requireStepUp("/company");
 
   const data: Record<string, string> = {};
   for (const key of ["companyName", "address", "mobileNo", "telephoneNo", "email", "tin", "sssNo", "phicNo", "hdmfNo"]) {

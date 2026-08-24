@@ -110,11 +110,9 @@ export default function LoginPage() {
             )}
             <SubmitButton />
           </form>
-          <div className="mt-6 rounded-lg bg-gray-50 p-3 text-xs text-gray-500">
-            <p className="mb-1 font-semibold text-gray-600">Demo accounts (password: password123)</p>
-            <p>superadmin@teamagro.ph · admin@teamagro.ph</p>
-            <p>clerk@teamagro.ph · dealer@sample.ph</p>
-          </div>
+          <p className="mt-6 text-center text-xs text-gray-400">
+            Forgot your password? Contact your administrator.
+          </p>
         </div>
       </div>
     </div>

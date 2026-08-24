@@ -4,20 +4,25 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/db";
-import { requireStaffWrite } from "@/lib/auth";
+import { requireStaffWrite, requireStepUp } from "@/lib/auth";
+import { passwordPolicyError, logSecurityEvent } from "@/lib/security";
+import { notifyUser } from "@/lib/notify";
 
 const ACCESS_LEVELS = ["NONE", "READ_WRITE", "READ_ONLY"];
 
 export async function createUser(formData: FormData) {
   await requireStaffWrite(["SUPER_ADMIN"]);
+  await requireStepUp("/users");
   const role = String(formData.get("role"));
   const customerId = String(formData.get("customerId")) || null;
   const access = String(formData.get("access"));
+  const password = String(formData.get("password"));
+  if (passwordPolicyError(password)) redirect("/users?error=weakpw");
   await prisma.user.create({
     data: {
       name: String(formData.get("name")).trim(),
       email: String(formData.get("email")).trim().toLowerCase(),
-      passwordHash: bcrypt.hashSync(String(formData.get("password")), 10),
+      passwordHash: bcrypt.hashSync(password, 12),
       role,
       access: ACCESS_LEVELS.includes(access) ? access : "READ_WRITE",
       customerId: role === "DEALER" ? customerId : null,
@@ -30,6 +35,7 @@ export async function createUser(formData: FormData) {
 /** Save the per-function permission matrix for a user (Super Admin only). */
 export async function updateUserPerms(formData: FormData) {
   await requireStaffWrite(["SUPER_ADMIN"]);
+  await requireStepUp("/users");
   const { FUNCTIONS } = await import("@/lib/permissions");
   const id = String(formData.get("id"));
   const target = await prisma.user.findUniqueOrThrow({ where: { id } });
@@ -44,9 +50,26 @@ export async function updateUserPerms(formData: FormData) {
   redirect(`/users/${id}`);
 }
 
+/** Admin-performed password reset (no self-service email flow exists).
+    Signs the target user out everywhere; does NOT bypass their 2FA. */
+export async function resetUserPassword(formData: FormData) {
+  const me = await requireStaffWrite(["SUPER_ADMIN"]);
+  await requireStepUp("/users");
+  const id = String(formData.get("id"));
+  const password = String(formData.get("password") || "");
+  if (passwordPolicyError(password)) redirect(`/users/${id}?error=weakpw`);
+  await prisma.user.update({ where: { id }, data: { passwordHash: bcrypt.hashSync(password, 12) } });
+  await prisma.authSession.updateMany({ where: { userId: id, revokedAt: null }, data: { revokedAt: new Date() } });
+  await logSecurityEvent({ action: "PASSWORD_CHANGED", success: true, userId: id });
+  await notifyUser(id, "SECURITY_PASSWORD_CHANGED", `🔐 Your password was reset by ${me.name}. All sessions were signed out.`, "/account/security");
+  revalidatePath(`/users/${id}`);
+  redirect(`/users/${id}?reset=ok`);
+}
+
 /** Set a user's access level. You cannot change your own (prevents locking yourself out). */
 export async function setUserAccess(formData: FormData) {
   const me = await requireStaffWrite(["SUPER_ADMIN"]);
+  await requireStepUp("/users");
   const id = String(formData.get("id"));
   const access = String(formData.get("access"));
   if (id === me.id) redirect("/users?error=self");

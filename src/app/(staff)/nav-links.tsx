@@ -51,6 +51,10 @@ const NAV: { section: string; items: Item[] }[] = [
       { href: "/company", label: "Company Details", fn: "company" },
     ],
   },
+  {
+    section: "Account",
+    items: [{ href: "/account/security", label: "My Security", fn: "*" }],
+  },
 ];
 
 /** perms: map of function key -> effective level; NONE entries are hidden. */
@@ -59,7 +63,7 @@ export function NavLinks({ perms }: { perms: Record<string, string> }) {
   return (
     <nav className="flex-1 space-y-4 overflow-y-auto px-2 pb-6">
       {NAV.map((group) => {
-        const items = group.items.filter((i) => perms[i.fn] && perms[i.fn] !== "NONE");
+        const items = group.items.filter((i) => i.fn === "*" || (perms[i.fn] && perms[i.fn] !== "NONE"));
         if (!items.length) return null;
         return (
           <div key={group.section}>

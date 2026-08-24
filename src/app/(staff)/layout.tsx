@@ -7,7 +7,9 @@ import { NavLinks } from "./nav-links";
 import { Clock } from "./clock";
 
 export default async function StaffLayout({ children }: { children: React.ReactNode }) {
-  const user = await requireStaff();
+  // allowUnenrolled: the layout also wraps /account/security itself — enrollment enforcement
+  // happens in each page's own guard (requirePerm/requireStaff), avoiding a redirect loop
+  const user = await requireStaff(undefined, { allowUnenrolled: true });
   const perms = Object.fromEntries(FUNCTIONS.map(([key]) => [key, getPerm(user, key)]));
   const unread = await prisma.notification.count({
     where: {

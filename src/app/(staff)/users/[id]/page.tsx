@@ -5,7 +5,7 @@ import { requirePerm } from "@/lib/auth";
 import { fmtDate } from "@/lib/format";
 import { FUNCTIONS, getStoredPerm } from "@/lib/permissions";
 import { PageHeader } from "@/components/ui";
-import { updateUserPerms } from "../actions";
+import { updateUserPerms, resetUserPassword } from "../actions";
 
 const LEVELS = [
   ["NONE", "No Access"],
@@ -13,8 +13,8 @@ const LEVELS = [
   ["READ_ONLY", "Read Only"],
 ] as const;
 
-export default async function UserDetailPage({ params }: { params: { id: string } }) {
-  await requirePerm("users");
+export default async function UserDetailPage({ params, searchParams }: { params: { id: string }; searchParams: { error?: string; reset?: string } }) {
+  const viewer = await requirePerm("users");
   const target = await prisma.user.findUnique({ where: { id: params.id }, include: { customer: true } });
   if (!target) notFound();
 
@@ -25,12 +25,30 @@ export default async function UserDetailPage({ params }: { params: { id: string 
       </Link>
       <PageHeader title={target.name} />
 
+      {searchParams.error === "weakpw" && (
+        <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">Password rejected — minimum 12 characters and not a common password.</p>
+      )}
+      {searchParams.reset === "ok" && (
+        <p className="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">✔ Password reset. The user was signed out everywhere. Their 2FA (if enabled) still applies.</p>
+      )}
+
       <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4">
         <div className="card py-3"><p className="text-xs text-gray-500">Email</p><p className="text-sm font-semibold">{target.email}</p></div>
         <div className="card py-3"><p className="text-xs text-gray-500">Role</p><p className="text-sm font-semibold">{target.role.replace("_", " ")}</p></div>
         <div className="card py-3"><p className="text-xs text-gray-500">Account</p><p className="text-sm font-semibold">{target.access === "NONE" ? "No Access" : target.access === "READ_ONLY" ? "Read Only (capped)" : "Enabled"}</p></div>
         <div className="card py-3"><p className="text-xs text-gray-500">{target.role === "DEALER" ? "Dealer Account" : "Created"}</p><p className="text-sm font-semibold">{target.role === "DEALER" ? target.customer?.businessName ?? "—" : fmtDate(target.createdAt)}</p></div>
       </div>
+
+      {viewer.role === "SUPER_ADMIN" && viewer.access === "READ_WRITE" && (
+        <form action={resetUserPassword} className="card mb-4 flex flex-wrap items-end gap-3">
+          <input type="hidden" name="id" value={target.id} />
+          <div className="flex-1">
+            <label className="label">Reset Password (min. 12 characters)</label>
+            <input name="password" type="password" required minLength={12} autoComplete="new-password" className="input" />
+          </div>
+          <button className="btn-secondary" type="submit">Reset Password</button>
+        </form>
+      )}
 
       {target.role === "SUPER_ADMIN" ? (
         <div className="card border-emerald-300 bg-emerald-50/50 p-6 text-sm text-emerald-900">

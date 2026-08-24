@@ -3,12 +3,13 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
-import { requirePermWrite } from "@/lib/auth";
+import { requirePermWrite, requireStepUp } from "@/lib/auth";
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
 export async function createEmployee(formData: FormData) {
   await requirePermWrite("hr");
+  await requireStepUp("/hr");
   await prisma.employee.create({
     data: {
       name: String(formData.get("name")).trim(),
@@ -24,6 +25,7 @@ export async function createEmployee(formData: FormData) {
 
 export async function updateEmployee(formData: FormData) {
   await requirePermWrite("hr");
+  await requireStepUp("/hr");
   const { ALLOWANCE_FIELDS, DEDUCTION_FIELDS } = await import("@/lib/payroll");
   const id = String(formData.get("id"));
   const items: Record<string, number> = {};
@@ -47,6 +49,7 @@ export async function updateEmployee(formData: FormData) {
 
 export async function createPayrollEntry(formData: FormData) {
   await requirePermWrite("hr");
+  await requireStepUp("/hr");
   const { ALLOWANCE_FIELDS, DEDUCTION_FIELDS } = await import("@/lib/payroll");
   const employeeId = String(formData.get("employeeId"));
   const cutoff = String(formData.get("cutoff")).trim();
@@ -95,6 +98,7 @@ export async function createPayrollEntry(formData: FormData) {
 
 export async function updatePayrollEntry(formData: FormData) {
   await requirePermWrite("hr");
+  await requireStepUp("/hr");
   const { ALLOWANCE_FIELDS, DEDUCTION_FIELDS } = await import("@/lib/payroll");
   const entryId = String(formData.get("entryId"));
   const cutoff = String(formData.get("cutoff")).trim();
@@ -136,6 +140,7 @@ export async function updatePayrollEntry(formData: FormData) {
 
 export async function deletePayrollEntry(formData: FormData) {
   await requirePermWrite("hr");
+  await requireStepUp("/hr");
   const id = String(formData.get("id"));
   const entry = await prisma.payrollEntry.findUniqueOrThrow({ where: { id } });
   await prisma.payrollEntry.delete({ where: { id } });
@@ -145,6 +150,7 @@ export async function deletePayrollEntry(formData: FormData) {
 
 export async function createEvaluation(formData: FormData) {
   const user = await requirePermWrite("hr");
+  await requireStepUp("/hr");
   const scores = {
     Punctuality: Number(formData.get("score_punctuality")) || 3,
     Quality: Number(formData.get("score_quality")) || 3,

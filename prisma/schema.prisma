@@ -19,12 +19,83 @@ model User {
   customerId   String?
   customer     Customer? @relation(fields: [customerId], references: [id])
   createdAt    DateTime @default(now())
+  // Two-factor authentication (TOTP). Secrets are AES-256-GCM encrypted at rest — never exposed after setup.
+  twoFactorEnabled    Boolean   @default(false)
+  twoFactorSecretEnc  String?   // encrypted verified TOTP secret
+  pendingTotpSecretEnc String?  // encrypted secret during enrollment, before first successful code
+  twoFactorEnabledAt  DateTime?
 
   salesOrders   SalesOrder[]
   stockMoves    StockMovement[]
   expenses      Expense[]
   notifications Notification[]
   evaluations   Evaluation[]
+  sessions       AuthSession[]
+  recoveryCodes  RecoveryCode[]
+  trustedDevices TrustedDevice[]
+  securityEvents SecurityEvent[]
+}
+
+/// Server-side sessions: the cookie holds a random token; only its SHA-256 hash is stored.
+/// pendingTwoFactor=true rows are password-verified but NOT authenticated until TOTP succeeds.
+model AuthSession {
+  id               String    @id @default(cuid())
+  userId           String
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash        String    @unique
+  userAgent        String?
+  ip               String?
+  pendingTwoFactor Boolean   @default(false)
+  stepUpAt         DateTime? // last fresh password/2FA confirmation (step-up auth for sensitive actions)
+  createdAt        DateTime  @default(now())
+  lastSeenAt       DateTime  @default(now())
+  expiresAt        DateTime
+  revokedAt        DateTime?
+
+  @@index([userId])
+}
+
+/// One-time 2FA recovery codes, stored hashed.
+model RecoveryCode {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  codeHash  String
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
+/// "Remember this device" tokens (30-day expiry): skip TOTP on trusted devices. Hash stored only.
+model TrustedDevice {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  userAgent String?
+  createdAt DateTime  @default(now())
+  expiresAt DateTime
+  revokedAt DateTime?
+
+  @@index([userId])
+}
+
+/// Security audit trail. NEVER contains passwords, secrets, codes, or tokens.
+model SecurityEvent {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  email     String?  // identifier attempted (for failed logins with no user match)
+  action    String   // LOGIN_SUCCESS | LOGIN_FAILED | TWO_FACTOR_* | RECOVERY_CODE_USED | PASSWORD_CHANGED | SESSION_REVOKED | ...
+  success   Boolean
+  ip        String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@index([email, action, createdAt])
+  @@index([ip, action, createdAt])
+  @@index([userId, createdAt])
 }
 
 model Customer {
