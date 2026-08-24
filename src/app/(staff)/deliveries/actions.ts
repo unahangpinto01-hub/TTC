@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requirePermWrite, requireStaffWrite } from "@/lib/auth";
 import { notifyRoles } from "@/lib/notify";
+import { lineGrossWeightKg } from "@/lib/units";
 
 export async function updateScheduleStatus(formData: FormData) {
   await requirePermWrite("schedule");
@@ -36,8 +37,15 @@ export async function markDelivered(formData: FormData) {
   for (const line of dr.lines) {
     const newQty = (running.get(line.productId) ?? line.product.stockQty) - line.baseQty;
     running.set(line.productId, newQty);
-    // snapshot the weighted-average cost per PCS at the moment of sale — COGS uses this, not later costs
-    await prisma.dRLine.update({ where: { id: line.id }, data: { unitCostAtSale: line.product.unitCost } });
+    // snapshot at the moment of delivery — historical records must not change when the master data does:
+    // weighted-average cost per PCS (COGS) and this line's total gross weight (logistics)
+    await prisma.dRLine.update({
+      where: { id: line.id },
+      data: {
+        unitCostAtSale: line.product.unitCost,
+        grossWeightKg: lineGrossWeightKg(line.baseQty, line.product) ?? 0,
+      },
+    });
     await prisma.product.update({ where: { id: line.productId }, data: { stockQty: newQty } });
     await prisma.stockMovement.create({
       data: {

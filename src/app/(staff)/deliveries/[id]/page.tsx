@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requirePerm } from "@/lib/auth";
 import { fmtDate, peso, vatBreakdown } from "@/lib/format";
-import { qtyLabel } from "@/lib/units";
+import { qtyLabel, lineGrossWeightKg, kgLabel } from "@/lib/units";
 import { PageHeader, StatusBadge } from "@/components/ui";
 import { markDelivered, voidDR } from "../actions";
 
@@ -20,6 +20,11 @@ export default async function DRDetailPage({ params, searchParams }: { params: {
   if (!dr) notFound();
   const total = dr.lines.reduce((s, l) => s + l.qty * l.unitPrice, 0);
   const { net, vat } = vatBreakdown(total);
+  // delivered DRs use the weight snapshot taken at delivery; drafts compute live from the product master
+  const totalKg = dr.lines.reduce(
+    (s, l) => s + (dr.status === "Draft" ? lineGrossWeightKg(l.baseQty, l.product) ?? 0 : l.grossWeightKg),
+    0
+  );
 
   return (
     <div className="max-w-4xl">
@@ -44,6 +49,10 @@ export default async function DRDetailPage({ params, searchParams }: { params: {
         </div>
         <div className="card py-3"><p className="text-xs text-gray-500">DR Date</p><p className="text-sm font-semibold">{fmtDate(dr.date)}</p></div>
         <div className="card py-3"><p className="text-xs text-gray-500">Delivered At</p><p className="text-sm font-semibold">{dr.deliveredAt ? fmtDate(dr.deliveredAt) : "—"}</p></div>
+        <div className="card py-3">
+          <p className="text-xs text-gray-500">Total Gross Weight {dr.status === "Draft" ? "(current)" : "(at delivery)"}</p>
+          <p className="text-sm font-semibold">{totalKg > 0 ? kgLabel(totalKg) : "—"}</p>
+        </div>
       </div>
 
       <div className="card mb-4 overflow-x-auto p-0">

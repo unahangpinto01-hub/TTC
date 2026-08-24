@@ -21,6 +21,7 @@ type ProductFields = {
   reorderPoint: number;
   piecesPerCarton: number | null;
   cartonDealerPrice: number | null;
+  packGrossWeightKg: number | null;
   supplierId: string | null;
   batchNo: string | null;
   mfgDate: string; // yyyy-mm-dd or ""
@@ -95,6 +96,10 @@ export function ProductEditForm({
         <div>
           <label className="label">Carton Dealer Price (₱)</label>
           <input name="cartonDealerPrice" type="number" step="0.01" min="0" defaultValue={product.cartonDealerPrice ?? ""} className="input" placeholder="blank = PCS price × per-carton" />
+        </div>
+        <div>
+          <label className="label">Gross Weight per Pack (kg)</label>
+          <input name="packGrossWeightKg" type="number" step="any" min="0" defaultValue={product.packGrossWeightKg ?? ""} className="input" placeholder="e.g. 13.50 — full carton incl. packaging" />
         </div>
         <div>
           <label className="label">Supplier</label>

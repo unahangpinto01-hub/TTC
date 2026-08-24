@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requirePerm } from "@/lib/auth";
 import { fmtDate, termLabel } from "@/lib/format";
+import { lineGrossWeightKg, kgLabel } from "@/lib/units";
 import { PrintDoc } from "@/components/print-doc";
 
 export default async function DRPrintPage({ params }: { params: { id: string } }) {
@@ -14,6 +15,11 @@ export default async function DRPrintPage({ params }: { params: { id: string } }
     },
   });
   if (!dr) notFound();
+  // delivered DRs use the weight snapshot taken at delivery; drafts compute live from the product master
+  const totalKg = dr.lines.reduce(
+    (s, l) => s + (dr.status === "Draft" ? lineGrossWeightKg(l.baseQty, l.product) ?? 0 : l.grossWeightKg),
+    0
+  );
   return (
     <PrintDoc
       docType="DR"
@@ -27,6 +33,7 @@ export default async function DRPrintPage({ params }: { params: { id: string } }
         ["Payment Term", termLabel(dr.salesOrder.term)],
         ["Delivery Date", dr.salesOrder.schedule ? fmtDate(dr.salesOrder.schedule.date) : fmtDate(dr.date)],
         ["Truck / Driver", `${dr.salesOrder.schedule?.truck ?? "—"} / ${dr.salesOrder.schedule?.driver ?? "—"}`],
+        ...(totalKg > 0 ? ([["Total Gross Weight", kgLabel(totalKg)]] as [string, string][]) : []),
       ]}
       lines={dr.lines.map((l) => ({ name: l.product.name, qty: l.qty, unitPrice: l.unitPrice, unit: l.unit, baseQty: l.baseQty }))}
       showPrices={false}

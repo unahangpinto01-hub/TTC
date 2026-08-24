@@ -63,3 +63,21 @@ export function cartonLabel(stockPcs: number, product: PackagedProduct): string 
 export function qtyLabel(qty: number, unit: string): string {
   return `${qty.toLocaleString()} ${unit === CARTON ? "CTN" : "PCS"}`;
 }
+
+type WeighedProduct = PackagedProduct & { packGrossWeightKg: number | null };
+
+/** Total gross weight (kg) for a base-PCS quantity: packs × gross weight per pack.
+    The pack is the carton when configured (loose pieces weigh proportionally), else one piece.
+    Null when the product has no gross weight maintained. */
+export function lineGrossWeightKg(baseQty: number, product: WeighedProduct): number | null {
+  const w = product.packGrossWeightKg;
+  if (!w || w <= 0) return null;
+  const ppc = product.piecesPerCarton;
+  const packs = ppc && ppc > 0 ? baseQty / ppc : baseQty;
+  return packs * w;
+}
+
+/** "1,350 kg" display, rounded to 2 decimals. */
+export function kgLabel(kg: number): string {
+  return `${kg.toLocaleString("en-PH", { maximumFractionDigits: 2 })} kg`;
+}

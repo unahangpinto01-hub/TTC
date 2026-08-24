@@ -86,6 +86,10 @@ export default async function ProductDetailPage({ params, searchParams }: { para
               ? `${peso(unitDealerPrice(product, CARTON))}${product.cartonDealerPrice == null ? " (auto)" : ""}`
               : "—",
           ],
+          [
+            "Gross Weight per Pack",
+            product.packGrossWeightKg ? `${product.packGrossWeightKg} kg` : "— (not set)",
+          ],
           ["SRP", peso(product.srp)],
           ["Reorder Point", `${product.reorderPoint} PCS`],
           [
@@ -144,6 +148,7 @@ export default async function ProductDetailPage({ params, searchParams }: { para
             reorderPoint: product.reorderPoint,
             piecesPerCarton: product.piecesPerCarton,
             cartonDealerPrice: product.cartonDealerPrice,
+            packGrossWeightKg: product.packGrossWeightKg,
             supplierId: product.supplierId,
             batchNo: product.batchNo,
             mfgDate: product.mfgDate ? product.mfgDate.toISOString().slice(0, 10) : "",

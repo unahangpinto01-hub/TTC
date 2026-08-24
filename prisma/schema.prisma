@@ -78,6 +78,7 @@ model Product {
   // Packaging: PCS is always the base inventory unit; CARTON is a selling/purchasing unit only.
   piecesPerCarton  Int?    // null = product not sold by carton
   cartonDealerPrice Float? // override; null = dealerPrice × piecesPerCarton
+  packGrossWeightKg Float? // gross weight (kg) of one selling pack: the carton when configured, else one piece; null = not maintained
   supplierId       String?
   supplier         Supplier? @relation(fields: [supplierId], references: [id])
   status           String  @default("Active")
@@ -210,6 +211,7 @@ model DRLine {
   baseQty           Int    @default(0) // qty converted to PCS; stock is deducted by this
   unitPrice         Float  // price per `unit`
   unitCostAtSale    Float  @default(0) // weighted-average cost per PCS captured when delivered (0 = pre-feature row; COGS falls back to current product cost)
+  grossWeightKg     Float  @default(0) // TOTAL gross weight (kg) of this line captured when delivered — historical, unaffected by later packaging changes
 }
 
 model SalesReceipt {
