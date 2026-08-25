@@ -43,8 +43,16 @@ export default async function SchedulePage({ searchParams }: { searchParams: { s
         <Link href={`/schedule?start=${dayKey(prev)}`} className="btn-secondary">← Prev week</Link>
         <Link href="/schedule" className="btn-secondary">Today</Link>
         <Link href={`/schedule?start=${dayKey(next)}`} className="btn-secondary">Next week →</Link>
+        <form method="GET" action="/schedule" className="flex items-center gap-1">
+          <input name="start" type="date" defaultValue={startStr} className="input py-1.5" title="Jump to any date — the board shows the week starting that day" />
+          <button className="btn-secondary" type="submit">Go</button>
+        </form>
       </PageHeader>
-      <p className="mb-3 text-sm text-gray-500">Target capacity: <span className="font-semibold">{TARGET_PER_DAY} deliveries/day</span></p>
+      <p className="mb-3 text-sm text-gray-500">
+        Showing {days[0].toLocaleDateString("en-PH", { timeZone: "UTC", month: "short", day: "numeric" })} –{" "}
+        {days[6].toLocaleDateString("en-PH", { timeZone: "UTC", month: "short", day: "numeric", year: "numeric" })} · Target capacity:{" "}
+        <span className="font-semibold">{TARGET_PER_DAY} deliveries/day</span>
+      </p>
 
       <div className="grid gap-3 md:grid-cols-4 lg:grid-cols-7">
         {days.map((d) => {
