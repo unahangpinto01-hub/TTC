@@ -31,6 +31,9 @@ export default async function CustomerDetailPage({ params, searchParams }: { par
 
   return (
     <div>
+      <Link href="/customers" className="mb-3 inline-flex items-center gap-1 text-sm font-medium text-emerald-700 hover:underline">
+        ← Back to Customers
+      </Link>
       <PageHeader title={customer.businessName}>
         <StatusBadge status={customer.status} />
         {canEdit && !editing && (
