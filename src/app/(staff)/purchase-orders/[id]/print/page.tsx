@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requirePerm } from "@/lib/auth";
 import { PrintDoc } from "@/components/print-doc";
+import { getActiveCompany } from "@/lib/company";
 
 export default async function POPrintPage({ params }: { params: { id: string } }) {
   await requirePerm("purchaseOrders");
@@ -10,6 +11,8 @@ export default async function POPrintPage({ params }: { params: { id: string } }
     include: { supplier: true, lines: { include: { product: true } } },
   });
   if (!po) notFound();
+  const activeCompany = await getActiveCompany();
+  if (po.companyId !== activeCompany.id) notFound(); // company isolation
   return (
     <PrintDoc
       docType="PO"

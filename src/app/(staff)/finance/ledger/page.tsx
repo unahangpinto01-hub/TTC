@@ -1,12 +1,14 @@
 import { requirePerm } from "@/lib/auth";
+import { getActiveCompany } from "@/lib/company";
 import { getLedger, parseRange } from "@/lib/reports";
 import { peso, fmtDate } from "@/lib/format";
 import { PageHeader } from "@/components/ui";
 
 export default async function LedgerPage({ searchParams }: { searchParams: { from?: string; to?: string } }) {
   await requirePerm("ledger");
+  const company = await getActiveCompany();
   const range = parseRange(searchParams);
-  const entries = await getLedger(range);
+  const entries = await getLedger(range, company.id);
   const fromStr = range.from.toISOString().slice(0, 10);
   const toStr = range.to.toISOString().slice(0, 10);
 

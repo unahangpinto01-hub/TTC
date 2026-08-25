@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/db";
 import { requirePermWrite } from "@/lib/auth";
 import { parseUpload } from "@/lib/xlsx-helpers";
+import { getActiveCompany } from "@/lib/company";
 
 export type ImportResult = {
   imported: number;
@@ -13,6 +14,7 @@ const CATEGORIES = ["Insecticide", "Herbicide", "Fungicide", "Molluscicide", "Fo
 
 export async function importProducts(_prev: ImportResult, formData: FormData): Promise<ImportResult> {
   const user = await requirePermWrite("inventory");
+  const company = await getActiveCompany(user);
   const file = formData.get("file") as File | null;
   if (!file || !file.size) return { imported: 0, errors: [{ row: 0, message: "No file uploaded." }] };
 
@@ -24,7 +26,7 @@ export async function importProducts(_prev: ImportResult, formData: FormData): P
   }
 
   const suppliers = await prisma.supplier.findMany();
-  const existingSkus = new Set((await prisma.product.findMany({ select: { sku: true } })).map((p) => p.sku));
+  const existingSkus = new Set((await prisma.product.findMany({ where: { companyId: company.id }, select: { sku: true } })).map((p) => p.sku));
   const errors: { row: number; message: string }[] = [];
   let imported = 0;
   const seenSkus = new Set<string>();
@@ -56,6 +58,7 @@ export async function importProducts(_prev: ImportResult, formData: FormData): P
     const supplier = suppliers.find((s) => s.name.toLowerCase() === supplierName.toLowerCase());
     const product = await prisma.product.create({
       data: {
+        companyId: company.id,
         sku,
         name,
         parentItem: String(r.parentItem || "").trim() || null,

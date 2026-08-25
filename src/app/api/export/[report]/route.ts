@@ -3,19 +3,21 @@ import { getUser } from "@/lib/auth";
 import { sheetResponse, PESO_FMT, QTY_FMT } from "@/lib/xlsx-helpers";
 import { getSalesReport, getExpenseReport, getPnl, getArAging, getMovements, getDeliveryPerformance, getMonthlyProductSales, getMerchandiseInventory, parseRange } from "@/lib/reports";
 import { cartonBreakdown } from "@/lib/units";
+import { getActiveCompany } from "@/lib/company";
 import { prisma } from "@/lib/db";
 
 export async function GET(req: NextRequest, { params }: { params: { report: string } }) {
   const user = await getUser();
   if (!user || user.role === "DEALER") return new Response("Unauthorized", { status: 401 });
 
+  const company = await getActiveCompany(user);
   const sp = Object.fromEntries(req.nextUrl.searchParams.entries());
   const range = parseRange(sp);
   const tag = `${range.from.toISOString().slice(0, 10)}_${range.to.toISOString().slice(0, 10)}`;
 
   switch (params.report) {
     case "sales": {
-      const r = await getSalesReport(range);
+      const r = await getSalesReport(range, company.id);
       const rows: (string | number)[][] = [
         ["SALES REPORT", tag],
         [],
@@ -36,7 +38,7 @@ export async function GET(req: NextRequest, { params }: { params: { report: stri
       return sheetResponse(rows, "Sales", `sales-report-${tag}.xlsx`);
     }
     case "expenses": {
-      const r = await getExpenseReport(range);
+      const r = await getExpenseReport(range, company.id);
       const rows: (string | number)[][] = [
         ["EXPENSE REPORT", tag],
         [],
@@ -50,7 +52,7 @@ export async function GET(req: NextRequest, { params }: { params: { report: stri
       return sheetResponse(rows, "Expenses", `expense-report-${tag}.xlsx`);
     }
     case "pnl": {
-      const r = await getPnl(range);
+      const r = await getPnl(range, company.id);
       const rows: (string | number)[][] = [
         ["INCOME STATEMENT", tag],
         [],
@@ -67,7 +69,7 @@ export async function GET(req: NextRequest, { params }: { params: { report: stri
       return sheetResponse(rows, "P&L", `income-statement-${tag}.xlsx`);
     }
     case "ar-aging": {
-      const { rows: aging, totals } = await getArAging();
+      const { rows: aging, totals } = await getArAging(company.id);
       const rows: (string | number)[][] = [
         ["AR AGING REPORT", new Date().toISOString().slice(0, 10)],
         [],
@@ -78,7 +80,7 @@ export async function GET(req: NextRequest, { params }: { params: { report: stri
       return sheetResponse(rows, "AR Aging", `ar-aging.xlsx`);
     }
     case "inventory-movement": {
-      const moves = await getMovements(range);
+      const moves = await getMovements(range, company.id);
       const rows: (string | number)[][] = [
         ["INVENTORY MOVEMENT", tag],
         [],
@@ -92,7 +94,7 @@ export async function GET(req: NextRequest, { params }: { params: { report: stri
       return sheetResponse(rows, "Movements", `inventory-movement-${tag}.xlsx`);
     }
     case "stock-on-hand": {
-      const products = await prisma.product.findMany({ orderBy: { sku: "asc" }, include: { supplier: true } });
+      const products = await prisma.product.findMany({ where: { companyId: company.id }, orderBy: { sku: "asc" }, include: { supplier: true } });
       const rows: (string | number)[][] = [
         ["STOCK ON HAND", new Date().toISOString().slice(0, 10)],
         [],
@@ -113,7 +115,7 @@ export async function GET(req: NextRequest, { params }: { params: { report: stri
     case "sales-monthly": {
       const year = Number(sp.year) || new Date().getFullYear();
       const region = sp.region || "";
-      const rows = await getMonthlyProductSales(year, region || undefined);
+      const rows = await getMonthlyProductSales(year, company.id, region || undefined);
       const months = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
       const data: (string | number)[][] = [
         [`MONTHLY SALES PER PRODUCT — ${region || "ALL REGIONS"} ${year}`],
@@ -138,7 +140,7 @@ export async function GET(req: NextRequest, { params }: { params: { report: stri
     case "count-sheet": {
       const category = sp.category || "";
       const products = await prisma.product.findMany({
-        where: { status: "Active", ...(category ? { category } : {}) },
+        where: { companyId: company.id, status: "Active", ...(category ? { category } : {}) },
         orderBy: [{ category: "asc" }, { sku: "asc" }],
       });
       const rows: (string | number)[][] = [
@@ -159,7 +161,7 @@ export async function GET(req: NextRequest, { params }: { params: { report: stri
       const category = sp.category || "";
       const q = sp.q || "";
       const showZero = sp.zero === "1";
-      const r = await getMerchandiseInventory({ asOf: new Date(asOfStr), category, q, showZero });
+      const r = await getMerchandiseInventory({ companyId: company.id, asOf: new Date(asOfStr), category, q, showZero });
       const HEADER_ROW = 4; // 0-based index of the column-header row below
       const rows: (string | number)[][] = [
         ["MERCHANDISE INVENTORY — Valuation at Cost"],
@@ -183,7 +185,7 @@ export async function GET(req: NextRequest, { params }: { params: { report: stri
       });
     }
     case "delivery-performance": {
-      const perf = await getDeliveryPerformance(range);
+      const perf = await getDeliveryPerformance(range, company.id);
       const rows: (string | number)[][] = [
         ["DELIVERY PERFORMANCE", tag, "Target: 5/day"],
         [],

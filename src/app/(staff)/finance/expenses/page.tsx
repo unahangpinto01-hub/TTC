@@ -1,4 +1,5 @@
 import { requirePerm } from "@/lib/auth";
+import { getActiveCompany } from "@/lib/company";
 import { getExpenseReport, parseRange } from "@/lib/reports";
 import { peso, fmtDate } from "@/lib/format";
 import { PageHeader } from "@/components/ui";
@@ -8,8 +9,9 @@ const CATEGORIES = ["Fuel", "Salaries", "Utilities", "Freight", "Rent", "Supplie
 
 export default async function ExpensesPage({ searchParams }: { searchParams: { from?: string; to?: string } }) {
   await requirePerm("expenses");
+  const company = await getActiveCompany();
   const range = parseRange(searchParams);
-  const { expenses, total, byCategory } = await getExpenseReport(range);
+  const { expenses, total, byCategory } = await getExpenseReport(range, company.id);
   const today = new Date().toISOString().slice(0, 10);
   const fromStr = range.from.toISOString().slice(0, 10);
   const toStr = range.to.toISOString().slice(0, 10);

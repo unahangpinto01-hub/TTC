@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { requirePerm } from "@/lib/auth";
 import { fmtDate, termLabel } from "@/lib/format";
 import { PrintDoc } from "@/components/print-doc";
+import { getActiveCompany } from "@/lib/company";
 
 export default async function SRPrintPage({ params }: { params: { id: string } }) {
   await requirePerm("invoices");
@@ -14,6 +15,8 @@ export default async function SRPrintPage({ params }: { params: { id: string } }
     },
   });
   if (!sr) notFound();
+  const activeCompany = await getActiveCompany();
+  if (sr.companyId !== activeCompany.id) notFound(); // company isolation
   return (
     <PrintDoc
       docType="SR"

@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/db";
 import { requireDealer } from "@/lib/auth";
 import { notifyRoles } from "@/lib/notify";
+import { getPrimaryCompany } from "@/lib/company";
 import { convertToBaseUnit, parseUnit, unitDealerPrice, UnitError } from "@/lib/units";
 
 export async function placePortalOrder(input: {
@@ -22,7 +23,8 @@ export async function placePortalOrder(input: {
   const items = input.items.filter((i) => i.qty > 0);
   if (!items.length) return { ok: false, error: "Cart is empty." };
 
-  const products = await prisma.product.findMany({ where: { id: { in: [...new Set(items.map((i) => i.id))] } } });
+  const primary = await getPrimaryCompany(); // portal orders belong to the primary company
+  const products = await prisma.product.findMany({ where: { id: { in: [...new Set(items.map((i) => i.id))] }, companyId: primary.id } });
   if (new Set(items.map((i) => i.id)).size !== products.length) return { ok: false, error: "Some products are no longer available." };
 
   let lineData;
@@ -46,6 +48,7 @@ export async function placePortalOrder(input: {
 
   const order = await prisma.incomingOrder.create({
     data: {
+      companyId: primary.id,
       source: "PORTAL",
       customerId: customer.id,
       term: input.term,
@@ -59,7 +62,8 @@ export async function placePortalOrder(input: {
     ["CLERK", "ADMIN", "SUPER_ADMIN"],
     "NEW_ORDER",
     `New portal order from ${customer.businessName} (${items.length} items)`,
-    `/orders/${order.id}`
+    `/orders/${order.id}`,
+    primary.id
   );
 
   return { ok: true, orderId: order.id };

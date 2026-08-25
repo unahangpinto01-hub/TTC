@@ -1,41 +1,42 @@
 import { prisma } from "./db";
 
-/** Create an in-app notification for a role (all users of that role see it) or a specific user. */
-export async function notifyRole(role: string, type: string, message: string, refLink?: string) {
-  await prisma.notification.create({ data: { role, type, message, refLink } });
+/** Create an in-app notification for a role. companyId scopes it to a company's context;
+    omit/null for global notices (security alerts, account events). */
+export async function notifyRole(role: string, type: string, message: string, refLink?: string, companyId?: string | null) {
+  await prisma.notification.create({ data: { role, type, message, refLink, companyId: companyId ?? null } });
 }
 
-export async function notifyUser(userId: string, type: string, message: string, refLink?: string) {
-  await prisma.notification.create({ data: { userId, type, message, refLink } });
+export async function notifyUser(userId: string, type: string, message: string, refLink?: string, companyId?: string | null) {
+  await prisma.notification.create({ data: { userId, type, message, refLink, companyId: companyId ?? null } });
 }
 
 /** Notify several roles at once. */
-export async function notifyRoles(roles: string[], type: string, message: string, refLink?: string) {
+export async function notifyRoles(roles: string[], type: string, message: string, refLink?: string, companyId?: string | null) {
   await prisma.notification.createMany({
-    data: roles.map((role) => ({ role, type, message, refLink })),
+    data: roles.map((role) => ({ role, type, message, refLink, companyId: companyId ?? null })),
   });
 }
 
 /** Idempotent sweep for time-based alerts: stale pending orders, invoices due soon / overdue.
-    Runs cheaply on dashboard load. */
-export async function runNotificationSweep() {
+    Runs cheaply on dashboard load, scoped to the active company. */
+export async function runNotificationSweep(companyId: string) {
   const now = new Date();
   const dayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
   const in7days = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
 
   const staleOrders = await prisma.incomingOrder.findMany({
-    where: { status: "Pending", createdAt: { lt: dayAgo } },
+    where: { companyId, status: "Pending", createdAt: { lt: dayAgo } },
     include: { customer: true },
   });
   for (const o of staleOrders) {
     const exists = await prisma.notification.findFirst({ where: { type: "ORDER_ESCALATION", refLink: `/orders/${o.id}` } });
     if (!exists) {
-      await notifyRoles(["ADMIN", "SUPER_ADMIN"], "ORDER_ESCALATION", `⚠ Order from ${o.customer.businessName} pending for over 24 hours`, `/orders/${o.id}`);
+      await notifyRoles(["ADMIN", "SUPER_ADMIN"], "ORDER_ESCALATION", `⚠ Order from ${o.customer.businessName} pending for over 24 hours`, `/orders/${o.id}`, companyId);
     }
   }
 
   const dueSrs = await prisma.salesReceipt.findMany({
-    where: { status: { in: ["Open", "Partial"] }, dueDate: { lt: in7days } },
+    where: { companyId, status: { in: ["Open", "Partial"] }, dueDate: { lt: in7days } },
     include: { customer: true },
   });
   for (const sr of dueSrs) {
@@ -49,7 +50,8 @@ export async function runNotificationSweep() {
         overdue
           ? `🔴 ${sr.srNumber} (${sr.customer.businessName}) is overdue`
           : `🟠 ${sr.srNumber} (${sr.customer.businessName}) due within 7 days`,
-        `/invoices/${sr.id}`
+        `/invoices/${sr.id}`,
+        companyId
       );
     }
   }

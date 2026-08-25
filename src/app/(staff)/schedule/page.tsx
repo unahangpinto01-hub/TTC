@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { requirePerm } from "@/lib/auth";
+import { getActiveCompany } from "@/lib/company";
 import { PageHeader, StatusBadge } from "@/components/ui";
 import { updateScheduleStatus } from "../deliveries/actions";
 
@@ -14,7 +15,8 @@ function dayKey(d: Date) {
 }
 
 export default async function SchedulePage({ searchParams }: { searchParams: { start?: string } }) {
-  await requirePerm("schedule");
+  const user = await requirePerm("schedule");
+  const company = await getActiveCompany(user);
   const todayKey = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila" }).format(new Date());
   const startStr = /^\d{4}-\d{2}-\d{2}$/.test(searchParams.start || "") ? searchParams.start! : todayKey;
   const start = new Date(startStr + "T00:00:00Z");
@@ -27,7 +29,7 @@ export default async function SchedulePage({ searchParams }: { searchParams: { s
   end.setUTCDate(end.getUTCDate() + 1);
 
   const schedules = await prisma.deliverySchedule.findMany({
-    where: { date: { gte: start, lt: end } },
+    where: { date: { gte: start, lt: end }, salesOrder: { companyId: company.id } },
     include: { salesOrder: { include: { customer: true, deliveryReceipts: { where: { status: { not: "Void" } } } } } },
     orderBy: { date: "asc" },
   });

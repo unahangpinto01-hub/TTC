@@ -4,6 +4,7 @@ import { requirePerm } from "@/lib/auth";
 import { fmtDate, termLabel } from "@/lib/format";
 import { lineGrossWeightKg, kgLabel } from "@/lib/units";
 import { PrintDoc } from "@/components/print-doc";
+import { getActiveCompany } from "@/lib/company";
 
 export default async function DRPrintPage({ params }: { params: { id: string } }) {
   await requirePerm("deliveries");
@@ -15,6 +16,8 @@ export default async function DRPrintPage({ params }: { params: { id: string } }
     },
   });
   if (!dr) notFound();
+  const activeCompany = await getActiveCompany();
+  if (dr.companyId !== activeCompany.id) notFound(); // company isolation
   // delivered DRs use the weight snapshot taken at delivery; drafts compute live from the product master
   const totalKg = dr.lines.reduce(
     (s, l) => s + (dr.status === "Draft" ? lineGrossWeightKg(l.baseQty, l.product) ?? 0 : l.grossWeightKg),

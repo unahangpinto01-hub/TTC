@@ -1,14 +1,19 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { requirePerm } from "@/lib/auth";
+import { getActiveCompany } from "@/lib/company";
 import { fmtDateTime } from "@/lib/format";
 import { PageHeader } from "@/components/ui";
 import { markAllRead, markRead } from "./actions";
 
 export default async function NotificationsPage() {
   const user = await requirePerm("notifications");
+  const company = await getActiveCompany(user);
   const notifications = await prisma.notification.findMany({
-    where: { OR: [{ userId: user.id }, { role: user.role }] },
+    where: {
+      OR: [{ userId: user.id }, { role: user.role }],
+      AND: [{ OR: [{ companyId: company.id }, { companyId: null }] }],
+    },
     orderBy: { createdAt: "desc" },
     take: 100,
   });

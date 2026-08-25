@@ -6,9 +6,11 @@ import { fmtDate, peso, vatBreakdown } from "@/lib/format";
 import { qtyLabel, lineGrossWeightKg, kgLabel } from "@/lib/units";
 import { PageHeader, StatusBadge } from "@/components/ui";
 import { markDelivered, voidDR } from "../actions";
+import { getActiveCompany } from "@/lib/company";
 
 export default async function DRDetailPage({ params, searchParams }: { params: { id: string }; searchParams: { error?: string } }) {
   const user = await requirePerm("deliveries");
+  const company = await getActiveCompany(user);
   const dr = await prisma.deliveryReceipt.findUnique({
     where: { id: params.id },
     include: {
@@ -17,7 +19,7 @@ export default async function DRDetailPage({ params, searchParams }: { params: {
       salesReceipt: true,
     },
   });
-  if (!dr) notFound();
+  if (!dr || dr.companyId !== company.id) notFound(); // company isolation
   const total = dr.lines.reduce((s, l) => s + l.qty * l.unitPrice, 0);
   const { net, vat } = vatBreakdown(total);
   // delivered DRs use the weight snapshot taken at delivery; drafts compute live from the product master

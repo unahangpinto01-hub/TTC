@@ -1,14 +1,16 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { requirePerm } from "@/lib/auth";
+import { getActiveCompany } from "@/lib/company";
 import { fmtDate, peso, termLabel } from "@/lib/format";
 import { PageHeader } from "@/components/ui";
 import { convertDRtoSR } from "./actions";
 
 export default async function InvoicingQueuePage() {
-  await requirePerm("invoicing");
+  const user = await requirePerm("invoicing");
+  const company = await getActiveCompany(user);
   const queue = await prisma.deliveryReceipt.findMany({
-    where: { status: "Delivered", salesReceipt: null },
+    where: { companyId: company.id, status: "Delivered", salesReceipt: null },
     orderBy: { deliveredAt: "asc" },
     include: { salesOrder: { include: { customer: true } }, lines: true },
   });

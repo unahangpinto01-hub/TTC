@@ -7,11 +7,11 @@ export type ParentInfo = {
   packs: number;
 };
 
-/** Product-line options for forecasting: every distinct parent item (standalone
-    products appear under their own name), with category and average dealer price. */
-export async function getParentInfos(): Promise<Map<string, ParentInfo>> {
+/** Product-line options for forecasting: every distinct parent item of ONE company
+    (standalone products appear under their own name), with category and average dealer price. */
+export async function getParentInfos(companyId: string): Promise<Map<string, ParentInfo>> {
   const products = await prisma.product.findMany({
-    where: { status: "Active" },
+    where: { companyId, status: "Active" },
     select: { name: true, parentItem: true, category: true, dealerPrice: true },
   });
   const map = new Map<string, ParentInfo>();

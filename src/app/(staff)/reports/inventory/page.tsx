@@ -1,4 +1,5 @@
 import { requirePerm } from "@/lib/auth";
+import { getActiveCompany } from "@/lib/company";
 import { getMovements, parseRange } from "@/lib/reports";
 import { fmtDate } from "@/lib/format";
 import { PageHeader } from "@/components/ui";
@@ -6,8 +7,9 @@ import { PrintButton } from "@/components/print-button";
 
 export default async function InventoryReportPage({ searchParams }: { searchParams: { from?: string; to?: string } }) {
   await requirePerm("reports");
+  const company = await getActiveCompany();
   const range = parseRange(searchParams);
-  const moves = await getMovements(range);
+  const moves = await getMovements(range, company.id);
   const fromStr = range.from.toISOString().slice(0, 10);
   const toStr = range.to.toISOString().slice(0, 10);
   const totalIn = moves.filter((m) => m.type === "IN").reduce((s, m) => s + m.qty, 0);

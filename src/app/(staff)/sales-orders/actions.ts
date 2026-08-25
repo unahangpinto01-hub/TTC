@@ -7,14 +7,22 @@ import { requirePermWrite } from "@/lib/auth";
 import { nextDocNumber } from "@/lib/numbering";
 import { notifyRoles } from "@/lib/notify";
 import { convertToBaseUnit } from "@/lib/units";
+import { getActiveCompany } from "@/lib/company";
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
+
+/** Company isolation for mutations: the record must belong to the ACTIVE company. */
+async function assertActiveCompany(companyId: string) {
+  const active = await getActiveCompany();
+  if (companyId !== active.id) redirect("/denied");
+}
 
 export async function updateLineQty(formData: FormData) {
   await requirePermWrite("salesOrders");
   const lineId = String(formData.get("lineId"));
   const qty = Math.max(1, Math.floor(Number(formData.get("qty")) || 1));
   const line = await prisma.salesOrderLine.findUniqueOrThrow({ where: { id: lineId }, include: { salesOrder: true, product: true } });
+  await assertActiveCompany(line.salesOrder.companyId);
   if (!["Draft"].includes(line.salesOrder.status)) redirect(`/sales-orders/${line.salesOrderId}`);
   await prisma.salesOrderLine.update({
     where: { id: lineId },
@@ -28,6 +36,7 @@ export async function removeLine(formData: FormData) {
   await requirePermWrite("salesOrders");
   const lineId = String(formData.get("lineId"));
   const line = await prisma.salesOrderLine.findUniqueOrThrow({ where: { id: lineId }, include: { salesOrder: true } });
+  await assertActiveCompany(line.salesOrder.companyId);
   if (line.salesOrder.status !== "Draft") redirect(`/sales-orders/${line.salesOrderId}`);
   await prisma.salesOrderLine.delete({ where: { id: lineId } });
   revalidatePath(`/sales-orders/${line.salesOrderId}`);
@@ -42,6 +51,7 @@ export async function confirmSO(formData: FormData) {
     where: { id: soId },
     include: { lines: { include: { product: true } }, customer: true },
   });
+  await assertActiveCompany(so.companyId);
   if (so.status !== "Draft") redirect(`/sales-orders/${soId}`);
   // stock check in base PCS, aggregated per product (an SO can mix CARTON and PCS lines of one product)
   const neededPcs = new Map<string, number>();
@@ -49,7 +59,7 @@ export async function confirmSO(formData: FormData) {
   const short = so.lines.filter((l) => l.product.stockQty < neededPcs.get(l.productId)!);
   if (short.length) redirect(`/sales-orders/${soId}?error=short`);
   await prisma.salesOrder.update({ where: { id: soId }, data: { status: "Confirmed" } });
-  await notifyRoles(["ADMIN", "SUPER_ADMIN"], "ORDER_CONFIRMED", `${so.soNumber} confirmed for ${so.customer.businessName} — ready to schedule`, `/sales-orders/${soId}`);
+  await notifyRoles(["ADMIN", "SUPER_ADMIN"], "ORDER_CONFIRMED", `${so.soNumber} confirmed for ${so.customer.businessName} — ready to schedule`, `/sales-orders/${soId}`, so.companyId);
   revalidatePath(`/sales-orders/${soId}`);
   redirect(`/sales-orders/${soId}`);
 }
@@ -59,6 +69,7 @@ export async function cancelSO(formData: FormData) {
   const soId = String(formData.get("soId"));
   const reason = String(formData.get("reason") || "").trim() || "Cancelled by " + user.name;
   const so = await prisma.salesOrder.findUniqueOrThrow({ where: { id: soId } });
+  await assertActiveCompany(so.companyId);
   if (["Delivered", "Invoiced", "Closed"].includes(so.status)) redirect(`/sales-orders/${soId}`);
   await prisma.salesOrder.update({ where: { id: soId }, data: { status: "Cancelled", voidReason: reason } });
   revalidatePath(`/sales-orders/${soId}`);
@@ -72,6 +83,7 @@ export async function scheduleSO(formData: FormData) {
   const truck = String(formData.get("truck") || "").trim();
   const driver = String(formData.get("driver") || "").trim();
   const so = await prisma.salesOrder.findUniqueOrThrow({ where: { id: soId }, include: { customer: true } });
+  await assertActiveCompany(so.companyId);
   if (!["Confirmed", "Scheduled"].includes(so.status)) redirect(`/sales-orders/${soId}`);
 
   await prisma.deliverySchedule.upsert({
@@ -80,7 +92,7 @@ export async function scheduleSO(formData: FormData) {
     update: { date, truck, driver },
   });
   await prisma.salesOrder.update({ where: { id: soId }, data: { status: "Scheduled" } });
-  await notifyRoles(["CLERK", "ADMIN"], "ORDER_SCHEDULED", `${so.soNumber} (${so.customer.businessName}) scheduled for delivery`, `/schedule`);
+  await notifyRoles(["CLERK", "ADMIN"], "ORDER_SCHEDULED", `${so.soNumber} (${so.customer.businessName}) scheduled for delivery`, `/schedule`, so.companyId);
   revalidatePath("/schedule");
   redirect(`/schedule`);
 }
@@ -93,6 +105,7 @@ export async function generateDR(formData: FormData) {
     where: { id: soId },
     include: { lines: { include: { product: true } }, deliveryReceipts: { where: { status: { not: "Void" } } } },
   });
+  await assertActiveCompany(so.companyId);
   if (!["Confirmed", "Scheduled"].includes(so.status)) redirect(`/sales-orders/${soId}`);
   if (so.deliveryReceipts.length) redirect(`/deliveries/${so.deliveryReceipts[0].id}`);
 
@@ -103,9 +116,10 @@ export async function generateDR(formData: FormData) {
   const checkedBy = admins.find((a) => a.role === "ADMIN")?.name ?? "";
   const approvedBy = admins.find((a) => a.role === "SUPER_ADMIN")?.name ?? "";
 
-  const drNumber = await nextDocNumber("DR");
+  const drNumber = await nextDocNumber("DR", so.companyId);
   const dr = await prisma.deliveryReceipt.create({
     data: {
+      companyId: so.companyId,
       drNumber,
       salesOrderId: soId,
       status: "Draft",

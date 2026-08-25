@@ -1,5 +1,7 @@
 import { prisma } from "@/lib/db";
 import { requirePerm } from "@/lib/auth";
+import { getActiveCompany, getPrimaryCompany } from "@/lib/company";
+import { HrPrimaryOnlyNotice } from "@/app/(staff)/hr/primary-only";
 import { fmtDate } from "@/lib/format";
 import { PageHeader } from "@/components/ui";
 import { createEvaluation } from "../actions";
@@ -9,6 +11,8 @@ const CRITERIA = ["punctuality", "quality", "teamwork", "initiative"];
 
 export default async function EvaluationsPage() {
   await requirePerm("hr");
+  const activeCompany = await getActiveCompany();
+  if (!activeCompany.isPrimary) return <HrPrimaryOnlyNotice primaryName={(await getPrimaryCompany()).companyName} />;
   const [evals, employees] = await Promise.all([
     prisma.evaluation.findMany({ orderBy: { createdAt: "desc" }, include: { employee: true, evaluator: true } }),
     prisma.employee.findMany({ where: { status: "Active" }, orderBy: { name: "asc" } }),

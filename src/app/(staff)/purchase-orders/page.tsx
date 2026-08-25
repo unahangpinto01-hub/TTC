@@ -1,21 +1,24 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { requirePerm } from "@/lib/auth";
+import { getActiveCompany } from "@/lib/company";
 import { fmtDate, peso } from "@/lib/format";
 import { getPage, pageCount } from "@/lib/paginate";
 import { PageHeader, Pagination, StatusBadge } from "@/components/ui";
 
 export default async function POListPage({ searchParams }: { searchParams: { page?: string } }) {
   const user = await requirePerm("purchaseOrders");
+  const company = await getActiveCompany(user);
   const { page, skip, take } = getPage(searchParams);
   const [pos, total] = await Promise.all([
     prisma.purchaseOrder.findMany({
+      where: { companyId: company.id },
       orderBy: { date: "desc" },
       skip,
       take,
       include: { supplier: true, lines: true },
     }),
-    prisma.purchaseOrder.count(),
+    prisma.purchaseOrder.count({ where: { companyId: company.id } }),
   ]);
   const canEdit = user.perm === "READ_WRITE";
   return (

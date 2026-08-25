@@ -7,9 +7,11 @@ import { requirePermWrite } from "@/lib/auth";
 import { nextDocNumber } from "@/lib/numbering";
 import { notifyRoles } from "@/lib/notify";
 import { convertToBaseUnit, parseUnit, unitDealerPrice, UnitError } from "@/lib/units";
+import { getActiveCompany } from "@/lib/company";
 
 export async function encodeOrder(formData: FormData) {
-  await requirePermWrite("orders");
+  const actor = await requirePermWrite("orders");
+  const company = await getActiveCompany(actor);
   const customerId = String(formData.get("customerId"));
   const source = String(formData.get("source"));
   const term = String(formData.get("term"));
@@ -23,7 +25,9 @@ export async function encodeOrder(formData: FormData) {
     .filter((l) => l.productId && l.qty > 0);
   if (!lines.length) redirect("/orders/new?error=empty");
 
-  const products = await prisma.product.findMany({ where: { id: { in: lines.map((l) => l.productId) } } });
+  // products must belong to the active company — cross-company lines are rejected outright
+  const products = await prisma.product.findMany({ where: { id: { in: lines.map((l) => l.productId) }, companyId: company.id } });
+  if (products.length !== new Set(lines.map((l) => l.productId)).size) redirect("/orders/new?error=empty");
   const customer = await prisma.customer.findUniqueOrThrow({ where: { id: customerId } });
 
   let lineData;
@@ -45,6 +49,7 @@ export async function encodeOrder(formData: FormData) {
 
   const order = await prisma.incomingOrder.create({
     data: {
+      companyId: company.id,
       source,
       customerId,
       term,
@@ -53,22 +58,25 @@ export async function encodeOrder(formData: FormData) {
       lines: { create: lineData },
     },
   });
-  await notifyRoles(["ADMIN", "SUPER_ADMIN"], "NEW_ORDER", `New ${source.toLowerCase()} order encoded for ${customer.businessName}`, `/orders/${order.id}`);
+  await notifyRoles(["ADMIN", "SUPER_ADMIN"], "NEW_ORDER", `New ${source.toLowerCase()} order encoded for ${customer.businessName}`, `/orders/${order.id}`, company.id);
   redirect(`/orders/${order.id}`);
 }
 
 export async function convertToSO(formData: FormData) {
   const user = await requirePermWrite("orders");
+  const company = await getActiveCompany(user);
   const orderId = String(formData.get("orderId"));
   const order = await prisma.incomingOrder.findUniqueOrThrow({
     where: { id: orderId },
     include: { lines: true, customer: true },
   });
+  if (order.companyId !== company.id) redirect("/denied");
   if (order.status !== "Pending") redirect(`/orders/${orderId}`);
 
-  const soNumber = await nextDocNumber("SO");
+  const soNumber = await nextDocNumber("SO", order.companyId);
   const so = await prisma.salesOrder.create({
     data: {
+      companyId: order.companyId,
       soNumber,
       customerId: order.customerId,
       incomingOrderId: order.id,
@@ -88,14 +96,15 @@ export async function convertToSO(formData: FormData) {
     },
   });
   await prisma.incomingOrder.update({ where: { id: orderId }, data: { status: "Converted" } });
-  await notifyRoles(["ADMIN", "SUPER_ADMIN"], "ORDER_CONVERTED", `${soNumber} created from ${order.customer.businessName}'s order`, `/sales-orders/${so.id}`);
+  await notifyRoles(["ADMIN", "SUPER_ADMIN"], "ORDER_CONVERTED", `${soNumber} created from ${order.customer.businessName}'s order`, `/sales-orders/${so.id}`, order.companyId);
   redirect(`/sales-orders/${so.id}`);
 }
 
 export async function cancelIncoming(formData: FormData) {
-  await requirePermWrite("orders");
+  const actor = await requirePermWrite("orders");
+  const company = await getActiveCompany(actor);
   const orderId = String(formData.get("orderId"));
-  await prisma.incomingOrder.update({ where: { id: orderId }, data: { status: "Cancelled" } });
+  await prisma.incomingOrder.updateMany({ where: { id: orderId, companyId: company.id }, data: { status: "Cancelled" } });
   revalidatePath("/orders");
   redirect("/orders");
 }

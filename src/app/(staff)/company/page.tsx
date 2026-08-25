@@ -1,5 +1,5 @@
 import { requirePerm } from "@/lib/auth";
-import { getCompany, getDocVisibility, DOC_TYPES, PRINT_FIELDS } from "@/lib/company";
+import { getActiveCompany, getDocVisibility, DOC_TYPES, PRINT_FIELDS } from "@/lib/company";
 import { fmtDateTime } from "@/lib/format";
 import { PageHeader } from "@/components/ui";
 import { updateCompany } from "./actions";
@@ -7,7 +7,7 @@ import { LogoField } from "./logo-field";
 
 export default async function CompanyPage({ searchParams }: { searchParams: { saved?: string; error?: string } }) {
   const user = await requirePerm("company");
-  const company = await getCompany();
+  const company = await getActiveCompany(user);
   const readOnly = user.perm !== "READ_WRITE";
 
   const FIELDS: [string, string, string][] = [

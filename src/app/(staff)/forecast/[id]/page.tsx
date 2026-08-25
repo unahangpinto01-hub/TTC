@@ -6,16 +6,18 @@ import { PageHeader } from "@/components/ui";
 import { PrintButton } from "@/components/print-button";
 import { getParentInfos } from "../parents";
 import { ForecastGrid, type GridRow, type ParentOption } from "./forecast-grid";
+import { getActiveCompany } from "@/lib/company";
 
 export default async function ForecastDetailPage({ params }: { params: { id: string } }) {
   const user = await requirePerm("forecast");
+  const company = await getActiveCompany(user);
   const forecast = await prisma.forecast.findUnique({
     where: { id: params.id },
     include: { lines: true },
   });
-  if (!forecast) notFound();
+  if (!forecast || forecast.companyId !== company.id) notFound(); // company isolation
 
-  const parentMap = await getParentInfos();
+  const parentMap = await getParentInfos(company.id);
   const parents: ParentOption[] = [...parentMap.values()].sort(
     (a, b) => a.category.localeCompare(b.category) || a.name.localeCompare(b.name)
   );

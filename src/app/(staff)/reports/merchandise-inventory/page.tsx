@@ -1,5 +1,6 @@
 import { Fragment } from "react";
 import { requirePerm } from "@/lib/auth";
+import { getActiveCompany } from "@/lib/company";
 import { peso, fmtDate } from "@/lib/format";
 import { getMerchandiseInventory } from "@/lib/reports";
 import { PrintButton, BackButton } from "@/components/print-button";
@@ -12,6 +13,7 @@ export default async function MerchandiseInventoryPage({
   searchParams: { asOf?: string; category?: string; q?: string; zero?: string };
 }) {
   await requirePerm("reports");
+  const company = await getActiveCompany();
   const today = new Date().toISOString().slice(0, 10);
   const asOfStr = searchParams.asOf || today;
   const category = searchParams.category || "";
@@ -19,6 +21,7 @@ export default async function MerchandiseInventoryPage({
   const showZero = searchParams.zero === "1";
 
   const report = await getMerchandiseInventory({
+    companyId: company.id,
     asOf: new Date(asOfStr),
     category,
     q,

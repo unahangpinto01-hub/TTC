@@ -101,6 +101,7 @@ export type SessionUser = {
   role: string;
   access: string;
   permsJson: string | null;
+  companyIdsJson: string | null;
   customerId: string | null;
   twoFactorEnabled: boolean;
 };
@@ -109,7 +110,7 @@ function toSessionUser(s: SessionRow): SessionUser {
   const u = s.user;
   return {
     id: u.id, name: u.name, email: u.email, role: u.role, access: u.access,
-    permsJson: u.permsJson, customerId: u.customerId, twoFactorEnabled: u.twoFactorEnabled,
+    permsJson: u.permsJson, companyIdsJson: u.companyIdsJson, customerId: u.customerId, twoFactorEnabled: u.twoFactorEnabled,
   };
 }
 

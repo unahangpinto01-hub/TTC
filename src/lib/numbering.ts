@@ -7,12 +7,13 @@ const PREFIX: Record<string, string> = {
   PO: "PO",
 };
 
-/** Atomic per-type per-year sequential numbering: SO-2026-00001 */
-export async function nextDocNumber(docType: "SO" | "DR" | "SR" | "PO"): Promise<string> {
+/** Atomic per-company, per-type, per-year sequential numbering: SO-2026-00001.
+    Each company runs its own sequence; the printed letterhead identifies the issuer. */
+export async function nextDocNumber(docType: "SO" | "DR" | "SR" | "PO", companyId: string): Promise<string> {
   const year = new Date().getFullYear();
   const counter = await prisma.documentCounter.upsert({
-    where: { docType_year: { docType, year } },
-    create: { docType, year, lastNumber: 1 },
+    where: { docType_year_companyId: { docType, year, companyId } },
+    create: { docType, year, companyId, lastNumber: 1 },
     update: { lastNumber: { increment: 1 } },
   });
   return `${PREFIX[docType]}-${year}-${String(counter.lastNumber).padStart(5, "0")}`;

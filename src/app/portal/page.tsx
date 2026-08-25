@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { requireDealer } from "@/lib/auth";
 import { peso } from "@/lib/format";
 import { unitDealerPrice, CARTON } from "@/lib/units";
+import { getPrimaryCompany } from "@/lib/company";
 import { getPage, pageCount } from "@/lib/paginate";
 import { Pagination, StatusBadge, stockStatus } from "@/components/ui";
 import { AddToCartButton } from "./cart-ui";
@@ -12,11 +13,12 @@ const CROPS = ["Rice", "Corn", "Vegetables", "Mango", "Pineapple", "Fruit Trees"
 
 export default async function CatalogPage({ searchParams }: { searchParams: { q?: string; category?: string; crop?: string; page?: string } }) {
   await requireDealer();
+  const primary = await getPrimaryCompany(); // the dealer portal sells the primary company's catalog
   const { page, skip, take } = getPage(searchParams);
   const q = searchParams.q?.trim() || "";
   const category = searchParams.category || "";
   const crop = searchParams.crop || "";
-  const where: any = { status: "Active" };
+  const where: any = { companyId: primary.id, status: "Active" };
   if (q) where.OR = [{ name: { contains: q } }, { activeIngredient: { contains: q } }];
   if (category) where.category = category;
   if (crop) where.cropTags = { contains: crop };

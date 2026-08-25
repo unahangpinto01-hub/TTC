@@ -6,14 +6,16 @@ import { fmtDate, peso } from "@/lib/format";
 import { qtyLabel } from "@/lib/units";
 import { PageHeader, StatusBadge } from "@/components/ui";
 import { markPOSent, receivePO, cancelPO } from "../actions";
+import { getActiveCompany } from "@/lib/company";
 
 export default async function PODetailPage({ params, searchParams }: { params: { id: string }; searchParams: { error?: string } }) {
   const user = await requirePerm("purchaseOrders");
+  const company = await getActiveCompany(user);
   const po = await prisma.purchaseOrder.findUnique({
     where: { id: params.id },
     include: { supplier: true, lines: { include: { product: true } } },
   });
-  if (!po) notFound();
+  if (!po || po.companyId !== company.id) notFound(); // company isolation
   const canEdit = user.perm === "READ_WRITE";
   const receivable = canEdit && ["Sent", "Partially Received"].includes(po.status);
   const anyReceived = po.lines.some((l) => l.receivedQty > 0);

@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { requirePerm } from "@/lib/auth";
 import { fmtDateTime, termLabel } from "@/lib/format";
 import { PrintDoc } from "@/components/print-doc";
+import { getActiveCompany } from "@/lib/company";
 
 export default async function IncomingOrderPrintPage({ params }: { params: { id: string } }) {
   await requirePerm("orders");
@@ -11,6 +12,8 @@ export default async function IncomingOrderPrintPage({ params }: { params: { id:
     include: { customer: true, lines: { include: { product: true } }, salesOrders: true },
   });
   if (!order) notFound();
+  const activeCompany = await getActiveCompany();
+  if (order.companyId !== activeCompany.id) notFound(); // company isolation
   return (
     <PrintDoc
       docType="ORDER"

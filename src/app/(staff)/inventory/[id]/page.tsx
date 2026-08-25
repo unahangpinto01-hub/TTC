@@ -7,14 +7,17 @@ import { cartonLabel, unitDealerPrice, CARTON } from "@/lib/units";
 import { PageHeader, StatusBadge, stockStatus } from "@/components/ui";
 import { ProductEditForm } from "./product-edit-form";
 import { AdjustStockForm } from "./adjust-stock-form";
+import { getActiveCompany } from "@/lib/company";
 
 export default async function ProductDetailPage({ params, searchParams }: { params: { id: string }; searchParams: { error?: string } }) {
   const user = await requirePerm("inventory");
+  const company = await getActiveCompany(user);
   const product = await prisma.product.findUnique({
     where: { id: params.id },
     include: { supplier: true },
   });
-  if (!product) notFound();
+  // company isolation: a record from another company is denied even via direct URL
+  if (!product || product.companyId !== company.id) notFound();
   const moves = await prisma.stockMovement.findMany({
     where: { productId: product.id },
     orderBy: [{ date: "desc" }, { createdAt: "desc" }, { id: "desc" }],
@@ -23,7 +26,7 @@ export default async function ProductDetailPage({ params, searchParams }: { para
   });
   const parentOptions = (
     await prisma.product.findMany({
-      where: { parentItem: { not: null } },
+      where: { companyId: company.id, parentItem: { not: null } },
       select: { parentItem: true },
       distinct: ["parentItem"],
       orderBy: { parentItem: "asc" },

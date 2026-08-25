@@ -1,6 +1,7 @@
 import { Fragment } from "react";
 import { prisma } from "@/lib/db";
 import { requirePerm } from "@/lib/auth";
+import { getActiveCompany } from "@/lib/company";
 import { fmtDate } from "@/lib/format";
 import { cartonBreakdown } from "@/lib/units";
 import { PageHeader } from "@/components/ui";
@@ -10,9 +11,10 @@ const CATEGORIES = ["Insecticide", "Herbicide", "Fungicide", "Molluscicide", "Fo
 
 export default async function CountSheetPage({ searchParams }: { searchParams: { category?: string } }) {
   await requirePerm("reports");
+  const company = await getActiveCompany();
   const category = searchParams.category || "";
   const products = await prisma.product.findMany({
-    where: { status: "Active", ...(category ? { category } : {}) },
+    where: { companyId: company.id, status: "Active", ...(category ? { category } : {}) },
     orderBy: [{ category: "asc" }, { sku: "asc" }],
   });
 

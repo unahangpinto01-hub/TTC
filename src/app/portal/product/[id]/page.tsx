@@ -3,13 +3,15 @@ import { prisma } from "@/lib/db";
 import { requireDealer } from "@/lib/auth";
 import { peso } from "@/lib/format";
 import { unitDealerPrice, CARTON } from "@/lib/units";
+import { getPrimaryCompany } from "@/lib/company";
 import { StatusBadge, stockStatus } from "@/components/ui";
 import { AddToCartButton } from "../../cart-ui";
 
 export default async function ProductPage({ params }: { params: { id: string } }) {
   await requireDealer();
+  const primary = await getPrimaryCompany();
   const p = await prisma.product.findUnique({ where: { id: params.id } });
-  if (!p) notFound();
+  if (!p || p.companyId !== primary.id) notFound(); // portal shows the primary company's catalog only
   const status = stockStatus(p.stockQty, p.reorderPoint);
   return (
     <div className="mx-auto max-w-xl">

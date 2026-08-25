@@ -5,29 +5,34 @@ import { peso, fmtDateTime } from "@/lib/format";
 import { runNotificationSweep } from "@/lib/notify";
 import { getPerm } from "@/lib/permissions";
 import { getSalesReport, getPnl } from "@/lib/reports";
+import { getActiveCompany } from "@/lib/company";
 import { SalesChart } from "./sales-chart";
 
 const TARGET = 5;
 
 export default async function DashboardPage() {
   const user = await requirePerm("dashboard");
-  await runNotificationSweep();
+  const company = await getActiveCompany(user);
+  await runNotificationSweep(company.id);
 
   const now = new Date();
   const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
   const todayEnd = new Date(todayStart); todayEnd.setDate(todayEnd.getDate() + 1);
   const canFinance = getPerm(user, "ar") !== "NONE";
 
-  // last 6 months of invoiced sales
+  // last 6 months of invoiced sales — everything scoped to the active company
   const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1);
   const [todaySchedules, pendingOrders, lowStock, notifications, srsForChart, openSrs, invoicingQueue] = await Promise.all([
-    prisma.deliverySchedule.findMany({ where: { date: { gte: todayStart, lt: todayEnd } }, include: { salesOrder: { include: { customer: true } } } }),
-    prisma.incomingOrder.count({ where: { status: "Pending" } }),
-    prisma.product.findMany({ where: { stockQty: { lte: 30 } }, orderBy: { stockQty: "asc" }, take: 50 }),
-    prisma.notification.findMany({ where: { OR: [{ userId: user.id }, { role: user.role }] }, orderBy: { createdAt: "desc" }, take: 8 }),
-    canFinance ? prisma.salesReceipt.findMany({ where: { status: { not: "Void" }, invoiceDate: { gte: sixMonthsAgo } }, select: { invoiceDate: true, amount: true } }) : Promise.resolve([]),
-    canFinance ? prisma.salesReceipt.findMany({ where: { status: { in: ["Open", "Partial"] } }, include: { payments: true } }) : Promise.resolve([]),
-    prisma.deliveryReceipt.count({ where: { status: "Delivered", salesReceipt: null } }),
+    prisma.deliverySchedule.findMany({ where: { date: { gte: todayStart, lt: todayEnd }, salesOrder: { companyId: company.id } }, include: { salesOrder: { include: { customer: true } } } }),
+    prisma.incomingOrder.count({ where: { companyId: company.id, status: "Pending" } }),
+    prisma.product.findMany({ where: { companyId: company.id, stockQty: { lte: 30 } }, orderBy: { stockQty: "asc" }, take: 50 }),
+    prisma.notification.findMany({
+      where: { OR: [{ userId: user.id }, { role: user.role }], AND: [{ OR: [{ companyId: company.id }, { companyId: null }] }] },
+      orderBy: { createdAt: "desc" }, take: 8,
+    }),
+    canFinance ? prisma.salesReceipt.findMany({ where: { companyId: company.id, status: { not: "Void" }, invoiceDate: { gte: sixMonthsAgo } }, select: { invoiceDate: true, amount: true } }) : Promise.resolve([]),
+    canFinance ? prisma.salesReceipt.findMany({ where: { companyId: company.id, status: { in: ["Open", "Partial"] } }, include: { payments: true } }) : Promise.resolve([]),
+    prisma.deliveryReceipt.count({ where: { companyId: company.id, status: "Delivered", salesReceipt: null } }),
   ]);
 
   const lowItems = lowStock.filter((p) => p.stockQty > 0 && p.stockQty <= p.reorderPoint);
@@ -54,8 +59,8 @@ export default async function DashboardPage() {
   let salesData: Awaited<ReturnType<typeof getSalesReport>> | null = null;
   let ytd: Awaited<ReturnType<typeof getPnl>> | null = null;
   if (canFinance) {
-    salesData = await getSalesReport({ from: new Date(now.getFullYear(), now.getMonth() - 2, 1), to: now });
-    ytd = await getPnl({ from: new Date(now.getFullYear(), 0, 1), to: now });
+    salesData = await getSalesReport({ from: new Date(now.getFullYear(), now.getMonth() - 2, 1), to: now }, company.id);
+    ytd = await getPnl({ from: new Date(now.getFullYear(), 0, 1), to: now }, company.id);
   }
 
   return (

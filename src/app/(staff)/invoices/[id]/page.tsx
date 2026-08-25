@@ -8,9 +8,11 @@ import { getPerm } from "@/lib/permissions";
 import { PageHeader, StatusBadge } from "@/components/ui";
 import { recordPayment } from "../../finance/actions";
 import { voidSR } from "../../invoicing/actions";
+import { getActiveCompany } from "@/lib/company";
 
 export default async function SRDetailPage({ params, searchParams }: { params: { id: string }; searchParams: { error?: string } }) {
   const user = await requirePerm("invoices");
+  const company = await getActiveCompany(user);
   const sr = await prisma.salesReceipt.findUnique({
     where: { id: params.id },
     include: {
@@ -19,7 +21,7 @@ export default async function SRDetailPage({ params, searchParams }: { params: {
       deliveryReceipt: { include: { lines: { include: { product: true } }, salesOrder: true } },
     },
   });
-  if (!sr) notFound();
+  if (!sr || sr.companyId !== company.id) notFound(); // company isolation
   const paid = sr.payments.reduce((s, p) => s + p.amount, 0);
   const balance = sr.amount - paid;
   const { net, vat } = vatBreakdown(sr.amount);

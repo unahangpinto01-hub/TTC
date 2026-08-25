@@ -16,6 +16,7 @@ model User {
   role         String
   access       String  @default("READ_WRITE") // NONE | READ_WRITE | READ_ONLY (account-level master)
   permsJson    String? // per-function permissions {fnKey: NONE|READ_WRITE|READ_ONLY}; null = role defaults
+  companyIdsJson String? // JSON array of Company ids this user may access; null = primary company only
   customerId   String?
   customer     Customer? @relation(fields: [customerId], references: [id])
   createdAt    DateTime @default(now())
@@ -131,7 +132,9 @@ model Supplier {
 
 model Product {
   id               String  @id @default(cuid())
-  sku              String  @unique
+  companyId        String
+  company          Company @relation(fields: [companyId], references: [id])
+  sku              String  // unique per company (see @@unique below) — both companies may use the same code
   name             String
   activeIngredient String
   category         String  // Insecticide | Herbicide | Fungicide | Molluscicide | Foliar Fertilizer | Others
@@ -160,6 +163,8 @@ model Product {
   salesOrderLines    SalesOrderLine[]
   drLines            DRLine[]
   poLines            POLine[]
+
+  @@unique([companyId, sku])
 }
 
 model StockMovement {
@@ -185,6 +190,8 @@ model StockMovement {
 
 model IncomingOrder {
   id         String   @id @default(cuid())
+  companyId  String
+  company    Company @relation(fields: [companyId], references: [id])
   source     String   // PORTAL | MESSENGER | TEXT
   customerId String
   customer   Customer @relation(fields: [customerId], references: [id])
@@ -211,7 +218,9 @@ model IncomingOrderLine {
 
 model SalesOrder {
   id              String    @id @default(cuid())
-  soNumber        String    @unique
+  companyId       String
+  company         Company  @relation(fields: [companyId], references: [id])
+  soNumber        String    // unique per company (@@unique below)
   customerId      String
   customer        Customer  @relation(fields: [customerId], references: [id])
   incomingOrderId String?
@@ -227,6 +236,8 @@ model SalesOrder {
   lines            SalesOrderLine[]
   schedule         DeliverySchedule?
   deliveryReceipts DeliveryReceipt[]
+
+  @@unique([companyId, soNumber])
 }
 
 model SalesOrderLine {
@@ -256,7 +267,9 @@ model DeliverySchedule {
 
 model DeliveryReceipt {
   id           String     @id @default(cuid())
-  drNumber     String     @unique
+  companyId    String
+  company      Company   @relation(fields: [companyId], references: [id])
+  drNumber     String     // unique per company (@@unique below)
   salesOrderId String
   salesOrder   SalesOrder @relation(fields: [salesOrderId], references: [id])
   status       String     @default("Draft") // Draft | Delivered | Invoiced | Void
@@ -269,6 +282,8 @@ model DeliveryReceipt {
 
   lines        DRLine[]
   salesReceipt SalesReceipt?
+
+  @@unique([companyId, drNumber])
 }
 
 model DRLine {
@@ -287,7 +302,9 @@ model DRLine {
 
 model SalesReceipt {
   id                String          @id @default(cuid())
-  srNumber          String          @unique
+  companyId         String
+  company           Company        @relation(fields: [companyId], references: [id])
+  srNumber          String          // unique per company (@@unique below)
   deliveryReceiptId String          @unique
   deliveryReceipt   DeliveryReceipt @relation(fields: [deliveryReceiptId], references: [id])
   customerId        String
@@ -301,6 +318,8 @@ model SalesReceipt {
   voidReason        String?
 
   payments Payment[]
+
+  @@unique([companyId, srNumber])
 }
 
 model Payment {
@@ -315,7 +334,9 @@ model Payment {
 
 model PurchaseOrder {
   id         String   @id @default(cuid())
-  poNumber   String   @unique
+  companyId  String
+  company    Company @relation(fields: [companyId], references: [id])
+  poNumber   String   // unique per company (@@unique below)
   supplierId String
   supplier   Supplier @relation(fields: [supplierId], references: [id])
   status     String   @default("Draft") // Draft | Sent | Partially Received | Received | Cancelled
@@ -323,6 +344,8 @@ model PurchaseOrder {
   date       DateTime @default(now())
 
   lines POLine[]
+
+  @@unique([companyId, poNumber])
 }
 
 model POLine {
@@ -339,8 +362,10 @@ model POLine {
 }
 
 model Expense {
-  id       String   @id @default(cuid())
-  date     DateTime @default(now())
+  id        String   @id @default(cuid())
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id])
+  date      DateTime @default(now())
   category String   // Fuel | Salaries | Utilities | Freight | Rent | Supplies | Others
   amount   Float
   notes    String?
@@ -425,6 +450,8 @@ model Evaluation {
 
 model Notification {
   id        String    @id @default(cuid())
+  companyId String?   // company context; null = global (security alerts, account notices)
+  company   Company?  @relation(fields: [companyId], references: [id])
   userId    String?   // targeted user, or...
   user      User?     @relation(fields: [userId], references: [id])
   role      String?   // ...targeted role (any user with this role sees it)
@@ -437,6 +464,8 @@ model Notification {
 
 model Forecast {
   id        String   @id @default(cuid())
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id])
   title     String
   year      Int
   area      String   // e.g. LUZVIMIN, Luzon, Visayas
@@ -466,10 +495,11 @@ model ForecastLine {
   @@unique([forecastId, parentItem])
 }
 
-// Singleton (id = "company"): the one source of truth for company info on documents
-model CompanySetting {
-  id          String   @id @default("company")
-  companyName String   @default("Teamagro Trading Corp.")
+/// Company master (one row per company). Mapped onto the original CompanySetting table so the
+/// existing Teamagro row (details, logo, print matrix) is preserved unchanged. Never hard-code names.
+model Company {
+  id          String   @id @default(cuid())
+  companyName String   @default("")
   address     String   @default("Philippines")
   mobileNo    String   @default("")
   telephoneNo String   @default("")
@@ -480,13 +510,29 @@ model CompanySetting {
   hdmfNo      String   @default("")
   logoDataUrl String?  // 160x160 image stored inline (no persistent disk on the host)
   printVisibilityJson String? // {docType: {field: bool}} — which details print on which document
+  status      String   @default("Active") // Active | Inactive
+  isPrimary   Boolean  @default(false) // primary company owns employees/HR/payroll and the dealer portal
+  createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  products         Product[]
+  incomingOrders   IncomingOrder[]
+  salesOrders      SalesOrder[]
+  deliveryReceipts DeliveryReceipt[]
+  salesReceipts    SalesReceipt[]
+  purchaseOrders   PurchaseOrder[]
+  expenses         Expense[]
+  forecasts        Forecast[]
+  notifications    Notification[]
+
+  @@map("CompanySetting")
 }
 
 model DocumentCounter {
   docType    String
   year       Int
+  companyId  String @default("") // per-company numbering sequences
   lastNumber Int    @default(0)
 
-  @@id([docType, year])
+  @@id([docType, year, companyId])
 }

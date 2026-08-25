@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db";
 import { requirePermWrite } from "@/lib/auth";
 import { notifyRole } from "@/lib/notify";
 import { convertToBaseUnit, parseUnit, UnitError } from "@/lib/units";
+import { getActiveCompany } from "@/lib/company";
 
 /** Unit cost per PCS at FULL precision: entered directly, or derived as carton cost ÷ pieces per carton.
     Never round the stored cost — 2 decimals are for display only. */
@@ -17,11 +18,13 @@ function resolveUnitCost(formData: FormData): number {
 }
 
 export async function createProduct(formData: FormData) {
-  await requirePermWrite("inventory");
+  const actor = await requirePermWrite("inventory");
+  const company = await getActiveCompany(actor);
   const sku = String(formData.get("sku") || "").trim();
   const name = String(formData.get("name") || "").trim();
   if (!sku || !name) redirect("/inventory/new?error=required");
   const data = {
+    companyId: company.id,
     sku,
     name,
     activeIngredient: String(formData.get("activeIngredient") || "").trim(),
@@ -64,6 +67,9 @@ export async function updateProduct(formData: FormData) {
   const user = await requirePermWrite("inventory");
   if (user.role !== "SUPER_ADMIN") redirect("/denied");
   const productId = String(formData.get("productId"));
+  const company = await getActiveCompany(user);
+  const target = await prisma.product.findUniqueOrThrow({ where: { id: productId } });
+  if (target.companyId !== company.id) redirect("/denied");
   const mfg = String(formData.get("mfgDate") || "");
   const exp = String(formData.get("expDate") || "");
   await prisma.product.update({
@@ -95,11 +101,12 @@ export async function updateProduct(formData: FormData) {
 
 /** Rename a parent group across all its sub-items (merging into an existing name is allowed). */
 export async function renameParentItem(formData: FormData) {
-  await requirePermWrite("inventory");
+  const actor = await requirePermWrite("inventory");
+  const company = await getActiveCompany(actor);
   const from = String(formData.get("from") || "").trim();
   const to = String(formData.get("to") || "").trim();
   if (from && to && from !== to) {
-    await prisma.product.updateMany({ where: { parentItem: from }, data: { parentItem: to } });
+    await prisma.product.updateMany({ where: { companyId: company.id, parentItem: from }, data: { parentItem: to } });
   }
   revalidatePath("/inventory");
   redirect("/inventory");
@@ -107,10 +114,11 @@ export async function renameParentItem(formData: FormData) {
 
 /** Dissolve a parent group: all its sub-items become standalone rows again. */
 export async function ungroupParentItem(formData: FormData) {
-  await requirePermWrite("inventory");
+  const actor = await requirePermWrite("inventory");
+  const company = await getActiveCompany(actor);
   const from = String(formData.get("from") || "").trim();
   if (from) {
-    await prisma.product.updateMany({ where: { parentItem: from }, data: { parentItem: null } });
+    await prisma.product.updateMany({ where: { companyId: company.id, parentItem: from }, data: { parentItem: null } });
   }
   revalidatePath("/inventory");
   redirect("/inventory");
@@ -125,6 +133,8 @@ export async function adjustStock(formData: FormData) {
   if (!reason) redirect(`/inventory/${productId}?error=noreason`);
   if (delta === 0) redirect(`/inventory/${productId}`);
   const product = await prisma.product.findUniqueOrThrow({ where: { id: productId } });
+  const activeCo = await getActiveCompany(user);
+  if (product.companyId !== activeCo.id) redirect("/denied");
   let basePcs: number;
   try {
     basePcs = convertToBaseUnit(delta, unit, product);
@@ -179,7 +189,7 @@ export async function adjustStock(formData: FormData) {
     throw e;
   }
   if (newQty <= product.reorderPoint) {
-    await notifyRole("ADMIN", "LOW_STOCK", `${product.name} is at/below reorder point (${newQty} left)`, `/inventory/${productId}`);
+    await notifyRole("ADMIN", "LOW_STOCK", `${product.name} is at/below reorder point (${newQty} left)`, `/inventory/${productId}`, product.companyId);
   }
   revalidatePath(`/inventory/${productId}`);
   redirect(`/inventory/${productId}`);

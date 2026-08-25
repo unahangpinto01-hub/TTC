@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { requirePerm } from "@/lib/auth";
+import { getActiveCompany } from "@/lib/company";
 import { getArAging } from "@/lib/reports";
 import { peso } from "@/lib/format";
 import { PageHeader } from "@/components/ui";
@@ -7,7 +8,8 @@ import { PrintButton } from "@/components/print-button";
 
 export default async function ArAgingPage() {
   await requirePerm("ar");
-  const { rows, totals } = await getArAging();
+  const company = await getActiveCompany();
+  const { rows, totals } = await getArAging(company.id);
 
   return (
     <div className="print-page">

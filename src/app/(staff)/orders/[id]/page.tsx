@@ -6,14 +6,16 @@ import { fmtDateTime, peso, termLabel } from "@/lib/format";
 import { qtyLabel } from "@/lib/units";
 import { PageHeader, StatusBadge } from "@/components/ui";
 import { convertToSO, cancelIncoming } from "../actions";
+import { getActiveCompany } from "@/lib/company";
 
 export default async function IncomingOrderPage({ params }: { params: { id: string } }) {
-  await requirePerm("orders");
+  const user = await requirePerm("orders");
+  const company = await getActiveCompany(user);
   const order = await prisma.incomingOrder.findUnique({
     where: { id: params.id },
     include: { customer: true, lines: { include: { product: true } }, salesOrders: true },
   });
-  if (!order) notFound();
+  if (!order || order.companyId !== company.id) notFound();
   const total = order.lines.reduce((s, l) => s + l.qty * l.unitPrice, 0);
 
   return (

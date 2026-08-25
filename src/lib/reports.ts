@@ -12,9 +12,9 @@ export function parseRange(searchParams: { from?: string; to?: string }): Range 
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
-export async function getSalesReport({ from, to }: Range) {
+export async function getSalesReport({ from, to }: Range, companyId: string) {
   const srs = await prisma.salesReceipt.findMany({
-    where: { status: { not: "Void" }, invoiceDate: { gte: from, lte: to } },
+    where: { companyId, status: { not: "Void" }, invoiceDate: { gte: from, lte: to } },
     include: {
       customer: true,
       deliveryReceipt: { include: { lines: { include: { product: true } } } },
@@ -59,11 +59,12 @@ export type MonthlyProductRow = {
 };
 
 /** Actual invoiced sales per product line per month, optionally filtered to one region. */
-export async function getMonthlyProductSales(year: number, region?: string) {
+export async function getMonthlyProductSales(year: number, companyId: string, region?: string) {
   const from = new Date(year, 0, 1);
   const to = new Date(year, 11, 31, 23, 59, 59, 999);
   const srs = await prisma.salesReceipt.findMany({
     where: {
+      companyId,
       status: { not: "Void" },
       invoiceDate: { gte: from, lte: to },
       ...(region ? { customer: { region } } : {}),
@@ -92,9 +93,9 @@ export async function getMonthlyProductSales(year: number, region?: string) {
   );
 }
 
-export async function getExpenseReport({ from, to }: Range) {
+export async function getExpenseReport({ from, to }: Range, companyId: string) {
   const expenses = await prisma.expense.findMany({
-    where: { date: { gte: from, lte: to } },
+    where: { companyId, date: { gte: from, lte: to } },
     orderBy: { date: "desc" },
     include: { user: { select: { name: true } } },
   });
@@ -111,9 +112,9 @@ export async function getExpenseReport({ from, to }: Range) {
   };
 }
 
-export async function getPnl(range: Range) {
-  const sales = await getSalesReport(range);
-  const expenseReport = await getExpenseReport(range);
+export async function getPnl(range: Range, companyId: string) {
+  const sales = await getSalesReport(range, companyId);
+  const expenseReport = await getExpenseReport(range, companyId);
   // COGS at the weighted-average cost captured when the goods were delivered (per PCS × base PCS).
   // Pre-feature lines have no snapshot (0) and fall back to the product's current cost.
   let cogs = 0;
@@ -142,9 +143,9 @@ export type AgingRow = {
   total: number;
 };
 
-export async function getArAging(): Promise<{ rows: AgingRow[]; totals: Omit<AgingRow, "customerId" | "customer" | "region"> }> {
+export async function getArAging(companyId: string): Promise<{ rows: AgingRow[]; totals: Omit<AgingRow, "customerId" | "customer" | "region"> }> {
   const srs = await prisma.salesReceipt.findMany({
-    where: { status: { in: ["Open", "Partial"] } },
+    where: { companyId, status: { in: ["Open", "Partial"] } },
     include: { customer: true, payments: true },
   });
   const now = new Date();
@@ -210,12 +211,13 @@ export type MerchandiseInventoryReport = {
  * Valuation always uses the CURRENT unit cost — the system stores a single static cost per product.
  */
 export async function getMerchandiseInventory(opts: {
+  companyId: string;
   asOf?: Date | null;
   category?: string;
   q?: string;
   showZero?: boolean;
 }): Promise<MerchandiseInventoryReport> {
-  const where: any = {};
+  const where: any = { companyId: opts.companyId };
   if (opts.category) where.category = opts.category;
   if (opts.q) {
     where.OR = [
@@ -276,18 +278,18 @@ export async function getMerchandiseInventory(opts: {
   };
 }
 
-export async function getMovements({ from, to }: Range) {
+export async function getMovements({ from, to }: Range, companyId: string) {
   return prisma.stockMovement.findMany({
-    where: { date: { gte: from, lte: to } },
+    where: { date: { gte: from, lte: to }, product: { companyId } },
     orderBy: { date: "desc" },
     take: 500,
     include: { product: true, user: { select: { name: true } } },
   });
 }
 
-export async function getDeliveryPerformance({ from, to }: Range) {
+export async function getDeliveryPerformance({ from, to }: Range, companyId: string) {
   const delivered = await prisma.deliveryReceipt.findMany({
-    where: { deliveredAt: { gte: from, lte: to }, status: { in: ["Delivered", "Invoiced"] } },
+    where: { companyId, deliveredAt: { gte: from, lte: to }, status: { in: ["Delivered", "Invoiced"] } },
     select: { deliveredAt: true },
   });
   const byDay = new Map<string, number>();
@@ -299,12 +301,12 @@ export async function getDeliveryPerformance({ from, to }: Range) {
 }
 
 /** Journal-style ledger entries derived from sales, purchases, expenses, collections. */
-export async function getLedger({ from, to }: Range) {
+export async function getLedger({ from, to }: Range, companyId: string) {
   const [srs, payments, expenses, poIns] = await Promise.all([
-    prisma.salesReceipt.findMany({ where: { status: { not: "Void" }, invoiceDate: { gte: from, lte: to } }, include: { customer: true } }),
-    prisma.payment.findMany({ where: { date: { gte: from, lte: to } }, include: { salesReceipt: { include: { customer: true } } } }),
-    prisma.expense.findMany({ where: { date: { gte: from, lte: to } } }),
-    prisma.stockMovement.findMany({ where: { date: { gte: from, lte: to }, type: "IN", refType: "PO" }, include: { product: true } }),
+    prisma.salesReceipt.findMany({ where: { companyId, status: { not: "Void" }, invoiceDate: { gte: from, lte: to } }, include: { customer: true } }),
+    prisma.payment.findMany({ where: { date: { gte: from, lte: to }, salesReceipt: { companyId } }, include: { salesReceipt: { include: { customer: true } } } }),
+    prisma.expense.findMany({ where: { companyId, date: { gte: from, lte: to } } }),
+    prisma.stockMovement.findMany({ where: { date: { gte: from, lte: to }, type: "IN", refType: "PO", product: { companyId } }, include: { product: true } }),
   ]);
   const entries = [
     ...srs.map((sr) => ({

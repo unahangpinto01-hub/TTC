@@ -4,16 +4,18 @@ import { PageHeader } from "@/components/ui";
 import { createProduct } from "../actions";
 import { ParentItemField } from "../parent-item-field";
 import { SkuCategoryFields } from "./sku-category-fields";
+import { getActiveCompany } from "@/lib/company";
 
 const PREFIXES = ["INS", "HER", "FNG", "MOL", "FOL", "OTH"];
 
 export default async function NewProductPage({ searchParams }: { searchParams: { error?: string } }) {
-  await requirePerm("inventory");
+  const user = await requirePerm("inventory");
+  const company = await getActiveCompany(user);
   const [suppliers, skus, parentRows] = await Promise.all([
     prisma.supplier.findMany({ where: { status: "Active" }, orderBy: { name: "asc" } }),
-    prisma.product.findMany({ select: { sku: true } }),
+    prisma.product.findMany({ where: { companyId: company.id }, select: { sku: true } }),
     prisma.product.findMany({
-      where: { parentItem: { not: null } },
+      where: { companyId: company.id, parentItem: { not: null } },
       select: { parentItem: true },
       distinct: ["parentItem"],
       orderBy: { parentItem: "asc" },

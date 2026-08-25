@@ -5,7 +5,8 @@ import { requirePerm } from "@/lib/auth";
 import { fmtDate } from "@/lib/format";
 import { FUNCTIONS, getStoredPerm } from "@/lib/permissions";
 import { PageHeader } from "@/components/ui";
-import { updateUserPerms, resetUserPassword } from "../actions";
+import { updateUserPerms, resetUserPassword, setUserCompanies } from "../actions";
+import { getPrimaryCompany } from "@/lib/company";
 
 const LEVELS = [
   ["NONE", "No Access"],
@@ -17,6 +18,14 @@ export default async function UserDetailPage({ params, searchParams }: { params:
   const viewer = await requirePerm("users");
   const target = await prisma.user.findUnique({ where: { id: params.id }, include: { customer: true } });
   if (!target) notFound();
+  const [companies, primary] = await Promise.all([
+    prisma.company.findMany({ where: { status: "Active" }, orderBy: { createdAt: "asc" } }),
+    getPrimaryCompany(),
+  ]);
+  let targetCompanyIds: string[] = [primary.id];
+  if (target.companyIdsJson) {
+    try { targetCompanyIds = JSON.parse(target.companyIdsJson); } catch {}
+  }
 
   return (
     <div className="max-w-3xl">
@@ -38,6 +47,28 @@ export default async function UserDetailPage({ params, searchParams }: { params:
         <div className="card py-3"><p className="text-xs text-gray-500">Account</p><p className="text-sm font-semibold">{target.access === "NONE" ? "No Access" : target.access === "READ_ONLY" ? "Read Only (capped)" : "Enabled"}</p></div>
         <div className="card py-3"><p className="text-xs text-gray-500">{target.role === "DEALER" ? "Dealer Account" : "Created"}</p><p className="text-sm font-semibold">{target.role === "DEALER" ? target.customer?.businessName ?? "—" : fmtDate(target.createdAt)}</p></div>
       </div>
+
+      {viewer.role === "SUPER_ADMIN" && viewer.access === "READ_WRITE" && target.role !== "DEALER" && (
+        <form action={setUserCompanies} className="card mb-4">
+          <input type="hidden" name="id" value={target.id} />
+          <p className="mb-2 font-semibold">Company Access</p>
+          <p className="mb-3 text-xs text-gray-500">
+            Which companies this user can work in. Access is explicit — nobody gets a company automatically.
+            {searchParams.error === "selfco" && <span className="ml-2 font-semibold text-red-600">You cannot remove your own access to every company.</span>}
+            {(searchParams as Record<string, string>).companies === "ok" && <span className="ml-2 font-semibold text-emerald-700">✔ Saved.</span>}
+          </p>
+          <div className="mb-3 flex flex-wrap gap-4">
+            {companies.map((c) => (
+              <label key={c.id} className="flex items-center gap-2 text-sm">
+                <input type="checkbox" name={`co_${c.id}`} defaultChecked={targetCompanyIds.includes(c.id)} className="h-4 w-4 accent-emerald-700" />
+                {c.companyName}
+                {c.isPrimary && <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-800">PRIMARY</span>}
+              </label>
+            ))}
+          </div>
+          <button className="btn-secondary" type="submit">Save Company Access</button>
+        </form>
+      )}
 
       {viewer.role === "SUPER_ADMIN" && viewer.access === "READ_WRITE" && (
         <form action={resetUserPassword} className="card mb-4 flex flex-wrap items-end gap-3">

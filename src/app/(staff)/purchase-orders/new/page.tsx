@@ -3,12 +3,14 @@ import { requirePerm } from "@/lib/auth";
 import { PageHeader } from "@/components/ui";
 import { createPO } from "../actions";
 import { POLinePicker } from "./line-picker";
+import { getActiveCompany } from "@/lib/company";
 
 export default async function NewPOPage() {
-  await requirePerm("purchaseOrders");
+  const user = await requirePerm("purchaseOrders");
+  const company = await getActiveCompany(user);
   const [suppliers, products] = await Promise.all([
     prisma.supplier.findMany({ where: { status: "Active" }, orderBy: { name: "asc" } }),
-    prisma.product.findMany({ orderBy: { sku: "asc" }, select: { id: true, sku: true, name: true, unitCost: true, piecesPerCarton: true, stockQty: true } }),
+    prisma.product.findMany({ where: { companyId: company.id }, orderBy: { sku: "asc" }, select: { id: true, sku: true, name: true, unitCost: true, piecesPerCarton: true, stockQty: true } }),
   ]);
   return (
     <div className="max-w-3xl">

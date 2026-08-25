@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requirePermWrite } from "@/lib/auth";
+import { getActiveCompany } from "@/lib/company";
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
@@ -17,6 +18,8 @@ export async function recordPayment(formData: FormData) {
   if (amount <= 0) redirect(`/invoices/${srId}?error=amount`);
 
   const sr = await prisma.salesReceipt.findUniqueOrThrow({ where: { id: srId }, include: { payments: true } });
+  const company = await getActiveCompany();
+  if (sr.companyId !== company.id) redirect("/denied"); // company isolation
   if (sr.status === "Void" || sr.status === "Paid") redirect(`/invoices/${srId}`);
 
   await prisma.payment.create({
@@ -34,8 +37,10 @@ export async function recordPayment(formData: FormData) {
 
 export async function createExpense(formData: FormData) {
   const user = await requirePermWrite("expenses");
+  const company = await getActiveCompany(user);
   await prisma.expense.create({
     data: {
+      companyId: company.id,
       date: new Date(String(formData.get("date")) || Date.now()),
       category: String(formData.get("category")),
       amount: round2(Number(formData.get("amount")) || 0),

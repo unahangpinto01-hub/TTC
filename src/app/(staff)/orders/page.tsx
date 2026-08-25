@@ -1,15 +1,17 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { requirePerm } from "@/lib/auth";
+import { getActiveCompany } from "@/lib/company";
 import { fmtDateTime, peso, termLabel } from "@/lib/format";
 import { getPage, pageCount } from "@/lib/paginate";
 import { PageHeader, Pagination, StatusBadge } from "@/components/ui";
 
 export default async function OrderInboxPage({ searchParams }: { searchParams: { status?: string; page?: string } }) {
-  await requirePerm("orders");
+  const user = await requirePerm("orders");
+  const company = await getActiveCompany(user);
   const { page, skip, take } = getPage(searchParams);
   const status = searchParams.status || "";
-  const where: any = {};
+  const where: any = { companyId: company.id };
   if (status) where.status = status;
 
   const [orders, total, pendingCount] = await Promise.all([
@@ -21,7 +23,7 @@ export default async function OrderInboxPage({ searchParams }: { searchParams: {
       include: { customer: true, lines: true, salesOrders: true },
     }),
     prisma.incomingOrder.count({ where }),
-    prisma.incomingOrder.count({ where: { status: "Pending" } }),
+    prisma.incomingOrder.count({ where: { companyId: company.id, status: "Pending" } }),
   ]);
 
   const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);

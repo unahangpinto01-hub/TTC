@@ -6,9 +6,11 @@ import { fmtDate, peso, termLabel, vatBreakdown } from "@/lib/format";
 import { cartonLabel, qtyLabel } from "@/lib/units";
 import { PageHeader, StatusBadge } from "@/components/ui";
 import { confirmSO, cancelSO, scheduleSO, generateDR, updateLineQty, removeLine } from "../actions";
+import { getActiveCompany } from "@/lib/company";
 
 export default async function SODetailPage({ params, searchParams }: { params: { id: string }; searchParams: { error?: string } }) {
   const user = await requirePerm("salesOrders");
+  const company = await getActiveCompany(user);
   const so = await prisma.salesOrder.findUnique({
     where: { id: params.id },
     include: {
@@ -20,7 +22,7 @@ export default async function SODetailPage({ params, searchParams }: { params: {
       incomingOrder: true,
     },
   });
-  if (!so) notFound();
+  if (!so || so.companyId !== company.id) notFound(); // company isolation
 
   const total = so.lines.reduce((s, l) => s + l.lineTotal, 0);
   const { net, vat } = vatBreakdown(total);

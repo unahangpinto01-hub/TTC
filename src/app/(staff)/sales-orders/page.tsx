@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { requirePerm } from "@/lib/auth";
+import { getActiveCompany } from "@/lib/company";
 import { fmtDate, peso, termLabel } from "@/lib/format";
 import { getPage, pageCount } from "@/lib/paginate";
 import { PageHeader, Pagination, StatusBadge } from "@/components/ui";
@@ -8,11 +9,12 @@ import { PageHeader, Pagination, StatusBadge } from "@/components/ui";
 const STATUSES = ["Draft", "Confirmed", "Scheduled", "Delivered", "Invoiced", "Closed", "Cancelled"];
 
 export default async function SalesOrdersPage({ searchParams }: { searchParams: { q?: string; status?: string; page?: string } }) {
-  await requirePerm("salesOrders");
+  const user = await requirePerm("salesOrders");
+  const company = await getActiveCompany(user);
   const { page, skip, take } = getPage(searchParams);
   const q = searchParams.q?.trim() || "";
   const status = searchParams.status || "";
-  const where: any = {};
+  const where: any = { companyId: company.id };
   if (status) where.status = status;
   if (q) where.OR = [{ soNumber: { contains: q } }, { customer: { businessName: { contains: q } } }];
 

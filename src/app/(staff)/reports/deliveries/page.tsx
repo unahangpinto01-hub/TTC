@@ -1,4 +1,5 @@
 import { requirePerm } from "@/lib/auth";
+import { getActiveCompany } from "@/lib/company";
 import { getDeliveryPerformance, parseRange } from "@/lib/reports";
 import { fmtDate } from "@/lib/format";
 import { PageHeader } from "@/components/ui";
@@ -8,8 +9,9 @@ const TARGET = 5;
 
 export default async function DeliveryPerformancePage({ searchParams }: { searchParams: { from?: string; to?: string } }) {
   await requirePerm("reports");
+  const company = await getActiveCompany();
   const range = parseRange(searchParams);
-  const perf = await getDeliveryPerformance(range);
+  const perf = await getDeliveryPerformance(range, company.id);
   const fromStr = range.from.toISOString().slice(0, 10);
   const toStr = range.to.toISOString().slice(0, 10);
   const total = perf.reduce((s, d) => s + d.count, 0);

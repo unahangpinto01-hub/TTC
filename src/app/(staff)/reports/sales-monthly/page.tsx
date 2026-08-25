@@ -1,6 +1,7 @@
 import { Fragment } from "react";
 import Link from "next/link";
 import { requirePerm } from "@/lib/auth";
+import { getActiveCompany } from "@/lib/company";
 import { getMonthlyProductSales } from "@/lib/reports";
 import { peso } from "@/lib/format";
 import { PageHeader } from "@/components/ui";
@@ -11,9 +12,10 @@ const REGIONS = ["Luzon", "Visayas", "Mindanao"];
 
 export default async function MonthlySalesPage({ searchParams }: { searchParams: { year?: string; region?: string } }) {
   await requirePerm("reports");
+  const company = await getActiveCompany();
   const year = Number(searchParams.year) || new Date().getFullYear();
   const region = REGIONS.includes(searchParams.region || "") ? searchParams.region! : "";
-  const rows = await getMonthlyProductSales(year, region || undefined);
+  const rows = await getMonthlyProductSales(year, company.id, region || undefined);
 
   const monthQty = (mi: number) => rows.reduce((s, r) => s + r.monthsQty[mi], 0);
   const monthAmt = (mi: number) => rows.reduce((s, r) => s + r.monthsAmt[mi], 0);

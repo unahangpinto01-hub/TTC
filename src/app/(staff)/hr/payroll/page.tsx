@@ -1,5 +1,7 @@
 import { prisma } from "@/lib/db";
 import { requirePerm } from "@/lib/auth";
+import { getActiveCompany, getPrimaryCompany } from "@/lib/company";
+import { HrPrimaryOnlyNotice } from "@/app/(staff)/hr/primary-only";
 import { peso } from "@/lib/format";
 import { ALLOWANCE_FIELDS, DEDUCTION_FIELDS } from "@/lib/payroll";
 import { PageHeader } from "@/components/ui";
@@ -10,6 +12,8 @@ import { PayrollEntryForm, type EmployeeComp, type EditEntry } from "./entry-for
 
 export default async function PayrollPage({ searchParams }: { searchParams: { cutoff?: string; error?: string; emp?: string; entry?: string } }) {
   await requirePerm("hr");
+  const activeCompany = await getActiveCompany();
+  if (!activeCompany.isPrimary) return <HrPrimaryOnlyNotice primaryName={(await getPrimaryCompany()).companyName} />;
   const [entries, employees] = await Promise.all([
     prisma.payrollEntry.findMany({ orderBy: { createdAt: "desc" }, include: { employee: true } }),
     prisma.employee.findMany({ where: { status: "Active" }, orderBy: { name: "asc" } }),

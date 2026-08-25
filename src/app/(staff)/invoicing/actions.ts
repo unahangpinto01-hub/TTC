@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db";
 import { requirePermWrite, requireStaffWrite } from "@/lib/auth";
 import { nextDocNumber } from "@/lib/numbering";
 import { notifyRoles } from "@/lib/notify";
+import { getActiveCompany } from "@/lib/company";
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
@@ -17,6 +18,8 @@ export async function convertDRtoSR(formData: FormData) {
     where: { id: drId },
     include: { lines: true, salesOrder: { include: { customer: true } }, salesReceipt: true },
   });
+  const activeCo = await getActiveCompany();
+  if (dr.companyId !== activeCo.id) redirect("/denied"); // company isolation
   if (dr.status !== "Delivered" || dr.salesReceipt) redirect(`/invoicing`);
 
   const amount = round2(dr.lines.reduce((s, l) => s + l.qty * l.unitPrice, 0));
@@ -27,9 +30,10 @@ export async function convertDRtoSR(formData: FormData) {
   dueDate.setDate(dueDate.getDate() + termDays);
 
   const vatApplied = formData.get("applyVat") === "on";
-  const srNumber = await nextDocNumber("SR");
+  const srNumber = await nextDocNumber("SR", dr.companyId);
   const sr = await prisma.salesReceipt.create({
     data: {
+      companyId: dr.companyId,
       srNumber,
       deliveryReceiptId: drId,
       customerId: dr.salesOrder.customerId,
@@ -43,7 +47,7 @@ export async function convertDRtoSR(formData: FormData) {
   });
   await prisma.deliveryReceipt.update({ where: { id: drId }, data: { status: "Invoiced" } });
   await prisma.salesOrder.update({ where: { id: dr.salesOrderId }, data: { status: "Invoiced" } });
-  await notifyRoles(["ADMIN", "SUPER_ADMIN"], "SR_CREATED", `${srNumber} issued to ${dr.salesOrder.customer.businessName} — due ${dueDate.toLocaleDateString("en-PH", { month: "short", day: "numeric" })}`, `/invoices/${sr.id}`);
+  await notifyRoles(["ADMIN", "SUPER_ADMIN"], "SR_CREATED", `${srNumber} issued to ${dr.salesOrder.customer.businessName} — due ${dueDate.toLocaleDateString("en-PH", { month: "short", day: "numeric" })}`, `/invoices/${sr.id}`, dr.companyId);
   redirect(`/invoices/${sr.id}`);
 }
 
@@ -54,6 +58,8 @@ export async function voidSR(formData: FormData) {
   const reason = String(formData.get("reason") || "").trim();
   if (!reason) redirect(`/invoices/${srId}?error=reason`);
   const sr = await prisma.salesReceipt.findUniqueOrThrow({ where: { id: srId }, include: { payments: true, deliveryReceipt: true } });
+  const voidCo = await getActiveCompany();
+  if (sr.companyId !== voidCo.id) redirect("/denied"); // company isolation
   if (sr.payments.length) redirect(`/invoices/${srId}?error=haspayments`);
   await prisma.salesReceipt.update({ where: { id: srId }, data: { status: "Void", voidReason: reason } });
   await prisma.deliveryReceipt.update({ where: { id: sr.deliveryReceiptId }, data: { status: "Delivered" } });

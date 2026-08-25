@@ -7,16 +7,18 @@ import { getPage, pageCount, PAGE_SIZE } from "@/lib/paginate";
 import { PageHeader, Pagination, StatusBadge, stockStatus } from "@/components/ui";
 import { renameParentItem, ungroupParentItem } from "./actions";
 import { InventorySearchBar } from "./search-bar";
+import { getActiveCompany } from "@/lib/company";
 
 
 export default async function InventoryPage({ searchParams }: { searchParams: { q?: string; category?: string; stock?: string; page?: string; renameParent?: string } }) {
   const user = await requirePerm("inventory");
+  const company = await getActiveCompany(user);
   const { page, skip, take } = getPage(searchParams);
   const q = searchParams.q?.trim() || "";
   const category = searchParams.category || "";
   const stockFilter = searchParams.stock || "";
 
-  const where: any = {};
+  const where: any = { companyId: company.id };
   if (q) {
     where.OR = [
       { name: { contains: q, mode: "insensitive" } },

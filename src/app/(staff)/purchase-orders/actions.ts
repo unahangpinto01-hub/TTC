@@ -7,11 +7,13 @@ import { requirePermWrite } from "@/lib/auth";
 import { nextDocNumber } from "@/lib/numbering";
 import { notifyRole } from "@/lib/notify";
 import { convertToBaseUnit, parseUnit, UnitError, CARTON } from "@/lib/units";
+import { getActiveCompany } from "@/lib/company";
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
 export async function createPO(formData: FormData) {
-  await requirePermWrite("purchaseOrders");
+  const actor = await requirePermWrite("purchaseOrders");
+  const company = await getActiveCompany(actor);
   const supplierId = String(formData.get("supplierId"));
   const productIds = formData.getAll("productId").map(String);
   const qtys = formData.getAll("qty").map(Number);
@@ -23,7 +25,9 @@ export async function createPO(formData: FormData) {
     .filter((l) => l.productId && l.qty > 0);
   if (!lines.length) redirect("/purchase-orders/new?error=empty");
 
-  const products = await prisma.product.findMany({ where: { id: { in: lines.map((l) => l.productId) } } });
+  // products must belong to the active company
+  const products = await prisma.product.findMany({ where: { id: { in: lines.map((l) => l.productId) }, companyId: company.id } });
+  if (products.length !== new Set(lines.map((l) => l.productId)).size) redirect("/purchase-orders/new?error=empty");
   let lineData;
   try {
     lineData = lines.map((l) => {
@@ -45,9 +49,9 @@ export async function createPO(formData: FormData) {
   const parsed = dateRaw ? new Date(`${dateRaw}T12:00:00`) : null;
   const date = parsed && !Number.isNaN(parsed.getTime()) ? parsed : new Date();
 
-  const poNumber = await nextDocNumber("PO");
+  const poNumber = await nextDocNumber("PO", company.id);
   const po = await prisma.purchaseOrder.create({
-    data: { poNumber, supplierId, status: "Draft", date, lines: { create: lineData } },
+    data: { companyId: company.id, poNumber, supplierId, status: "Draft", date, lines: { create: lineData } },
   });
   redirect(`/purchase-orders/${po.id}`);
 }
@@ -59,6 +63,8 @@ export async function cancelPO(formData: FormData) {
   const reason = String(formData.get("reason") || "").trim();
   if (!reason) redirect(`/purchase-orders/${id}?error=reason`);
   const po = await prisma.purchaseOrder.findUniqueOrThrow({ where: { id }, include: { lines: true } });
+  const cancelCo = await getActiveCompany(user);
+  if (po.companyId !== cancelCo.id) redirect("/denied"); // company isolation
   if (["Received", "Cancelled"].includes(po.status)) redirect(`/purchase-orders/${id}`);
   if (po.lines.some((l) => l.receivedQty > 0)) redirect(`/purchase-orders/${id}?error=received`);
   await prisma.purchaseOrder.update({
@@ -73,6 +79,8 @@ export async function markPOSent(formData: FormData) {
   await requirePermWrite("purchaseOrders");
   const id = String(formData.get("id"));
   const po = await prisma.purchaseOrder.findUniqueOrThrow({ where: { id } });
+  const sentCo = await getActiveCompany();
+  if (po.companyId !== sentCo.id) redirect("/denied"); // company isolation
   if (po.status !== "Draft") redirect(`/purchase-orders/${id}`);
   await prisma.purchaseOrder.update({ where: { id }, data: { status: "Sent" } });
   revalidatePath(`/purchase-orders/${id}`);
@@ -86,6 +94,8 @@ export async function receivePO(formData: FormData) {
   const recvQtys = formData.getAll("recvQty").map(Number);
 
   const po = await prisma.purchaseOrder.findUniqueOrThrow({ where: { id: poId }, include: { lines: { include: { product: true } } } });
+  const recvCo = await getActiveCompany(user);
+  if (po.companyId !== recvCo.id) redirect("/denied"); // company isolation
   if (["Cancelled", "Received"].includes(po.status)) redirect(`/purchase-orders/${poId}`);
 
   for (let i = 0; i < lineIds.length; i++) {
@@ -124,7 +134,7 @@ export async function receivePO(formData: FormData) {
     where: { id: poId },
     data: { status: fullyReceived ? "Received" : anyReceived ? "Partially Received" : updated.status },
   });
-  if (fullyReceived) await notifyRole("ADMIN", "PO_RECEIVED", `${po.poNumber} fully received`, `/purchase-orders/${poId}`);
+  if (fullyReceived) await notifyRole("ADMIN", "PO_RECEIVED", `${po.poNumber} fully received`, `/purchase-orders/${poId}`, po.companyId);
   revalidatePath(`/purchase-orders/${poId}`);
   redirect(`/purchase-orders/${poId}`);
 }

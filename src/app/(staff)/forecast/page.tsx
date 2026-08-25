@@ -5,15 +5,18 @@ import { peso, fmtDate } from "@/lib/format";
 import { PageHeader } from "@/components/ui";
 import { createForecast, deleteForecast } from "./actions";
 import { getParentInfos } from "./parents";
+import { getActiveCompany } from "@/lib/company";
 
 export default async function ForecastListPage() {
   const user = await requirePerm("forecast");
+  const company = await getActiveCompany(user);
   const [forecasts, parentMap] = await Promise.all([
     prisma.forecast.findMany({
+      where: { companyId: company.id },
       orderBy: [{ year: "desc" }, { createdAt: "desc" }],
       include: { lines: true },
     }),
-    getParentInfos(),
+    getParentInfos(company.id),
   ]);
   const canEdit = user.perm === "READ_WRITE";
   const thisYear = new Date().getFullYear();

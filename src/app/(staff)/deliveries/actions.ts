@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db";
 import { requirePermWrite, requireStaffWrite } from "@/lib/auth";
 import { notifyRoles } from "@/lib/notify";
 import { lineGrossWeightKg } from "@/lib/units";
+import { getActiveCompany } from "@/lib/company";
 
 export async function updateScheduleStatus(formData: FormData) {
   await requirePermWrite("schedule");
@@ -24,6 +25,8 @@ export async function markDelivered(formData: FormData) {
     where: { id: drId },
     include: { lines: { include: { product: true } }, salesOrder: { include: { customer: true, schedule: true } } },
   });
+  const activeCo = await getActiveCompany(user);
+  if (dr.companyId !== activeCo.id) redirect("/denied"); // company isolation
   if (dr.status !== "Draft") redirect(`/deliveries/${drId}`);
 
   // Validate first, in base PCS aggregated per product: stock must never go negative.
@@ -55,7 +58,7 @@ export async function markDelivered(formData: FormData) {
       },
     });
     if (newQty <= line.product.reorderPoint) {
-      await notifyRoles(["ADMIN", "SUPER_ADMIN"], "LOW_STOCK", `${line.product.name} hit reorder point (${newQty} left)`, `/inventory/${line.productId}`);
+      await notifyRoles(["ADMIN", "SUPER_ADMIN"], "LOW_STOCK", `${line.product.name} hit reorder point (${newQty} left)`, `/inventory/${line.productId}`, dr.companyId);
     }
   }
   await prisma.deliveryReceipt.update({ where: { id: drId }, data: { status: "Delivered", deliveredAt: now } });
@@ -67,7 +70,8 @@ export async function markDelivered(formData: FormData) {
     ["ADMIN", "SUPER_ADMIN"],
     "DR_FOR_INVOICING",
     `${dr.drNumber} delivered to ${dr.salesOrder.customer.businessName} — ready for invoicing`,
-    `/invoicing`
+    `/invoicing`,
+    dr.companyId
   );
   revalidatePath(`/deliveries/${drId}`);
   redirect(`/deliveries/${drId}`);
@@ -83,6 +87,8 @@ export async function voidDR(formData: FormData) {
     where: { id: drId },
     include: { lines: { include: { product: true } }, salesReceipt: true },
   });
+  const activeCo = await getActiveCompany(user);
+  if (dr.companyId !== activeCo.id) redirect("/denied"); // company isolation
   if (dr.salesReceipt) redirect(`/deliveries/${drId}?error=invoiced`);
 
   if (dr.status === "Delivered") {

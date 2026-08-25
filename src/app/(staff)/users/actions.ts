@@ -66,6 +66,24 @@ export async function resetUserPassword(formData: FormData) {
   redirect(`/users/${id}?reset=ok`);
 }
 
+/** Explicitly assign which companies a user may access (Super Admin only, step-up protected).
+    Null/empty = primary company only. You cannot remove your own access to all companies. */
+export async function setUserCompanies(formData: FormData) {
+  const me = await requireStaffWrite(["SUPER_ADMIN"]);
+  await requireStepUp("/users");
+  const id = String(formData.get("id"));
+  const companies = await prisma.company.findMany({ where: { status: "Active" } });
+  const chosen = companies.filter((c) => formData.get(`co_${c.id}`) === "on").map((c) => c.id);
+  if (id === me.id && chosen.length === 0) redirect(`/users/${id}?error=selfco`);
+  await prisma.user.update({
+    where: { id },
+    data: { companyIdsJson: chosen.length ? JSON.stringify(chosen) : null },
+  });
+  await logSecurityEvent({ action: "COMPANY_ACCESS_CHANGED", success: true, userId: id });
+  revalidatePath(`/users/${id}`);
+  redirect(`/users/${id}?companies=ok`);
+}
+
 /** Set a user's access level. You cannot change your own (prevents locking yourself out). */
 export async function setUserAccess(formData: FormData) {
   const me = await requireStaffWrite(["SUPER_ADMIN"]);

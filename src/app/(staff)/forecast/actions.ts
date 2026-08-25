@@ -4,11 +4,14 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requirePermWrite } from "@/lib/auth";
+import { getActiveCompany } from "@/lib/company";
 
 export async function createForecast(formData: FormData) {
-  await requirePermWrite("forecast");
+  const actor = await requirePermWrite("forecast");
+  const company = await getActiveCompany(actor);
   const forecast = await prisma.forecast.create({
     data: {
+      companyId: company.id,
       title: String(formData.get("title")).trim(),
       year: Number(formData.get("year")) || new Date().getFullYear(),
       area: String(formData.get("area")).trim(),
@@ -18,9 +21,10 @@ export async function createForecast(formData: FormData) {
 }
 
 export async function deleteForecast(formData: FormData) {
-  await requirePermWrite("forecast");
+  const actor = await requirePermWrite("forecast");
+  const company = await getActiveCompany(actor);
   const id = String(formData.get("id"));
-  await prisma.forecast.delete({ where: { id } });
+  await prisma.forecast.deleteMany({ where: { id, companyId: company.id } }); // company isolation
   revalidatePath("/forecast");
   redirect("/forecast");
 }
@@ -35,8 +39,11 @@ export async function saveForecast(input: {
   area: string;
   rows: ForecastRowInput[];
 }): Promise<{ ok: boolean }> {
-  await requirePermWrite("forecast");
+  const actor = await requirePermWrite("forecast");
+  const company = await getActiveCompany(actor);
   const { forecastId } = input;
+  const owned = await prisma.forecast.findUnique({ where: { id: forecastId } });
+  if (!owned || owned.companyId !== company.id) redirect("/denied"); // company isolation
   await prisma.forecast.update({
     where: { id: forecastId },
     data: {

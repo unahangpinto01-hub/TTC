@@ -1,5 +1,5 @@
 import { peso, fmtDate, vatBreakdown } from "@/lib/format";
-import { getCompany, getDocVisibility, type DocTypeKey } from "@/lib/company";
+import { getActiveCompany, getDocVisibility, type DocTypeKey } from "@/lib/company";
 import { PrintButton, BackButton } from "./print-button";
 
 type Line = { name: string; qty: number; unitPrice: number; unit?: string; baseQty?: number };
@@ -35,7 +35,7 @@ export async function PrintDoc({
   /** which document this is — controls which company details print (Company Details matrix) */
   docType?: DocTypeKey;
 }) {
-  const company = await getCompany(); // single source of truth — never hard-coded per document
+  const company = await getActiveCompany(); // ACTIVE company's letterhead — pages verify the record belongs to it
   const vis = getDocVisibility(company, docType);
   const contactLine = [
     vis.mobileNo && company.mobileNo && `Mobile ${company.mobileNo}`,
