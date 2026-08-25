@@ -24,7 +24,7 @@ export default async function SODetailPage({ params, searchParams }: { params: {
   });
   if (!so || so.companyId !== company.id) notFound(); // company isolation
 
-  const total = so.lines.reduce((s, l) => s + l.lineTotal, 0);
+  const total = so.lines.reduce((s, l) => s + l.lineTotal, 0) + so.freightCharge;
   const { net, vat } = vatBreakdown(total);
   // stock check in base PCS, aggregated per product across lines
   const neededPcs = new Map<string, number>();
@@ -124,6 +124,9 @@ export default async function SODetailPage({ params, searchParams }: { params: {
             })}
           </tbody>
           <tfoot className="border-t border-gray-200 bg-gray-50 text-sm">
+            {so.freightCharge > 0 && (
+              <tr><td colSpan={3} className="px-3 py-1 text-right text-gray-500">Freight Charge</td><td className="px-3 py-1 text-right">{peso(so.freightCharge)}</td><td colSpan={3} /></tr>
+            )}
             <tr><td colSpan={3} className="px-3 py-1 text-right text-gray-500">VAT-exclusive</td><td className="px-3 py-1 text-right">{peso(net)}</td><td colSpan={3} /></tr>
             <tr><td colSpan={3} className="px-3 py-1 text-right text-gray-500">VAT 12%</td><td className="px-3 py-1 text-right">{peso(vat)}</td><td colSpan={3} /></tr>
             <tr className="font-bold"><td colSpan={3} className="px-3 py-2 text-right">TOTAL</td><td className="px-3 py-2 text-right">{peso(total)}</td><td colSpan={3} /></tr>

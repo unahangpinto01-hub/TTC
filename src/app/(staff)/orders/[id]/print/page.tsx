@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requirePerm } from "@/lib/auth";
-import { fmtDateTime, termLabel } from "@/lib/format";
+import { fmtDate, fmtDateTime, peso, termLabel } from "@/lib/format";
 import { PrintDoc } from "@/components/print-doc";
 import { getActiveCompany } from "@/lib/company";
 
@@ -19,18 +19,20 @@ export default async function IncomingOrderPrintPage({ params }: { params: { id:
       docType="ORDER"
       title="Incoming Order"
       docNumber={`ORD-${order.id.slice(-6).toUpperCase()}`}
-      date={order.createdAt}
+      date={order.orderDate}
       meta={[
         ["Customer", order.customer.businessName],
         ["Region", `${order.customer.region} · ${order.customer.province}`],
         ["Contact", `${order.customer.contactPerson} · ${order.customer.mobile}`],
         ["Source", order.source],
-        ["Received", fmtDateTime(order.createdAt)],
+        ["Order Date", fmtDate(order.orderDate)],
+        ["Encoded", fmtDateTime(order.createdAt)],
         ["Payment Term", termLabel(order.term)],
         ["Status", order.status],
         ["Sales Order", order.salesOrders[0]?.soNumber ?? "—"],
       ]}
       lines={order.lines.map((l) => ({ name: l.product.name, qty: l.qty, unitPrice: l.unitPrice, unit: l.unit, baseQty: l.baseQty }))}
+      extraCharges={[{ label: `Freight Charge (${peso(order.freightPerCarton)} / CTN)`, amount: order.freightTotal }]}
       signatures={[
         { label: "Encoded by (Admin Clerk)" },
         { label: "Approved by (Supervisor)" },

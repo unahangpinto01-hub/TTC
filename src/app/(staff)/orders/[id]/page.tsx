@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requirePerm } from "@/lib/auth";
-import { fmtDateTime, peso, termLabel } from "@/lib/format";
+import { fmtDate, fmtDateTime, peso, termLabel } from "@/lib/format";
 import { qtyLabel } from "@/lib/units";
 import { PageHeader, StatusBadge } from "@/components/ui";
 import { convertToSO, cancelIncoming } from "../actions";
@@ -16,7 +16,8 @@ export default async function IncomingOrderPage({ params }: { params: { id: stri
     include: { customer: true, lines: { include: { product: true } }, salesOrders: true },
   });
   if (!order || order.companyId !== company.id) notFound();
-  const total = order.lines.reduce((s, l) => s + l.qty * l.unitPrice, 0);
+  const subtotal = order.lines.reduce((s, l) => s + l.qty * l.unitPrice, 0);
+  const total = subtotal + order.freightTotal;
 
   return (
     <div className="max-w-3xl">
@@ -26,7 +27,11 @@ export default async function IncomingOrderPage({ params }: { params: { id: stri
       </PageHeader>
 
       <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4">
-        <div className="card py-3"><p className="text-xs text-gray-500">Received</p><p className="text-sm font-semibold">{fmtDateTime(order.createdAt)}</p></div>
+        <div className="card py-3">
+          <p className="text-xs text-gray-500">Order Date</p>
+          <p className="text-sm font-semibold">{fmtDate(order.orderDate)}</p>
+          <p className="text-xs text-gray-400">encoded {fmtDateTime(order.createdAt)}</p>
+        </div>
         <div className="card py-3"><p className="text-xs text-gray-500">Source</p><p className="text-sm font-semibold uppercase">{order.source}</p></div>
         <div className="card py-3"><p className="text-xs text-gray-500">Payment Term</p><p className="text-sm font-semibold">{termLabel(order.term)}</p></div>
         <div className="card py-3"><p className="text-xs text-gray-500">Total</p><p className="text-sm font-semibold">{peso(total)}</p></div>
@@ -64,6 +69,18 @@ export default async function IncomingOrderPage({ params }: { params: { id: stri
               </tr>
             ))}
           </tbody>
+          {order.freightTotal > 0 && (
+            <tfoot className="border-t border-gray-200 bg-gray-50 text-sm">
+              <tr><td colSpan={3} className="px-3 py-1 text-right text-gray-500">Merchandise</td><td className="px-3 py-1 text-right">{peso(subtotal)}</td><td /></tr>
+              <tr>
+                <td colSpan={3} className="px-3 py-1 text-right text-gray-500">
+                  Freight ({order.lines.filter((l) => l.unit === "CARTON").reduce((s, l) => s + l.qty, 0)} CTN × {peso(order.freightPerCarton)})
+                </td>
+                <td className="px-3 py-1 text-right">{peso(order.freightTotal)}</td><td />
+              </tr>
+              <tr className="font-bold"><td colSpan={3} className="px-3 py-2 text-right">TOTAL</td><td className="px-3 py-2 text-right">{peso(total)}</td><td /></tr>
+            </tfoot>
+          )}
         </table>
       </div>
 

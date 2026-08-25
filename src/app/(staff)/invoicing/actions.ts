@@ -22,7 +22,9 @@ export async function convertDRtoSR(formData: FormData) {
   if (dr.companyId !== activeCo.id) redirect("/denied"); // company isolation
   if (dr.status !== "Delivered" || dr.salesReceipt) redirect(`/invoicing`);
 
-  const amount = round2(dr.lines.reduce((s, l) => s + l.qty * l.unitPrice, 0));
+  // freight from the sales order is billed in full on its (single) invoice
+  const freightCharge = dr.salesOrder.freightCharge;
+  const amount = round2(dr.lines.reduce((s, l) => s + l.qty * l.unitPrice, 0) + freightCharge);
   const term = dr.salesOrder.term;
   const termDays = term === "COD" ? 0 : Number(term);
   const baseDate = dr.deliveredAt ?? dr.date;
@@ -38,6 +40,7 @@ export async function convertDRtoSR(formData: FormData) {
       deliveryReceiptId: drId,
       customerId: dr.salesOrder.customerId,
       amount,
+      freightCharge,
       term,
       vatApplied,
       invoiceDate: new Date(),

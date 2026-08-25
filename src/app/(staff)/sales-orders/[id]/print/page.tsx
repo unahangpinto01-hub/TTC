@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requirePerm } from "@/lib/auth";
-import { termLabel } from "@/lib/format";
+import { peso, termLabel } from "@/lib/format";
 import { PrintDoc } from "@/components/print-doc";
 import { getActiveCompany } from "@/lib/company";
 
@@ -27,6 +27,7 @@ export default async function SOPrintPage({ params }: { params: { id: string } }
         ["Status", so.status],
       ]}
       lines={so.lines.map((l) => ({ name: `${l.product.name}`, qty: l.qty, unitPrice: l.unitPrice, unit: l.unit, baseQty: l.baseQty }))}
+      extraCharges={[{ label: "Freight Charge", amount: so.freightCharge }]}
       signatures={[
         { label: "Prepared by (Admin Clerk)", name: so.preparedBy?.name },
         { label: "Approved by (Supervisor)" },

@@ -198,6 +198,9 @@ model IncomingOrder {
   term       String   // COD | 30 | 60 | 90
   status     String   @default("Pending") // Pending | Converted | Cancelled
   notes      String?
+  orderDate  DateTime @default(now()) // when the transaction actually happened (backdatable); createdAt = when encoded
+  freightPerCarton Float @default(0) // ₱ per carton, charged to the customer
+  freightTotal     Float @default(0) // rate × cartons on CARTON lines, snapshotted at encode time
   createdAt  DateTime @default(now())
 
   lines       IncomingOrderLine[]
@@ -228,6 +231,7 @@ model SalesOrder {
   term            String
   status          String    @default("Draft") // Draft | Confirmed | Scheduled | Delivered | Invoiced | Closed | Cancelled
   orderDate       DateTime  @default(now())
+  freightCharge   Float     @default(0) // total freight billed to the customer, carried from the incoming order
   preparedById    String?
   preparedBy      User?     @relation(fields: [preparedById], references: [id])
   voidReason      String?
@@ -310,6 +314,7 @@ model SalesReceipt {
   customerId        String
   customer          Customer        @relation(fields: [customerId], references: [id])
   amount            Float
+  freightCharge     Float    @default(0) // freight portion included in amount (shown as its own line on the invoice)
   term              String
   vatApplied        Boolean  @default(true) // false = VAT-exempt / non-VAT sale
   invoiceDate       DateTime @default(now())

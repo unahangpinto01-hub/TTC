@@ -12,6 +12,7 @@ export async function PrintDoc({
   date,
   meta,
   lines,
+  extraCharges = [],
   signatures,
   footnote,
   showPrices = true,
@@ -24,6 +25,8 @@ export async function PrintDoc({
   date: Date;
   meta: [string, string][];
   lines: Line[];
+  /** non-merchandise charges added to the total (e.g. freight) — rendered above the VAT/total rows */
+  extraCharges?: { label: string; amount: number }[];
   signatures: { label: string; name?: string }[];
   footnote?: string;
   /** false = goods-only document (e.g. Delivery Receipt): hides unit prices, amounts, and totals */
@@ -48,7 +51,8 @@ export async function PrintDoc({
     vis.phicNo && company.phicNo && `PHIC ${company.phicNo}`,
     vis.hdmfNo && company.hdmfNo && `HDMF ${company.hdmfNo}`,
   ].filter(Boolean).join(" · ");
-  const total = lines.reduce((s, l) => s + l.qty * l.unitPrice, 0);
+  const charges = extraCharges.filter((c) => c.amount > 0);
+  const total = lines.reduce((s, l) => s + l.qty * l.unitPrice, 0) + charges.reduce((s, c) => s + c.amount, 0);
   const { net, vat } = vatBreakdown(total);
   return (
     <div className="print-page mx-auto max-w-[210mm] rounded-xl border border-gray-200 bg-white p-10 shadow-sm">
@@ -116,6 +120,12 @@ export async function PrintDoc({
         </tbody>
         {showPrices ? (
           <tfoot>
+            {charges.map((c) => (
+              <tr key={c.label}>
+                <td colSpan={4} className="py-1 text-right text-gray-500">{c.label}</td>
+                <td className="py-1 text-right">{peso(c.amount)}</td>
+              </tr>
+            ))}
             {showVat &&
               (vatApplied ? (
                 <>

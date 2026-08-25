@@ -57,7 +57,7 @@ export default async function OrderInboxPage({ searchParams }: { searchParams: {
           </thead>
           <tbody className="divide-y divide-gray-100">
             {orders.map((o) => {
-              const amount = o.lines.reduce((s, l) => s + l.qty * l.unitPrice, 0);
+              const amount = o.lines.reduce((s, l) => s + l.qty * l.unitPrice, 0) + o.freightTotal;
               const stale = o.status === "Pending" && o.createdAt < dayAgo;
               return (
                 <tr key={o.id} className={`hover:bg-gray-50 ${stale ? "bg-red-50/60" : ""}`}>

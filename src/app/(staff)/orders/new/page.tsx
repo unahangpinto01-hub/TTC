@@ -45,6 +45,17 @@ export default async function EncodeOrderPage({ searchParams }: { searchParams: 
             </select>
           </div>
           <div>
+            <label className="label">Order Date</label>
+            <input
+              name="orderDate"
+              type="date"
+              defaultValue={new Date().toISOString().slice(0, 10)}
+              max={new Date().toISOString().slice(0, 10)}
+              className="input"
+              title="When the transaction actually happened — backdate this when encoding a previous transaction"
+            />
+          </div>
+          <div>
             <label className="label">Payment Term</label>
             <select name="term" className="input">
               <option value="COD">COD</option>
@@ -52,6 +63,11 @@ export default async function EncodeOrderPage({ searchParams }: { searchParams: 
               <option value="60">60 days</option>
               <option value="90">90 days</option>
             </select>
+          </div>
+          <div>
+            <label className="label">Freight Charge (₱ per carton)</label>
+            <input name="freightPerCarton" type="number" min={0} step="0.01" placeholder="0.00" className="input" />
+            <p className="mt-0.5 text-xs text-gray-500">Charged to the customer: rate × cartons on CARTON lines.</p>
           </div>
           <div className="sm:col-span-2">
             <label className="label">Notes</label>

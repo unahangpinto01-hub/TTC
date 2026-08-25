@@ -40,7 +40,12 @@ export default async function InvoicingQueuePage() {
                 <td className="table-td">{fmtDate(dr.deliveredAt)}</td>
                 <td className="table-td">{dr.salesOrder.customer.businessName}</td>
                 <td className="table-td text-sm">{termLabel(dr.salesOrder.term)}</td>
-                <td className="table-td text-right">{peso(dr.lines.reduce((s, l) => s + l.qty * l.unitPrice, 0))}</td>
+                <td className="table-td text-right">
+                  {peso(dr.lines.reduce((s, l) => s + l.qty * l.unitPrice, 0) + dr.salesOrder.freightCharge)}
+                  {dr.salesOrder.freightCharge > 0 && (
+                    <p className="text-xs font-normal text-gray-400">incl. {peso(dr.salesOrder.freightCharge)} freight</p>
+                  )}
+                </td>
                 <td className="table-td text-right">
                   <form action={convertDRtoSR} className="flex items-center justify-end gap-3">
                     <input type="hidden" name="drId" value={dr.id} />

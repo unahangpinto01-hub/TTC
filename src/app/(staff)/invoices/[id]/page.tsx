@@ -72,6 +72,9 @@ export default async function SRDetailPage({ params, searchParams }: { params: {
             ))}
           </tbody>
           <tfoot className="border-t border-gray-200 bg-gray-50 text-sm">
+            {sr.freightCharge > 0 && (
+              <tr><td colSpan={2} className="px-3 py-1 text-right text-gray-500">Freight Charge</td><td colSpan={2} className="px-3 py-1 text-right">{peso(sr.freightCharge)}</td></tr>
+            )}
             {sr.vatApplied ? (
               <>
                 <tr><td colSpan={2} className="px-3 py-1 text-right text-gray-500">VAT-exclusive</td><td colSpan={2} className="px-3 py-1 text-right">{peso(net)}</td></tr>

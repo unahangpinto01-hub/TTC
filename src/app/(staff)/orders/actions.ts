@@ -9,6 +9,8 @@ import { notifyRoles } from "@/lib/notify";
 import { convertToBaseUnit, parseUnit, unitDealerPrice, UnitError } from "@/lib/units";
 import { getActiveCompany } from "@/lib/company";
 
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
 export async function encodeOrder(formData: FormData) {
   const actor = await requirePermWrite("orders");
   const company = await getActiveCompany(actor);
@@ -47,6 +49,17 @@ export async function encodeOrder(formData: FormData) {
     throw e;
   }
 
+  // order date from the form — allows encoding a previous transaction (future/blank/invalid fall back to today)
+  const dateRaw = String(formData.get("orderDate") || "");
+  const parsedDate = dateRaw ? new Date(`${dateRaw}T12:00:00`) : null;
+  const orderDate =
+    parsedDate && !Number.isNaN(parsedDate.getTime()) && parsedDate.getTime() < Date.now() ? parsedDate : new Date();
+
+  // freight is billed per carton on CARTON lines only — loose PCS lines carry no freight
+  const freightPerCarton = Math.max(0, Number(formData.get("freightPerCarton")) || 0);
+  const freightCartons = lines.filter((l) => l.unit === "CARTON").reduce((s, l) => s + l.qty, 0);
+  const freightTotal = round2(freightPerCarton * freightCartons);
+
   const order = await prisma.incomingOrder.create({
     data: {
       companyId: company.id,
@@ -55,6 +68,9 @@ export async function encodeOrder(formData: FormData) {
       term,
       status: "Pending",
       notes,
+      orderDate,
+      freightPerCarton,
+      freightTotal,
       lines: { create: lineData },
     },
   });
@@ -82,6 +98,8 @@ export async function convertToSO(formData: FormData) {
       incomingOrderId: order.id,
       term: order.term,
       status: "Draft",
+      orderDate: order.orderDate, // the SO carries the (possibly backdated) transaction date
+      freightCharge: order.freightTotal,
       preparedById: user.id,
       lines: {
         create: order.lines.map((l) => ({
