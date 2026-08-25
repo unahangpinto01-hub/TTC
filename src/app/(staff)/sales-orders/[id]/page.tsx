@@ -185,7 +185,20 @@ export default async function SODetailPage({ params, searchParams }: { params: {
                   </div>
                 ))}
               </div>
-              <button className="btn-primary" type="submit">Generate DR →</button>
+              <div className="flex flex-wrap items-end gap-3">
+                <div>
+                  <label className="label">Delivery Date</label>
+                  <input
+                    name="drDate"
+                    type="date"
+                    defaultValue={new Date().toISOString().slice(0, 10)}
+                    max={new Date().toISOString().slice(0, 10)}
+                    className="input"
+                    title="When the goods were (or will be) delivered — backdate this when encoding a past transaction; the stock card uses this date"
+                  />
+                </div>
+                <button className="btn-primary" type="submit">Generate DR →</button>
+              </div>
             </form>
           </div>
         )}

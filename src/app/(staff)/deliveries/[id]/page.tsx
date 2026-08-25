@@ -40,6 +40,11 @@ export default async function DRDetailPage({ params, searchParams }: { params: {
           ⚠ Cannot deliver — stock on hand is not enough for one or more lines (stock can never go negative). Adjust stock or void this DR and generate a smaller one.
         </p>
       )}
+      {searchParams.error === "history" && (
+        <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+          ⚠ Cannot deliver on the backdated date — stock on hand for one or more products would go below zero at some point in history. Check the stock card, or void this DR and generate one with a later date.
+        </p>
+      )}
       {searchParams.error === "reason" && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">A void reason is required.</p>}
       {searchParams.error === "invoiced" && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">Cannot void — an invoice already exists for this DR. Void the SR first.</p>}
       {dr.status === "Void" && <p className="mb-4 rounded-xl bg-red-50 p-3 text-sm text-red-700">Voided: {dr.voidReason}</p>}

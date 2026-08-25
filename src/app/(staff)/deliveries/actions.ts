@@ -5,8 +5,9 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requirePermWrite, requireStaffWrite } from "@/lib/auth";
 import { notifyRoles } from "@/lib/notify";
-import { lineGrossWeightKg } from "@/lib/units";
+import { lineGrossWeightKg, UnitError } from "@/lib/units";
 import { getActiveCompany } from "@/lib/company";
+import { recomputeStockChain } from "@/lib/stock";
 
 export async function updateScheduleStatus(formData: FormData) {
   await requirePermWrite("schedule");
@@ -36,32 +37,50 @@ export async function markDelivered(formData: FormData) {
   if (short.length) redirect(`/deliveries/${drId}?error=short`);
 
   const now = new Date();
+  // a DR generated with a past delivery date is an encoded past transaction: the stock card
+  // and deliveredAt use that date, and every later balance is re-threaded
+  const backdated = dr.date.getTime() < now.getTime() - 60 * 1000;
+  const effectiveAt = backdated ? dr.date : now;
+
   const running = new Map<string, number>(); // per-product running balance across this DR's lines
+  try {
+    // one transaction for the whole DR: either every line's stock moves or none does
+    await prisma.$transaction(async (tx) => {
+      for (const line of dr.lines) {
+        const newQty = (running.get(line.productId) ?? line.product.stockQty) - line.baseQty;
+        running.set(line.productId, newQty);
+        // snapshot at the moment of delivery — historical records must not change when the master data does:
+        // weighted-average cost per PCS (COGS) and this line's total gross weight (logistics)
+        await tx.dRLine.update({
+          where: { id: line.id },
+          data: {
+            unitCostAtSale: line.product.unitCost,
+            grossWeightKg: lineGrossWeightKg(line.baseQty, line.product) ?? 0,
+          },
+        });
+        await tx.product.update({ where: { id: line.productId }, data: { stockQty: newQty } });
+        await tx.stockMovement.create({
+          data: {
+            productId: line.productId, type: "OUT", qty: line.baseQty, balanceAfter: newQty,
+            enteredQty: line.qty, enteredUnit: line.unit,
+            refType: "DR", refNo: dr.drNumber, date: effectiveAt, userId: user.id,
+          },
+        });
+        if (backdated) await recomputeStockChain(tx, line.productId);
+      }
+      await tx.deliveryReceipt.update({ where: { id: drId }, data: { status: "Delivered", deliveredAt: effectiveAt } });
+    }, { timeout: 60000 });
+  } catch (e) {
+    // recompute refuses when the backdated OUT would push some point of history below zero
+    if (e instanceof UnitError) redirect(`/deliveries/${drId}?error=history`);
+    throw e;
+  }
   for (const line of dr.lines) {
-    const newQty = (running.get(line.productId) ?? line.product.stockQty) - line.baseQty;
-    running.set(line.productId, newQty);
-    // snapshot at the moment of delivery — historical records must not change when the master data does:
-    // weighted-average cost per PCS (COGS) and this line's total gross weight (logistics)
-    await prisma.dRLine.update({
-      where: { id: line.id },
-      data: {
-        unitCostAtSale: line.product.unitCost,
-        grossWeightKg: lineGrossWeightKg(line.baseQty, line.product) ?? 0,
-      },
-    });
-    await prisma.product.update({ where: { id: line.productId }, data: { stockQty: newQty } });
-    await prisma.stockMovement.create({
-      data: {
-        productId: line.productId, type: "OUT", qty: line.baseQty, balanceAfter: newQty,
-        enteredQty: line.qty, enteredUnit: line.unit,
-        refType: "DR", refNo: dr.drNumber, date: now, userId: user.id,
-      },
-    });
+    const newQty = running.get(line.productId)!;
     if (newQty <= line.product.reorderPoint) {
       await notifyRoles(["ADMIN", "SUPER_ADMIN"], "LOW_STOCK", `${line.product.name} hit reorder point (${newQty} left)`, `/inventory/${line.productId}`, dr.companyId);
     }
   }
-  await prisma.deliveryReceipt.update({ where: { id: drId }, data: { status: "Delivered", deliveredAt: now } });
   await prisma.salesOrder.update({ where: { id: dr.salesOrderId }, data: { status: "Delivered" } });
   if (dr.salesOrder.schedule) {
     await prisma.deliverySchedule.update({ where: { id: dr.salesOrder.schedule.id }, data: { status: "Delivered" } });

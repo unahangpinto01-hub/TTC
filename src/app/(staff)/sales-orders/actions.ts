@@ -8,6 +8,7 @@ import { nextDocNumber } from "@/lib/numbering";
 import { notifyRoles } from "@/lib/notify";
 import { convertToBaseUnit } from "@/lib/units";
 import { getActiveCompany } from "@/lib/company";
+import { parseEffectiveDate } from "@/lib/stock";
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
@@ -116,6 +117,10 @@ export async function generateDR(formData: FormData) {
   const checkedBy = admins.find((a) => a.role === "ADMIN")?.name ?? "";
   const approvedBy = admins.find((a) => a.role === "SUPER_ADMIN")?.name ?? "";
 
+  // delivery date from the form — backdated when encoding a past transaction (blank/future = now).
+  // markDelivered dates the stock OUT entries on this when it's in the past.
+  const drDate = parseEffectiveDate(String(formData.get("drDate") || ""));
+
   const drNumber = await nextDocNumber("DR", so.companyId);
   const dr = await prisma.deliveryReceipt.create({
     data: {
@@ -123,6 +128,7 @@ export async function generateDR(formData: FormData) {
       drNumber,
       salesOrderId: soId,
       status: "Draft",
+      date: drDate,
       preparedBy: user.name,
       checkedBy,
       approvedBy,
