@@ -8,6 +8,7 @@ import { nextDocNumber } from "@/lib/numbering";
 import { notifyRole } from "@/lib/notify";
 import { convertToBaseUnit, parseUnit, UnitError, CARTON } from "@/lib/units";
 import { getActiveCompany } from "@/lib/company";
+import { recomputeStockChain, parseEffectiveDate } from "@/lib/stock";
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
@@ -86,12 +87,15 @@ export async function markPOSent(formData: FormData) {
   revalidatePath(`/purchase-orders/${id}`);
 }
 
-/** Receive quantities against PO lines; adds IN stock movements. */
+/** Receive quantities against PO lines; adds IN stock movements dated on the received date. */
 export async function receivePO(formData: FormData) {
   const user = await requirePermWrite("purchaseOrders");
   const poId = String(formData.get("poId"));
   const lineIds = formData.getAll("lineId").map(String);
   const recvQtys = formData.getAll("recvQty").map(Number);
+  // when the stocks were physically received — backdated days land at end-of-day (createdAt keeps the entry time)
+  const receivedAt = parseEffectiveDate(String(formData.get("receivedDate") || ""));
+  const backdated = receivedAt.getTime() < Date.now() - 60 * 1000;
 
   const po = await prisma.purchaseOrder.findUniqueOrThrow({ where: { id: poId }, include: { lines: { include: { product: true } } } });
   const recvCo = await getActiveCompany(user);
@@ -116,14 +120,18 @@ export async function receivePO(formData: FormData) {
         ? (oldQty * line.product.unitCost + basePcs * receivedCostPerPcs) / (oldQty + basePcs)
         : receivedCostPerPcs;
 
-    await prisma.pOLine.update({ where: { id: line.id }, data: { receivedQty: line.receivedQty + qty } });
-    await prisma.product.update({ where: { id: line.productId }, data: { stockQty: newStock, unitCost: newAvgCost } });
-    await prisma.stockMovement.create({
-      data: {
-        productId: line.productId, type: "IN", qty: basePcs, balanceAfter: newStock,
-        enteredQty: qty, enteredUnit: line.unit,
-        refType: "PO", refNo: po.poNumber, userId: user.id,
-      },
+    await prisma.$transaction(async (tx) => {
+      await tx.pOLine.update({ where: { id: line.id }, data: { receivedQty: line.receivedQty + qty } });
+      await tx.product.update({ where: { id: line.productId }, data: { stockQty: newStock, unitCost: newAvgCost } });
+      await tx.stockMovement.create({
+        data: {
+          productId: line.productId, type: "IN", qty: basePcs, balanceAfter: newStock,
+          enteredQty: qty, enteredUnit: line.unit,
+          refType: "PO", refNo: po.poNumber, date: receivedAt, userId: user.id,
+        },
+      });
+      // a backdated receipt slots into stock-card history — rebuild every later balance
+      if (backdated) await recomputeStockChain(tx, line.productId);
     });
   }
 

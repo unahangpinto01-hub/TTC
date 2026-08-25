@@ -101,7 +101,20 @@ export default async function PODetailPage({ params, searchParams }: { params: {
           </table>
         </div>
         {receivable && (
-          <button className="btn-primary mt-3" type="submit">Receive Items (adds stock IN)</button>
+          <div className="mt-3 flex flex-wrap items-end gap-3">
+            <div>
+              <label className="label">Date Received</label>
+              <input
+                name="receivedDate"
+                type="date"
+                defaultValue={new Date().toISOString().slice(0, 10)}
+                max={new Date().toISOString().slice(0, 10)}
+                className="input"
+                title="When the stocks were physically received — the stock card uses this date"
+              />
+            </div>
+            <button className="btn-primary" type="submit">Receive Items (adds stock IN)</button>
+          </div>
         )}
       </form>
 
