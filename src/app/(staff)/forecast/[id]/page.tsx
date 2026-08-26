@@ -7,6 +7,7 @@ import { PrintButton } from "@/components/print-button";
 import { getParentInfos } from "../parents";
 import { ForecastGrid, type GridRow, type ParentOption } from "./forecast-grid";
 import { getActiveCompany } from "@/lib/company";
+import { getCategoryNames } from "@/lib/categories";
 
 export default async function ForecastDetailPage({ params }: { params: { id: string } }) {
   const user = await requirePerm("forecast");
@@ -53,6 +54,7 @@ export default async function ForecastDetailPage({ params }: { params: { id: str
         initialRows={rows}
         parents={parents}
         readOnly={user.perm !== "READ_WRITE"}
+        categoryOrder={await getCategoryNames()}
       />
     </div>
   );

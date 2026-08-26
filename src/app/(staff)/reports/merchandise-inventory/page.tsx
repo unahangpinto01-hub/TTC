@@ -4,8 +4,7 @@ import { getActiveCompany } from "@/lib/company";
 import { peso, fmtDate } from "@/lib/format";
 import { getMerchandiseInventory } from "@/lib/reports";
 import { PrintButton, BackButton } from "@/components/print-button";
-
-const CATEGORIES = ["Insecticide", "Herbicide", "Fungicide", "Molluscicide", "Foliar Fertilizer", "Others"];
+import { getCategoryNames } from "@/lib/categories";
 
 export default async function MerchandiseInventoryPage({
   searchParams,
@@ -14,6 +13,7 @@ export default async function MerchandiseInventoryPage({
 }) {
   await requirePerm("reports");
   const company = await getActiveCompany();
+  const CATEGORIES = await getCategoryNames();
   const today = new Date().toISOString().slice(0, 10);
   const asOfStr = searchParams.asOf || today;
   const category = searchParams.category || "";

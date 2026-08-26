@@ -7,8 +7,8 @@ import { getPrimaryCompany } from "@/lib/company";
 import { getPage, pageCount } from "@/lib/paginate";
 import { Pagination, StatusBadge, stockStatus } from "@/components/ui";
 import { AddToCartButton } from "./cart-ui";
+import { getCategoryNames } from "@/lib/categories";
 
-const CATEGORIES = ["Insecticide", "Herbicide", "Fungicide", "Molluscicide", "Foliar Fertilizer", "Others"];
 const CROPS = ["Rice", "Corn", "Vegetables", "Mango", "Pineapple", "Fruit Trees"];
 
 export default async function CatalogPage({ searchParams }: { searchParams: { q?: string; category?: string; crop?: string; page?: string } }) {
@@ -23,9 +23,10 @@ export default async function CatalogPage({ searchParams }: { searchParams: { q?
   if (category) where.category = category;
   if (crop) where.cropTags = { contains: crop };
 
-  const [products, total] = await Promise.all([
+  const [products, total, CATEGORIES] = await Promise.all([
     prisma.product.findMany({ where, orderBy: { name: "asc" }, skip, take }),
     prisma.product.count({ where }),
+    getCategoryNames(),
   ]);
   const params: Record<string, string> = {};
   if (q) params.q = q;

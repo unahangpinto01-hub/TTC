@@ -6,12 +6,12 @@ import { fmtDate } from "@/lib/format";
 import { cartonBreakdown } from "@/lib/units";
 import { PageHeader } from "@/components/ui";
 import { PrintButton, BackButton } from "@/components/print-button";
-
-const CATEGORIES = ["Insecticide", "Herbicide", "Fungicide", "Molluscicide", "Foliar Fertilizer", "Others"];
+import { getCategoryNames } from "@/lib/categories";
 
 export default async function CountSheetPage({ searchParams }: { searchParams: { category?: string } }) {
   await requirePerm("reports");
   const company = await getActiveCompany();
+  const CATEGORIES = await getCategoryNames();
   const category = searchParams.category || "";
   const products = await prisma.product.findMany({
     where: { companyId: company.id, status: "Active", ...(category ? { category } : {}) },

@@ -119,6 +119,16 @@ model Customer {
   salesReceipts  SalesReceipt[]
 }
 
+// Shared product category list (both companies) — name feeds Product.category,
+// prefix drives the automatic PREFIX-### SKU numbering.
+model ProductCategory {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  prefix    String   @unique // SKU prefix, e.g. INS
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+}
+
 model Supplier {
   id      String @id @default(cuid())
   name    String

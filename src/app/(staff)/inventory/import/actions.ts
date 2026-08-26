@@ -10,10 +10,9 @@ export type ImportResult = {
   errors: { row: number; message: string }[];
 } | null;
 
-const CATEGORIES = ["Insecticide", "Herbicide", "Fungicide", "Molluscicide", "Foliar Fertilizer", "Others"];
-
 export async function importProducts(_prev: ImportResult, formData: FormData): Promise<ImportResult> {
   const user = await requirePermWrite("inventory");
+  const CATEGORIES = (await prisma.productCategory.findMany({ orderBy: { sortOrder: "asc" }, select: { name: true } })).map((c) => c.name);
   const company = await getActiveCompany(user);
   const file = formData.get("file") as File | null;
   if (!file || !file.size) return { imported: 0, errors: [{ row: 0, message: "No file uploaded." }] };

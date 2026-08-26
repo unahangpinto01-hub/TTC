@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { saveForecast } from "../actions";
 
 const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
-const CATEGORY_ORDER = ["Insecticide", "Herbicide", "Fungicide", "Molluscicide", "Foliar Fertilizer", "Others"];
 
 export type GridRow = {
   parentItem: string;
@@ -29,6 +28,7 @@ export function ForecastGrid({
   initialRows,
   parents,
   readOnly,
+  categoryOrder,
 }: {
   forecastId: string;
   initialTitle: string;
@@ -37,6 +37,7 @@ export function ForecastGrid({
   initialRows: GridRow[];
   parents: ParentOption[];
   readOnly: boolean;
+  categoryOrder: string[];
 }) {
   const router = useRouter();
   const [title, setTitle] = useState(initialTitle);
@@ -49,12 +50,12 @@ export function ForecastGrid({
 
   const sorted = useMemo(() => {
     return [...rows].sort((a, b) => {
-      const ca = CATEGORY_ORDER.indexOf(a.category);
-      const cb = CATEGORY_ORDER.indexOf(b.category);
+      const ca = categoryOrder.indexOf(a.category);
+      const cb = categoryOrder.indexOf(b.category);
       if (ca !== cb) return ca - cb;
       return a.parentItem.localeCompare(b.parentItem);
     });
-  }, [rows]);
+  }, [rows, categoryOrder]);
 
   const available = parents.filter((p) => !rows.some((r) => r.parentItem === p.name));
 

@@ -5,13 +5,12 @@ import { createProduct } from "../actions";
 import { ParentItemField } from "../parent-item-field";
 import { SkuCategoryFields } from "./sku-category-fields";
 import { getActiveCompany } from "@/lib/company";
-
-const PREFIXES = ["INS", "HER", "FNG", "MOL", "FOL", "OTH"];
+import { getCategories } from "@/lib/categories";
 
 export default async function NewProductPage({ searchParams }: { searchParams: { error?: string } }) {
   const user = await requirePerm("inventory");
   const company = await getActiveCompany(user);
-  const [suppliers, skus, parentRows] = await Promise.all([
+  const [suppliers, skus, parentRows, categories] = await Promise.all([
     prisma.supplier.findMany({ where: { status: "Active" }, orderBy: { name: "asc" } }),
     prisma.product.findMany({ where: { companyId: company.id }, select: { sku: true } }),
     prisma.product.findMany({
@@ -20,12 +19,13 @@ export default async function NewProductPage({ searchParams }: { searchParams: {
       distinct: ["parentItem"],
       orderBy: { parentItem: "asc" },
     }),
+    getCategories(),
   ]);
   const parentOptions = parentRows.map((p) => p.parentItem!);
 
   // next SKU per category prefix, following the existing PREFIX-### numbering
   const nextSku: Record<string, string> = {};
-  for (const pre of PREFIXES) {
+  for (const pre of categories.map((c) => c.prefix)) {
     const re = new RegExp(`^${pre}-(\\d+)$`);
     const max = skus.reduce((m, p) => {
       const match = p.sku.match(re);
@@ -43,9 +43,14 @@ export default async function NewProductPage({ searchParams }: { searchParams: {
       {searchParams.error === "required" && (
         <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">⚠ SKU and Product Name are required.</p>
       )}
+      {searchParams.error === "category" && (
+        <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+          ⚠ New category needs a name and a 2–4 letter prefix, and neither may already exist.
+        </p>
+      )}
       <form action={createProduct} className="card space-y-4">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <SkuCategoryFields nextSku={nextSku} />
+          <SkuCategoryFields categories={categories} nextSku={nextSku} />
           <div><label className="label">Product Name</label><input name="name" required className="input" /></div>
           <div><label className="label">Active Ingredient</label><input name="activeIngredient" className="input" /></div>
           <div><label className="label">Crop Tags (comma-separated)</label><input name="cropTags" className="input" placeholder="Rice,Corn" /></div>

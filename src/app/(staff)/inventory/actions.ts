@@ -23,12 +23,30 @@ export async function createProduct(formData: FormData) {
   const sku = String(formData.get("sku") || "").trim();
   const name = String(formData.get("name") || "").trim();
   if (!sku || !name) redirect("/inventory/new?error=required");
+
+  // "+ Add new category…": create the shared category (name + SKU prefix) on the fly
+  let category = String(formData.get("category"));
+  if (category === "__new__") {
+    const newName = String(formData.get("newCategoryName") || "").trim();
+    const newPrefix = String(formData.get("newCategoryPrefix") || "").trim().toUpperCase();
+    if (!newName || !/^[A-Z]{2,4}$/.test(newPrefix)) redirect("/inventory/new?error=category");
+    const clash = await prisma.productCategory.findFirst({
+      where: { OR: [{ name: { equals: newName, mode: "insensitive" } }, { prefix: newPrefix }] },
+    });
+    if (clash) redirect("/inventory/new?error=category");
+    const last = await prisma.productCategory.aggregate({ _max: { sortOrder: true } });
+    await prisma.productCategory.create({
+      data: { name: newName, prefix: newPrefix, sortOrder: (last._max.sortOrder ?? 0) + 1 },
+    });
+    category = newName;
+  }
+
   const data = {
     companyId: company.id,
     sku,
     name,
     activeIngredient: String(formData.get("activeIngredient") || "").trim(),
-    category: String(formData.get("category")),
+    category,
     cropTags: String(formData.get("cropTags") || "").trim(),
     packSize: String(formData.get("packSize") || "").trim(),
     unitCost: resolveUnitCost(formData),

@@ -8,6 +8,7 @@ import { PageHeader, StatusBadge, stockStatus } from "@/components/ui";
 import { ProductEditForm } from "./product-edit-form";
 import { AdjustStockForm } from "./adjust-stock-form";
 import { getActiveCompany } from "@/lib/company";
+import { getCategoryNames } from "@/lib/categories";
 
 export default async function ProductDetailPage({ params, searchParams }: { params: { id: string }; searchParams: { error?: string } }) {
   const user = await requirePerm("inventory");
@@ -37,6 +38,7 @@ export default async function ProductDetailPage({ params, searchParams }: { para
   const suppliers = isSuperAdmin
     ? await prisma.supplier.findMany({ where: { status: "Active" }, orderBy: { name: "asc" }, select: { id: true, name: true } })
     : [];
+  const categories = isSuperAdmin ? await getCategoryNames() : [];
 
   return (
     <div>
@@ -160,6 +162,7 @@ export default async function ProductDetailPage({ params, searchParams }: { para
           }}
           suppliers={suppliers}
           parentOptions={parentOptions}
+          categories={categories}
         />
       )}
 

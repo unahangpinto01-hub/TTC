@@ -3,12 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
-const CATEGORIES = ["Insecticide", "Herbicide", "Fungicide", "Molluscicide", "Foliar Fertilizer", "Others"];
-
 /** Live inventory filter bar: search-as-you-type (debounced ~250ms), instant category/stock
     selects, and a clear button. Updates the URL via soft navigation so the server-rendered
     table, grouping, and pagination keep working unchanged. */
-export function InventorySearchBar() {
+export function InventorySearchBar({ categories }: { categories: string[] }) {
   const router = useRouter();
   const sp = useSearchParams();
   const [q, setQ] = useState(sp.get("q") ?? "");
@@ -64,7 +62,7 @@ export function InventorySearchBar() {
         aria-label="Category filter"
       >
         <option value="">All categories</option>
-        {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+        {categories.map((c) => <option key={c} value={c}>{c}</option>)}
       </select>
       <select
         value={sp.get("stock") ?? ""}

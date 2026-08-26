@@ -87,7 +87,9 @@ export async function getMonthlyProductSales(year: number, companyId: string, re
     }
   }
 
-  const CATEGORY_ORDER = ["Insecticide", "Herbicide", "Fungicide", "Molluscicide", "Foliar Fertilizer", "Others"];
+  const CATEGORY_ORDER = (
+    await prisma.productCategory.findMany({ orderBy: { sortOrder: "asc" }, select: { name: true } })
+  ).map((c) => c.name);
   return [...map.values()].sort(
     (a, b) => CATEGORY_ORDER.indexOf(a.category) - CATEGORY_ORDER.indexOf(b.category) || a.name.localeCompare(b.name)
   );

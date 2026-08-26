@@ -5,8 +5,6 @@ import { useFormStatus } from "react-dom";
 import { updateProduct } from "../actions";
 import { ParentItemField } from "../parent-item-field";
 
-const CATEGORIES = ["Insecticide", "Herbicide", "Fungicide", "Molluscicide", "Foliar Fertilizer", "Others"];
-
 type ProductFields = {
   id: string;
   sku: string;
@@ -43,10 +41,12 @@ export function ProductEditForm({
   product,
   suppliers,
   parentOptions,
+  categories,
 }: {
   product: ProductFields;
   suppliers: { id: string; name: string }[];
   parentOptions: string[];
+  categories: string[];
 }) {
   const [open, setOpen] = useState(false);
 
@@ -72,7 +72,7 @@ export function ProductEditForm({
         <div><label className="label">Active Ingredient</label><input name="activeIngredient" defaultValue={product.activeIngredient} className="input" /></div>
         <div>
           <label className="label">Category</label>
-          <select name="category" defaultValue={product.category} className="input">{CATEGORIES.map((c) => <option key={c}>{c}</option>)}</select>
+          <select name="category" defaultValue={product.category} className="input">{categories.map((c) => <option key={c}>{c}</option>)}</select>
         </div>
         <div><label className="label">Crop Tags (comma-separated)</label><input name="cropTags" defaultValue={product.cropTags} className="input" placeholder="Rice,Corn" /></div>
         <div><label className="label">Pack Size</label><input name="packSize" required defaultValue={product.packSize} className="input" placeholder="500ml" /></div>

@@ -8,11 +8,13 @@ import { PageHeader, Pagination, StatusBadge, stockStatus } from "@/components/u
 import { renameParentItem, ungroupParentItem } from "./actions";
 import { InventorySearchBar } from "./search-bar";
 import { getActiveCompany } from "@/lib/company";
+import { getCategoryNames } from "@/lib/categories";
 
 
 export default async function InventoryPage({ searchParams }: { searchParams: { q?: string; category?: string; stock?: string; page?: string; renameParent?: string } }) {
   const user = await requirePerm("inventory");
   const company = await getActiveCompany(user);
+  const categoryNames = await getCategoryNames();
   const { page, skip, take } = getPage(searchParams);
   const q = searchParams.q?.trim() || "";
   const category = searchParams.category || "";
@@ -72,7 +74,7 @@ export default async function InventoryPage({ searchParams }: { searchParams: { 
         )}
       </PageHeader>
 
-      <InventorySearchBar />
+      <InventorySearchBar categories={categoryNames} />
 
       <div className="card overflow-x-auto p-0">
         <table className="w-full min-w-[800px]">
