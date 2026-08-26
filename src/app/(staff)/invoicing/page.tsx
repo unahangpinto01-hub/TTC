@@ -6,6 +6,9 @@ import { fmtDate, peso, termLabel } from "@/lib/format";
 import { PageHeader } from "@/components/ui";
 import { convertDRtoSR } from "./actions";
 
+// YYYY-MM-DD in Manila time — date-input defaults must not drift a day around midnight
+const manilaDay = (d: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila" }).format(d);
+
 export default async function InvoicingQueuePage() {
   const user = await requirePerm("invoicing");
   const company = await getActiveCompany(user);
@@ -49,6 +52,17 @@ export default async function InvoicingQueuePage() {
                 <td className="table-td text-right">
                   <form action={convertDRtoSR} className="flex items-center justify-end gap-3">
                     <input type="hidden" name="drId" value={dr.id} />
+                    <label className="flex items-center gap-1.5 whitespace-nowrap text-xs text-gray-600">
+                      Invoice Date
+                      <input
+                        name="invoiceDate"
+                        type="date"
+                        defaultValue={manilaDay(dr.deliveredAt ?? dr.date)}
+                        max={manilaDay(new Date())}
+                        className="input w-36 py-1"
+                        title="Backdate this when encoding an old transaction — the due date counts from it"
+                      />
+                    </label>
                     <label className="flex items-center gap-1.5 whitespace-nowrap text-xs text-gray-600">
                       <input type="checkbox" name="applyVat" defaultChecked /> Apply 12% VAT
                     </label>

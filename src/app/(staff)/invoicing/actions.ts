@@ -7,10 +7,12 @@ import { requirePermWrite, requireStaffWrite } from "@/lib/auth";
 import { nextDocNumber } from "@/lib/numbering";
 import { notifyRoles } from "@/lib/notify";
 import { getActiveCompany } from "@/lib/company";
+import { parseEffectiveDate } from "@/lib/stock";
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
-/** One-click DR → SR conversion. Due date = delivery date + term days. */
+/** One-click DR → SR conversion. Invoice date is editable (backdatable for encoding old
+    transactions, defaults to the delivery date); due date = invoice date + term days. */
 export async function convertDRtoSR(formData: FormData) {
   await requirePermWrite("invoicing");
   const drId = String(formData.get("drId"));
@@ -27,8 +29,8 @@ export async function convertDRtoSR(formData: FormData) {
   const amount = round2(dr.lines.reduce((s, l) => s + l.qty * l.unitPrice, 0) + freightCharge);
   const term = dr.salesOrder.term;
   const termDays = term === "COD" ? 0 : Number(term);
-  const baseDate = dr.deliveredAt ?? dr.date;
-  const dueDate = new Date(baseDate);
+  const invoiceDate = parseEffectiveDate(String(formData.get("invoiceDate") || ""));
+  const dueDate = new Date(invoiceDate);
   dueDate.setDate(dueDate.getDate() + termDays);
 
   const vatApplied = formData.get("applyVat") === "on";
@@ -43,7 +45,7 @@ export async function convertDRtoSR(formData: FormData) {
       freightCharge,
       term,
       vatApplied,
-      invoiceDate: new Date(),
+      invoiceDate,
       dueDate,
       status: "Open",
     },
