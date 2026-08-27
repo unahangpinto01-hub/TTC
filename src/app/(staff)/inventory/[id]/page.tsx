@@ -67,9 +67,9 @@ export default async function ProductDetailPage({ params, searchParams }: { para
 
       <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4">
         {[
-          ["SKU", product.sku],
-          ["Category", product.category],
           ["Classification", product.itemClass === "NON_INVENTORY" ? "Non-Inventory (promo)" : "Inventory item"],
+          ["Category", product.category],
+          ["SKU", product.sku],
           ["Active Ingredient", product.activeIngredient],
           ["Pack Size", product.packSize],
           ["Crops", product.cropTags.split(",").join(", ")],
@@ -108,13 +108,18 @@ export default async function ProductDetailPage({ params, searchParams }: { para
           ["Batch Number", product.batchNo ?? "—"],
           ["Manufacturing Date", product.mfgDate ? fmtDate(product.mfgDate) : "—"],
           ["Parent Item", product.parentItem ?? "—"],
-        ].map(([k, v]) => (
+        ].filter(
+          ([k]) =>
+            product.itemClass !== "NON_INVENTORY" ||
+            // promo materials show only the basics
+            ["Classification", "Category", "SKU", "Unit Cost", "Pack Size", "Reorder Point", "Stock on Hand", "Gross Weight per Pack", "Batch Number", "Supplier"].includes(k as string)
+        ).map(([k, v]) => (
           <div key={k} className="card py-3">
             <p className="text-xs text-gray-500">{k}</p>
             <p className="text-sm font-semibold">{v}</p>
           </div>
         ))}
-        {(() => {
+        {product.itemClass !== "NON_INVENTORY" && (() => {
           if (!product.expDate) {
             return (
               <div className="card py-3">

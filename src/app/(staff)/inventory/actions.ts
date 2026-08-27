@@ -66,6 +66,13 @@ export async function createProduct(formData: FormData) {
     expDate: formData.get("expDate") ? new Date(String(formData.get("expDate"))) : null,
     parentItem: String(formData.get("parentItem") || "").trim() || null,
   };
+  // promo materials carry only the basics — clear the merchandise-only fields regardless of input
+  if (itemClass === "NON_INVENTORY") {
+    Object.assign(data, {
+      activeIngredient: "", cropTags: "", dealerPrice: 0, srp: 0,
+      piecesPerCarton: null, cartonDealerPrice: null, mfgDate: null, expDate: null, parentItem: null,
+    });
+  }
   let product;
   try {
     product = await prisma.product.create({ data });
@@ -116,6 +123,9 @@ export async function updateProduct(formData: FormData) {
       mfgDate: mfg ? new Date(mfg) : null,
       expDate: exp ? new Date(exp) : null,
       parentItem: String(formData.get("parentItem") || "").trim() || null,
+      ...(updClass === "NON_INVENTORY"
+        ? { activeIngredient: "", cropTags: "", dealerPrice: 0, srp: 0, piecesPerCarton: null, cartonDealerPrice: null, mfgDate: null, expDate: null, parentItem: null }
+        : {}),
     },
   });
   revalidatePath("/inventory");

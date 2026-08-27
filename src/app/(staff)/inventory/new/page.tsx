@@ -2,9 +2,7 @@ import { prisma } from "@/lib/db";
 import { requirePerm } from "@/lib/auth";
 import { PageHeader } from "@/components/ui";
 import { createProduct } from "../actions";
-import { ParentItemField } from "../parent-item-field";
-import { SkuCategoryFields } from "./sku-category-fields";
-import { ClassSrpFields } from "./class-srp-fields";
+import { ProductFields } from "./product-fields";
 import { getActiveCompany } from "@/lib/company";
 import { getCategories } from "@/lib/categories";
 
@@ -51,34 +49,7 @@ export default async function NewProductPage({ searchParams }: { searchParams: {
       )}
       <form action={createProduct} className="card space-y-4">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <SkuCategoryFields categories={categories} nextSku={nextSku} />
-          <div><label className="label">Product Name</label><input name="name" required className="input" /></div>
-          <div><label className="label">Active Ingredient</label><input name="activeIngredient" className="input" /></div>
-          <div><label className="label">Crop Tags (comma-separated)</label><input name="cropTags" className="input" placeholder="Rice,Corn" /></div>
-          <div><label className="label">Pack Size</label><input name="packSize" className="input" placeholder="500ml" /></div>
-          <div><label className="label">Unit Cost per PCS (₱)</label><input name="unitCost" type="number" step="any" min={0} className="input" /></div>
-          <div><label className="label">…or Cost per Carton (₱)</label><input name="costPerCarton" type="number" step="any" min={0} className="input" placeholder="auto ÷ pieces per carton" /></div>
-          <div><label className="label">Dealer Price (₱)</label><input name="dealerPrice" type="number" step="0.01" min={0} className="input" /></div>
-          <ClassSrpFields />
-          <div><label className="label">Reorder Point (PCS)</label><input name="reorderPoint" type="number" defaultValue={10} className="input" /></div>
-          <div><label className="label">Opening Stock (PCS)</label><input name="openingStock" type="number" defaultValue={0} className="input" /></div>
-          <div><label className="label">Pieces per Carton</label><input name="piecesPerCarton" type="number" min={0} className="input" placeholder="blank = no carton" /></div>
-          <div><label className="label">Carton Dealer Price (₱)</label><input name="cartonDealerPrice" type="number" step="0.01" min={0} className="input" placeholder="blank = auto" /></div>
-          <div><label className="label">Gross Weight per Pack (kg)</label><input name="packGrossWeightKg" type="number" step="any" min={0} className="input" placeholder="e.g. 13.50" /></div>
-          <div><label className="label">Batch Number</label><input name="batchNo" className="input" placeholder="B26-0001" /></div>
-          <div><label className="label">Manufacturing Date</label><input name="mfgDate" type="date" className="input" /></div>
-          <div><label className="label">Expiration Date</label><input name="expDate" type="date" className="input" /></div>
-          <div>
-            <label className="label">Parent Item (grouping, optional)</label>
-            <ParentItemField options={parentOptions} />
-          </div>
-          <div>
-            <label className="label">Supplier</label>
-            <select name="supplierId" className="input">
-              <option value="">—</option>
-              {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </select>
-          </div>
+          <ProductFields categories={categories} nextSku={nextSku} suppliers={suppliers} parentOptions={parentOptions} />
         </div>
         <button className="btn-primary" type="submit">Create Product</button>
       </form>
