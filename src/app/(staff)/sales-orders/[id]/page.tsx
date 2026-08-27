@@ -5,10 +5,11 @@ import { requirePerm } from "@/lib/auth";
 import { fmtDate, peso, termLabel, vatBreakdown } from "@/lib/format";
 import { cartonLabel, qtyLabel } from "@/lib/units";
 import { PageHeader, StatusBadge } from "@/components/ui";
-import { confirmSO, cancelSO, scheduleSO, generateDR, updateLineQty, updateLinePrice, removeLine } from "../actions";
+import { confirmSO, cancelSO, generateDR, updateLineQty, updateLinePrice, removeLine } from "../actions";
+import { ScheduleForm } from "./schedule-form";
 import { getActiveCompany } from "@/lib/company";
 
-export default async function SODetailPage({ params, searchParams }: { params: { id: string }; searchParams: { error?: string } }) {
+export default async function SODetailPage({ params, searchParams }: { params: { id: string }; searchParams: { error?: string; scheduled?: string } }) {
   const user = await requirePerm("salesOrders");
   const company = await getActiveCompany(user);
   const so = await prisma.salesOrder.findUnique({
@@ -168,16 +169,14 @@ export default async function SODetailPage({ params, searchParams }: { params: {
         {["Confirmed", "Scheduled"].includes(so.status) && (
           <div className="card">
             <h2 className="mb-2 font-semibold">{so.schedule ? "Delivery Schedule" : "Schedule Delivery"}</h2>
-            <form action={scheduleSO} className="flex flex-wrap items-end gap-3">
-              <input type="hidden" name="soId" value={so.id} />
-              <div><label className="label">Date</label>
-                <input name="date" type="date" required defaultValue={so.schedule ? so.schedule.date.toISOString().slice(0, 10) : tomorrow} className="input" /></div>
-              <div><label className="label">Truck</label>
-                <input name="truck" defaultValue={so.schedule?.truck ?? ""} placeholder="Isuzu Elf ABC-1234" className="input" /></div>
-              <div><label className="label">Driver</label>
-                <input name="driver" defaultValue={so.schedule?.driver ?? ""} placeholder="Driver name" className="input" /></div>
-              <button className="btn-primary" type="submit">{so.schedule ? "Update Schedule" : "Schedule →"}</button>
-            </form>
+            <ScheduleForm
+              soId={so.id}
+              defaultDate={so.schedule ? so.schedule.date.toISOString().slice(0, 10) : tomorrow}
+              truck={so.schedule?.truck ?? ""}
+              driver={so.schedule?.driver ?? ""}
+              hasSchedule={!!so.schedule}
+              justScheduled={searchParams.scheduled === "1"}
+            />
           </div>
         )}
 

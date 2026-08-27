@@ -111,7 +111,8 @@ export async function scheduleSO(formData: FormData) {
   await prisma.salesOrder.update({ where: { id: soId }, data: { status: "Scheduled" } });
   await notifyRoles(["CLERK", "ADMIN"], "ORDER_SCHEDULED", `${so.soNumber} (${so.customer.businessName}) scheduled for delivery`, `/schedule`, so.companyId);
   revalidatePath("/schedule");
-  redirect(`/schedule`);
+  // stay on the sales order; the flag makes the page confirm the schedule was saved
+  redirect(`/sales-orders/${soId}?scheduled=1`);
 }
 
 /** Generate a DR from the SO, allowing partial quantities. */
