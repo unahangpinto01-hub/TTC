@@ -5,7 +5,7 @@ import { requirePerm } from "@/lib/auth";
 import { fmtDate, peso, termLabel, vatBreakdown } from "@/lib/format";
 import { cartonLabel, qtyLabel } from "@/lib/units";
 import { PageHeader, StatusBadge } from "@/components/ui";
-import { confirmSO, cancelSO, scheduleSO, generateDR, updateLineQty, removeLine } from "../actions";
+import { confirmSO, cancelSO, scheduleSO, generateDR, updateLineQty, updateLinePrice, removeLine } from "../actions";
 import { getActiveCompany } from "@/lib/company";
 
 export default async function SODetailPage({ params, searchParams }: { params: { id: string }; searchParams: { error?: string } }) {
@@ -97,8 +97,20 @@ export default async function SODetailPage({ params, searchParams }: { params: {
                     )}
                   </td>
                   <td className="table-td text-right">
-                    {peso(l.unitPrice)}
-                    <span className="text-xs text-gray-400"> / {l.unit === "CARTON" ? "CTN" : "PC"}</span>
+                    {so.status === "Draft" ? (
+                      <form action={updateLinePrice} className="flex items-center justify-end gap-1">
+                        <input type="hidden" name="lineId" value={l.id} />
+                        <span className="text-xs text-gray-500">₱</span>
+                        <input name="unitPrice" type="number" step="0.01" min={0} defaultValue={l.unitPrice} className="input w-28 text-right" />
+                        <span className="text-xs text-gray-500">/ {l.unit === "CARTON" ? "CTN" : "PC"}</span>
+                        <button className="btn-secondary px-2 py-1 text-xs" type="submit">Set</button>
+                      </form>
+                    ) : (
+                      <>
+                        {peso(l.unitPrice)}
+                        <span className="text-xs text-gray-400"> / {l.unit === "CARTON" ? "CTN" : "PC"}</span>
+                      </>
+                    )}
                   </td>
                   <td className="table-td text-right">{peso(l.lineTotal)}</td>
                   <td className="table-td text-right">

@@ -33,6 +33,22 @@ export async function updateLineQty(formData: FormData) {
   redirect(`/sales-orders/${line.salesOrderId}`);
 }
 
+/** Edit a draft line's unit price (per the line's unit — PCS or CTN); line total recomputes. */
+export async function updateLinePrice(formData: FormData) {
+  await requirePermWrite("salesOrders");
+  const lineId = String(formData.get("lineId"));
+  const unitPrice = Math.max(0, Number(formData.get("unitPrice")) || 0);
+  const line = await prisma.salesOrderLine.findUniqueOrThrow({ where: { id: lineId }, include: { salesOrder: true } });
+  await assertActiveCompany(line.salesOrder.companyId);
+  if (line.salesOrder.status !== "Draft") redirect(`/sales-orders/${line.salesOrderId}`);
+  await prisma.salesOrderLine.update({
+    where: { id: lineId },
+    data: { unitPrice, lineTotal: round2(line.qty * unitPrice * (1 - line.discount / 100)) },
+  });
+  revalidatePath(`/sales-orders/${line.salesOrderId}`);
+  redirect(`/sales-orders/${line.salesOrderId}`);
+}
+
 export async function removeLine(formData: FormData) {
   await requirePermWrite("salesOrders");
   const lineId = String(formData.get("lineId"));
