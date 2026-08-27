@@ -65,6 +65,16 @@ export function InventorySearchBar({ categories }: { categories: string[] }) {
         {categories.map((c) => <option key={c} value={c}>{c}</option>)}
       </select>
       <select
+        value={sp.get("class") ?? ""}
+        onChange={(e) => push({ class: e.target.value || undefined })}
+        className="input max-w-[190px]"
+        aria-label="Classification filter"
+      >
+        <option value="">All classifications</option>
+        <option value="INVENTORY">Inventory items</option>
+        <option value="NON_INVENTORY">Non-Inventory (promo)</option>
+      </select>
+      <select
         value={sp.get("stock") ?? ""}
         onChange={(e) => push({ stock: e.target.value || undefined })}
         className="input max-w-[140px]"

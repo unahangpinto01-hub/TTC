@@ -148,6 +148,7 @@ model Product {
   name             String
   activeIngredient String
   category         String  // Insecticide | Herbicide | Fungicide | Molluscicide | Foliar Fertilizer | Others
+  itemClass        String  @default("INVENTORY") // INVENTORY (merchandise) | NON_INVENTORY (promo materials — stock + cost tracked, no SRP)
   cropTags         String  // comma list
   packSize         String
   unitCost         Float

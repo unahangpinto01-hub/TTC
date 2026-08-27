@@ -4,6 +4,7 @@ import { PageHeader } from "@/components/ui";
 import { createProduct } from "../actions";
 import { ParentItemField } from "../parent-item-field";
 import { SkuCategoryFields } from "./sku-category-fields";
+import { ClassSrpFields } from "./class-srp-fields";
 import { getActiveCompany } from "@/lib/company";
 import { getCategories } from "@/lib/categories";
 
@@ -58,7 +59,7 @@ export default async function NewProductPage({ searchParams }: { searchParams: {
           <div><label className="label">Unit Cost per PCS (₱)</label><input name="unitCost" type="number" step="any" min={0} className="input" /></div>
           <div><label className="label">…or Cost per Carton (₱)</label><input name="costPerCarton" type="number" step="any" min={0} className="input" placeholder="auto ÷ pieces per carton" /></div>
           <div><label className="label">Dealer Price (₱)</label><input name="dealerPrice" type="number" step="0.01" min={0} className="input" /></div>
-          <div><label className="label">SRP (₱)</label><input name="srp" type="number" step="0.01" min={0} className="input" /></div>
+          <ClassSrpFields />
           <div><label className="label">Reorder Point (PCS)</label><input name="reorderPoint" type="number" defaultValue={10} className="input" /></div>
           <div><label className="label">Opening Stock (PCS)</label><input name="openingStock" type="number" defaultValue={0} className="input" /></div>
           <div><label className="label">Pieces per Carton</label><input name="piecesPerCarton" type="number" min={0} className="input" placeholder="blank = no carton" /></div>

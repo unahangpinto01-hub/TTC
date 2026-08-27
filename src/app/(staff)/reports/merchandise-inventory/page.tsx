@@ -9,7 +9,7 @@ import { getCategoryNames } from "@/lib/categories";
 export default async function MerchandiseInventoryPage({
   searchParams,
 }: {
-  searchParams: { asOf?: string; category?: string; q?: string; zero?: string };
+  searchParams: { asOf?: string; category?: string; q?: string; zero?: string; class?: string };
 }) {
   await requirePerm("reports");
   const company = await getActiveCompany();
@@ -19,6 +19,7 @@ export default async function MerchandiseInventoryPage({
   const category = searchParams.category || "";
   const q = searchParams.q?.trim() || "";
   const showZero = searchParams.zero === "1";
+  const itemClass = searchParams.class === "NON_INVENTORY" ? "NON_INVENTORY" : "INVENTORY";
 
   const report = await getMerchandiseInventory({
     companyId: company.id,
@@ -26,6 +27,7 @@ export default async function MerchandiseInventoryPage({
     category,
     q,
     showZero,
+    itemClass,
   });
 
   const exportParams = new URLSearchParams();
@@ -33,8 +35,10 @@ export default async function MerchandiseInventoryPage({
   if (category) exportParams.set("category", category);
   if (q) exportParams.set("q", q);
   if (showZero) exportParams.set("zero", "1");
+  if (itemClass === "NON_INVENTORY") exportParams.set("class", "NON_INVENTORY");
 
   const filtersLabel = [
+    itemClass === "NON_INVENTORY" ? "Non-Inventory (promo materials)" : "Inventory items (merchandise)",
     category ? `Category: ${category}` : "All Categories",
     q ? `Search: "${q}"` : "All Products",
     showZero ? "Including zero stock" : "Zero stock hidden",
@@ -51,6 +55,13 @@ export default async function MerchandiseInventoryPage({
             <div>
               <label className="label">As of Date</label>
               <input name="asOf" type="date" defaultValue={asOfStr} max={today} className="input" />
+            </div>
+            <div>
+              <label className="label">Classification</label>
+              <select name="class" defaultValue={itemClass} className="input max-w-[190px]">
+                <option value="INVENTORY">Inventory items</option>
+                <option value="NON_INVENTORY">Non-Inventory (promo)</option>
+              </select>
             </div>
             <div>
               <label className="label">Category</label>

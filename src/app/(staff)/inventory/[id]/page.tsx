@@ -69,6 +69,7 @@ export default async function ProductDetailPage({ params, searchParams }: { para
         {[
           ["SKU", product.sku],
           ["Category", product.category],
+          ["Classification", product.itemClass === "NON_INVENTORY" ? "Non-Inventory (promo)" : "Inventory item"],
           ["Active Ingredient", product.activeIngredient],
           ["Pack Size", product.packSize],
           ["Crops", product.cropTags.split(",").join(", ")],
@@ -95,7 +96,7 @@ export default async function ProductDetailPage({ params, searchParams }: { para
             "Gross Weight per Pack",
             product.packGrossWeightKg ? `${product.packGrossWeightKg} kg` : "— (not set)",
           ],
-          ["SRP", peso(product.srp)],
+          ["SRP", product.itemClass === "NON_INVENTORY" ? "— (promo item)" : peso(product.srp)],
           ["Reorder Point", `${product.reorderPoint} PCS`],
           [
             "Stock on Hand",
@@ -145,6 +146,7 @@ export default async function ProductDetailPage({ params, searchParams }: { para
             name: product.name,
             activeIngredient: product.activeIngredient,
             category: product.category,
+            itemClass: product.itemClass,
             cropTags: product.cropTags,
             packSize: product.packSize,
             unitCost: product.unitCost,

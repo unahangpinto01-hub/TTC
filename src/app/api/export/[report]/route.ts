@@ -161,12 +161,13 @@ export async function GET(req: NextRequest, { params }: { params: { report: stri
       const category = sp.category || "";
       const q = sp.q || "";
       const showZero = sp.zero === "1";
-      const r = await getMerchandiseInventory({ companyId: company.id, asOf: new Date(asOfStr), category, q, showZero });
+      const itemClass = sp.class === "NON_INVENTORY" ? "NON_INVENTORY" : "INVENTORY";
+      const r = await getMerchandiseInventory({ companyId: company.id, asOf: new Date(asOfStr), category, q, showZero, itemClass });
       const HEADER_ROW = 4; // 0-based index of the column-header row below
       const rows: (string | number)[][] = [
         ["MERCHANDISE INVENTORY — Valuation at Cost"],
         [`As of: ${asOfStr}${r.historical ? " (reconstructed from stock card)" : ""}`],
-        [`Filters: ${category || "All Categories"} · ${q ? `Search "${q}"` : "All Products"} · ${showZero ? "Including zero stock" : "Zero stock hidden"}`],
+        [`Filters: ${itemClass === "NON_INVENTORY" ? "Non-Inventory (promo materials)" : "Inventory items"} · ${category || "All Categories"} · ${q ? `Search "${q}"` : "All Products"} · ${showZero ? "Including zero stock" : "Zero stock hidden"}`],
         [],
         ["#", "SKU", "Product Name", "Pack", "Unit Cost", "Stock (PCS)", "Amount"],
         ...r.rows.map((row, i) => [i + 1, row.sku, row.name, row.packSize, row.unitCost, row.stock, row.amount]),

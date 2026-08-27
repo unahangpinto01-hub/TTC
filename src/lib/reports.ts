@@ -218,8 +218,11 @@ export async function getMerchandiseInventory(opts: {
   category?: string;
   q?: string;
   showZero?: boolean;
+  /** "INVENTORY" (default — merchandise only) or "NON_INVENTORY" (promo materials, valued separately) */
+  itemClass?: string;
 }): Promise<MerchandiseInventoryReport> {
   const where: any = { companyId: opts.companyId };
+  where.itemClass = opts.itemClass === "NON_INVENTORY" ? "NON_INVENTORY" : "INVENTORY";
   if (opts.category) where.category = opts.category;
   if (opts.q) {
     where.OR = [

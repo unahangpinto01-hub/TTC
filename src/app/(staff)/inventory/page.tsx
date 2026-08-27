@@ -11,16 +11,18 @@ import { getActiveCompany } from "@/lib/company";
 import { getCategoryNames } from "@/lib/categories";
 
 
-export default async function InventoryPage({ searchParams }: { searchParams: { q?: string; category?: string; stock?: string; page?: string; renameParent?: string } }) {
+export default async function InventoryPage({ searchParams }: { searchParams: { q?: string; category?: string; class?: string; stock?: string; page?: string; renameParent?: string } }) {
   const user = await requirePerm("inventory");
   const company = await getActiveCompany(user);
   const categoryNames = await getCategoryNames();
   const { page, skip, take } = getPage(searchParams);
   const q = searchParams.q?.trim() || "";
   const category = searchParams.category || "";
+  const itemClass = searchParams.class || "";
   const stockFilter = searchParams.stock || "";
 
   const where: any = { companyId: company.id };
+  if (itemClass === "INVENTORY" || itemClass === "NON_INVENTORY") where.itemClass = itemClass;
   if (q) {
     where.OR = [
       { name: { contains: q, mode: "insensitive" } },
@@ -136,6 +138,9 @@ export default async function InventoryPage({ searchParams }: { searchParams: { 
                 <td className="table-td">
                   <span className={isSub ? "pl-3 text-gray-400" : "hidden"}>↳ </span>
                   <Link href={`/inventory/${p.id}`} className="font-medium text-emerald-700 hover:underline">{p.name}</Link>
+                  {p.itemClass === "NON_INVENTORY" && (
+                    <span className="ml-1.5 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800">PROMO</span>
+                  )}
                   <p className={`text-xs text-gray-500 ${isSub ? "pl-7" : ""}`}>{p.activeIngredient}</p>
                 </td>
                 <td className="table-td text-sm text-gray-600">{p.category}</td>

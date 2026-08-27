@@ -41,17 +41,21 @@ export async function createProduct(formData: FormData) {
     category = newName;
   }
 
+  // promo materials keep stock + unit cost, but carry no SRP
+  const itemClass = String(formData.get("itemClass")) === "NON_INVENTORY" ? "NON_INVENTORY" : "INVENTORY";
+
   const data = {
     companyId: company.id,
     sku,
     name,
     activeIngredient: String(formData.get("activeIngredient") || "").trim(),
     category,
+    itemClass,
     cropTags: String(formData.get("cropTags") || "").trim(),
     packSize: String(formData.get("packSize") || "").trim(),
     unitCost: resolveUnitCost(formData),
     dealerPrice: Number(formData.get("dealerPrice")) || 0,
-    srp: Number(formData.get("srp")) || 0,
+    srp: itemClass === "NON_INVENTORY" ? 0 : Number(formData.get("srp")) || 0,
     reorderPoint: Number(formData.get("reorderPoint")) || 10,
     piecesPerCarton: Math.floor(Number(formData.get("piecesPerCarton"))) > 0 ? Math.floor(Number(formData.get("piecesPerCarton"))) : null,
     cartonDealerPrice: Number(formData.get("cartonDealerPrice")) > 0 ? Number(formData.get("cartonDealerPrice")) : null,
@@ -90,17 +94,19 @@ export async function updateProduct(formData: FormData) {
   if (target.companyId !== company.id) redirect("/denied");
   const mfg = String(formData.get("mfgDate") || "");
   const exp = String(formData.get("expDate") || "");
+  const updClass = String(formData.get("itemClass")) === "NON_INVENTORY" ? "NON_INVENTORY" : "INVENTORY";
   await prisma.product.update({
     where: { id: productId },
     data: {
       name: String(formData.get("name")).trim(),
       activeIngredient: String(formData.get("activeIngredient") || "").trim(),
       category: String(formData.get("category")),
+      itemClass: updClass,
       cropTags: String(formData.get("cropTags") || "").trim(),
       packSize: String(formData.get("packSize")).trim(),
       unitCost: resolveUnitCost(formData),
       dealerPrice: Math.max(0, Number(formData.get("dealerPrice")) || 0),
-      srp: Math.max(0, Number(formData.get("srp")) || 0),
+      srp: updClass === "NON_INVENTORY" ? 0 : Math.max(0, Number(formData.get("srp")) || 0),
       reorderPoint: Math.max(0, Number(formData.get("reorderPoint")) || 0),
       piecesPerCarton: Math.floor(Number(formData.get("piecesPerCarton"))) > 0 ? Math.floor(Number(formData.get("piecesPerCarton"))) : null,
       cartonDealerPrice: Number(formData.get("cartonDealerPrice")) > 0 ? Number(formData.get("cartonDealerPrice")) : null,

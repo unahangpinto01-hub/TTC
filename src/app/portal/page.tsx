@@ -18,7 +18,7 @@ export default async function CatalogPage({ searchParams }: { searchParams: { q?
   const q = searchParams.q?.trim() || "";
   const category = searchParams.category || "";
   const crop = searchParams.crop || "";
-  const where: any = { companyId: primary.id, status: "Active" };
+  const where: any = { companyId: primary.id, status: "Active", itemClass: "INVENTORY" }; // promo materials are not dealer-orderable
   if (q) where.OR = [{ name: { contains: q } }, { activeIngredient: { contains: q } }];
   if (category) where.category = category;
   if (crop) where.cropTags = { contains: crop };

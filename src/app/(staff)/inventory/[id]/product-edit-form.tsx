@@ -11,6 +11,7 @@ type ProductFields = {
   name: string;
   activeIngredient: string;
   category: string;
+  itemClass: string;
   cropTags: string;
   packSize: string;
   unitCost: number;
@@ -49,6 +50,7 @@ export function ProductEditForm({
   categories: string[];
 }) {
   const [open, setOpen] = useState(false);
+  const [cls, setCls] = useState(product.itemClass);
 
   if (!open) {
     return (
@@ -87,7 +89,21 @@ export function ProductEditForm({
           <p className="mt-0.5 text-xs text-gray-400">if filled, overrides unit cost at full precision</p>
         </div>
         <div><label className="label">Dealer Price (₱)</label><input name="dealerPrice" type="number" step="0.01" min="0" defaultValue={product.dealerPrice} className="input" /></div>
-        <div><label className="label">SRP (₱)</label><input name="srp" type="number" step="0.01" min="0" defaultValue={product.srp} className="input" /></div>
+        <div>
+          <label className="label">Classification</label>
+          <select name="itemClass" className="input" value={cls} onChange={(e) => setCls(e.target.value)}>
+            <option value="INVENTORY">Inventory item (merchandise)</option>
+            <option value="NON_INVENTORY">Non-Inventory (promo materials)</option>
+          </select>
+        </div>
+        <div>
+          <label className="label">SRP (₱)</label>
+          {cls === "NON_INVENTORY" ? (
+            <p className="input bg-gray-50 text-gray-400">— no SRP for promo items</p>
+          ) : (
+            <input name="srp" type="number" step="0.01" min="0" defaultValue={product.srp} className="input" />
+          )}
+        </div>
         <div><label className="label">Reorder Point (PCS)</label><input name="reorderPoint" type="number" min="0" defaultValue={product.reorderPoint} className="input" /></div>
         <div>
           <label className="label">Pieces per Carton</label>
