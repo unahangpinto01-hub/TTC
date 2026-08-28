@@ -19,13 +19,13 @@ export async function nextDocNumber(docType: "SO" | "DR" | "SR" | "PO", companyI
   return `${PREFIX[docType]}-${year}-${String(counter.lastNumber).padStart(5, "0")}`;
 }
 
-/** Order Inbox numbers are a plain running series per company (e.g. 9666), continuing the
-    sequence the business already used on paper — no year prefix, unlike the document numbers above. */
+/** Order Inbox numbers: OR-00001 upward, its own running series per company.
+    No year segment — the inbox sequence continues across years, unlike the document numbers above. */
 export async function nextOrderNo(companyId: string): Promise<string> {
   const counter = await prisma.documentCounter.upsert({
     where: { docType_year_companyId: { docType: "ORD", year: 0, companyId } },
     create: { docType: "ORD", year: 0, companyId, lastNumber: 1 },
     update: { lastNumber: { increment: 1 } },
   });
-  return String(counter.lastNumber);
+  return `OR-${String(counter.lastNumber).padStart(5, "0")}`;
 }
