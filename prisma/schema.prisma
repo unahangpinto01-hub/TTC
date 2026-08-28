@@ -209,6 +209,7 @@ model IncomingOrder {
   term       String   // COD | 30 | 60 | 90
   status     String   @default("Pending") // Pending | Converted | Cancelled
   notes      String?
+  orderNo    String?  // order inbox number, unique per company (see @@unique below)
   orderDate  DateTime @default(now()) // when the transaction actually happened (backdatable); createdAt = when encoded
   freightPerCarton Float @default(0) // ₱ per carton, charged to the customer
   freightTotal     Float @default(0) // rate × cartons on CARTON lines, snapshotted at encode time

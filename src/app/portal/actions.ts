@@ -1,5 +1,6 @@
 "use server";
 
+import { nextOrderNo } from "@/lib/numbering";
 import { prisma } from "@/lib/db";
 import { requireDealer } from "@/lib/auth";
 import { notifyRoles } from "@/lib/notify";
@@ -49,6 +50,7 @@ export async function placePortalOrder(input: {
   const order = await prisma.incomingOrder.create({
     data: {
       companyId: primary.id,
+      orderNo: await nextOrderNo(primary.id),
       source: "PORTAL",
       customerId: customer.id,
       term: input.term,

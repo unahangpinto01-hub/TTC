@@ -21,7 +21,7 @@ export default async function IncomingOrderPage({ params }: { params: { id: stri
 
   return (
     <div className="max-w-3xl">
-      <PageHeader title={`Incoming Order · ${order.customer.businessName}`}>
+      <PageHeader title={`Incoming Order ${order.orderNo ? `#${order.orderNo}` : ""} · ${order.customer.businessName}`}>
         <StatusBadge status={order.status} />
         <Link href={`/orders/${order.id}/print`} className="btn-secondary">🖨 Print / PDF</Link>
       </PageHeader>

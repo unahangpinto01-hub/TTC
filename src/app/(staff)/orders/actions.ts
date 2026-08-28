@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requirePermWrite } from "@/lib/auth";
-import { nextDocNumber } from "@/lib/numbering";
+import { nextDocNumber, nextOrderNo } from "@/lib/numbering";
 import { notifyRoles } from "@/lib/notify";
 import { convertToBaseUnit, parseUnit, unitDealerPrice, UnitError } from "@/lib/units";
 import { getActiveCompany } from "@/lib/company";
@@ -63,6 +63,7 @@ export async function encodeOrder(formData: FormData) {
   const order = await prisma.incomingOrder.create({
     data: {
       companyId: company.id,
+      orderNo: await nextOrderNo(company.id),
       source,
       customerId,
       term,

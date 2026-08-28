@@ -18,7 +18,7 @@ export default async function IncomingOrderPrintPage({ params }: { params: { id:
     <PrintDoc
       docType="ORDER"
       title="Incoming Order"
-      docNumber={`ORD-${order.id.slice(-6).toUpperCase()}`}
+      docNumber={order.orderNo ?? `ORD-${order.id.slice(-6).toUpperCase()}`}
       date={order.orderDate}
       meta={[
         ["Customer", order.customer.businessName],

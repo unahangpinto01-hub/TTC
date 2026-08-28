@@ -46,6 +46,7 @@ export default async function OrderInboxPage({ searchParams }: { searchParams: {
         <table className="w-full min-w-[760px]">
           <thead className="border-b border-gray-200 bg-gray-50">
             <tr>
+              <th className="table-th">Order No.</th>
               <th className="table-th">Received</th>
               <th className="table-th">Customer</th>
               <th className="table-th">Source</th>
@@ -61,6 +62,7 @@ export default async function OrderInboxPage({ searchParams }: { searchParams: {
               const stale = o.status === "Pending" && o.createdAt < dayAgo;
               return (
                 <tr key={o.id} className={`hover:bg-gray-50 ${stale ? "bg-red-50/60" : ""}`}>
+                  <td className="table-td font-mono text-sm font-semibold text-gray-700">{o.orderNo ?? "—"}</td>
                   <td className="table-td text-sm">
                     <Link href={`/orders/${o.id}`} className="font-medium text-emerald-700 hover:underline">
                       {fmtDateTime(o.createdAt)}
@@ -76,7 +78,7 @@ export default async function OrderInboxPage({ searchParams }: { searchParams: {
                 </tr>
               );
             })}
-            {!orders.length && <tr><td colSpan={7} className="p-8 text-center text-sm text-gray-500">No incoming orders.</td></tr>}
+            {!orders.length && <tr><td colSpan={8} className="p-8 text-center text-sm text-gray-500">No incoming orders.</td></tr>}
           </tbody>
         </table>
       </div>
