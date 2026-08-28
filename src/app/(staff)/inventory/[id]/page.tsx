@@ -200,7 +200,10 @@ export default async function ProductDetailPage({ params, searchParams }: { para
                 <td className="table-td">
                   <span className={`font-semibold ${m.type === "IN" ? "text-emerald-700" : m.type === "OUT" ? "text-red-600" : "text-amber-600"}`}>{m.type}</span>
                 </td>
-                <td className="table-td text-sm text-gray-600">{m.refType === "ADJUST" ? m.refNo : `${m.refType ?? ""} ${m.refNo ?? ""}`}</td>
+                <td className="table-td text-sm text-gray-600">
+                  {m.refType === "ADJUST" ? m.refNo : `${m.refType ?? ""} ${m.refNo ?? ""}`}
+                  {m.supplierRef && <p className="text-xs text-gray-400">ref {m.supplierRef}</p>}
+                </td>
                 <td className="table-td text-right">
                   {m.type === "OUT" || m.qty < 0 ? "−" : "+"}{Math.abs(m.qty)}
                   {m.enteredUnit === "CARTON" && m.enteredQty != null && (

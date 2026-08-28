@@ -113,6 +113,15 @@ export default async function PODetailPage({ params, searchParams }: { params: {
                 title="When the stocks were physically received — the stock card uses this date"
               />
             </div>
+            <div>
+              <label className="label">Reference No.</label>
+              <input
+                name="supplierRef"
+                className="input"
+                placeholder="Supplier DR no."
+                title="The supplier document for this receipt — their delivery receipt or invoice number"
+              />
+            </div>
             <button className="btn-primary" type="submit">Receive Items (adds stock IN)</button>
           </div>
         )}

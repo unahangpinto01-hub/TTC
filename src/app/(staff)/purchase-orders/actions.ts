@@ -95,6 +95,8 @@ export async function receivePO(formData: FormData) {
   const recvQtys = formData.getAll("recvQty").map(Number);
   // when the stocks were physically received — backdated days land at end-of-day (createdAt keeps the entry time)
   const receivedAt = parseEffectiveDate(String(formData.get("receivedDate") || ""));
+  // supplier document for this receipt (their DR/invoice no.) — optional, recorded on the stock card
+  const supplierRef = String(formData.get("supplierRef") || "").trim() || null;
   const backdated = receivedAt.getTime() < Date.now() - 60 * 1000;
 
   const po = await prisma.purchaseOrder.findUniqueOrThrow({ where: { id: poId }, include: { lines: { include: { product: true } } } });
@@ -127,7 +129,7 @@ export async function receivePO(formData: FormData) {
         data: {
           productId: line.productId, type: "IN", qty: basePcs, balanceAfter: newStock,
           enteredQty: qty, enteredUnit: line.unit,
-          refType: "PO", refNo: po.poNumber, date: receivedAt, userId: user.id,
+          refType: "PO", refNo: po.poNumber, supplierRef, date: receivedAt, userId: user.id,
         },
       });
       // a backdated receipt slots into stock-card history — rebuild every later balance

@@ -194,6 +194,7 @@ model StockMovement {
   balanceAfter Int
   refType      String?  // PO | DR | OPENING | ADJUST
   refNo        String?
+  supplierRef  String?  // supplier document on a receipt, e.g. their DR number
   date         DateTime @default(now())
   userId       String?
   user         User?    @relation(fields: [userId], references: [id])
