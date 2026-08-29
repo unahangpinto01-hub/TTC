@@ -155,7 +155,7 @@ export default async function DashboardPage() {
                   {salesData.byProduct.slice(0, 10).map((p) => {
                     const max = salesData!.byProduct[0]?.amount || 1;
                     return (
-                      <div key={p.sku} className="text-xs">
+                      <div key={p.name} className="text-xs">
                         <div className="flex justify-between"><span className="truncate pr-2">{p.name}</span><span className="font-semibold">{peso(p.amount)}</span></div>
                         <div className="mt-0.5 h-1.5 overflow-hidden rounded-full bg-gray-100">
                           <div className="h-full rounded-full bg-emerald-500" style={{ width: `${(p.amount / max) * 100}%` }} />

@@ -75,15 +75,15 @@ export default async function SalesReportPage({ searchParams }: { searchParams: 
         </div>
 
         <div>
-          <h2 className="mb-2 font-semibold">By Product (Top 20)</h2>
+          <h2 className="mb-2 font-semibold">By Product (Top 20 product lines)</h2>
           <div className="card overflow-x-auto p-0">
             <table className="w-full">
               <thead className="border-b border-gray-200 bg-gray-50">
-                <tr><th className="table-th">Product</th><th className="table-th text-right">Qty</th><th className="table-th text-right">Amount</th></tr>
+                <tr><th className="table-th">Product Line</th><th className="table-th text-right">Qty (PCS)</th><th className="table-th text-right">Amount</th></tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {r.byProduct.slice(0, 20).map((p) => (
-                  <tr key={p.sku}><td className="table-td text-sm">{p.name}</td><td className="table-td text-right">{p.qty}</td><td className="table-td text-right">{peso(p.amount)}</td></tr>
+                  <tr key={p.name}><td className="table-td text-sm">{p.name}</td><td className="table-td text-right">{p.qty.toLocaleString()}</td><td className="table-td text-right">{peso(p.amount)}</td></tr>
                 ))}
                 {!r.byProduct.length && <tr><td colSpan={3} className="p-6 text-center text-sm text-gray-500">No sales in range.</td></tr>}
               </tbody>

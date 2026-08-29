@@ -38,7 +38,8 @@ export async function getSalesReport({ from, to }: Range, companyId: string, fil
   });
 
   const byCustomer = new Map<string, { name: string; region: string; count: number; amount: number }>();
-  const byProduct = new Map<string, { name: string; sku: string; qty: number; amount: number }>();
+  // product totals roll up to the parent item (product line); standalone products use their own name
+  const byProduct = new Map<string, { name: string; qty: number; amount: number }>();
   const byRegion = new Map<string, number>();
   let total = 0;
 
@@ -50,10 +51,11 @@ export async function getSalesReport({ from, to }: Range, companyId: string, fil
     byCustomer.set(sr.customerId, c);
     byRegion.set(sr.customer.region, round2((byRegion.get(sr.customer.region) ?? 0) + sr.amount));
     for (const l of sr.deliveryReceipt.lines) {
-      const p = byProduct.get(l.productId) ?? { name: l.product.name, sku: l.product.sku, qty: 0, amount: 0 };
+      const key = l.product.parentItem?.trim() || l.product.name;
+      const p = byProduct.get(key) ?? { name: key, qty: 0, amount: 0 };
       p.qty += l.baseQty; // aggregate in base PCS — lines may be CARTON or PCS
       p.amount = round2(p.amount + l.qty * l.unitPrice);
-      byProduct.set(l.productId, p);
+      byProduct.set(key, p);
     }
   }
 
