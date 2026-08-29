@@ -17,9 +17,9 @@ export async function GET(req: NextRequest, { params }: { params: { report: stri
 
   switch (params.report) {
     case "sales": {
-      const r = await getSalesReport(range, company.id);
+      const r = await getSalesReport(range, company.id, sp.province ? { province: sp.province } : undefined);
       const rows: (string | number)[][] = [
-        ["SALES REPORT", tag],
+        ["SALES REPORT", tag, sp.province ? `Province: ${sp.province}` : ""],
         [],
         ["BY CUSTOMER"],
         ["Customer", "Region", "Invoices", "Amount"],
@@ -115,10 +115,11 @@ export async function GET(req: NextRequest, { params }: { params: { report: stri
     case "sales-monthly": {
       const year = Number(sp.year) || new Date().getFullYear();
       const region = sp.region || "";
-      const rows = await getMonthlyProductSales(year, company.id, region || undefined);
+      const province = sp.province || "";
+      const rows = await getMonthlyProductSales(year, company.id, region || undefined, province || undefined);
       const months = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
       const data: (string | number)[][] = [
-        [`MONTHLY SALES PER PRODUCT — ${region || "ALL REGIONS"} ${year}`],
+        [`MONTHLY SALES PER PRODUCT — ${province || region || "ALL REGIONS"} ${year}`],
         [],
         ["Product", "Category", ...months, "Total Qty", "Amount"],
         ...rows.map((r) => [

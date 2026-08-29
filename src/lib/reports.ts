@@ -12,9 +12,24 @@ export function parseRange(searchParams: { from?: string; to?: string }): Range 
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
-export async function getSalesReport({ from, to }: Range, companyId: string) {
+/** Distinct customer provinces (customers are shared across companies), for report filters. */
+export async function getProvinces(): Promise<string[]> {
+  const rows = await prisma.customer.findMany({
+    distinct: ["province"],
+    select: { province: true },
+    orderBy: { province: "asc" },
+  });
+  return rows.map((r) => r.province).filter(Boolean);
+}
+
+export async function getSalesReport({ from, to }: Range, companyId: string, filters?: { province?: string }) {
   const srs = await prisma.salesReceipt.findMany({
-    where: { companyId, status: { not: "Void" }, invoiceDate: { gte: from, lte: to } },
+    where: {
+      companyId,
+      status: { not: "Void" },
+      invoiceDate: { gte: from, lte: to },
+      ...(filters?.province ? { customer: { province: filters.province } } : {}),
+    },
     include: {
       customer: true,
       deliveryReceipt: { include: { lines: { include: { product: true } } } },
@@ -58,16 +73,17 @@ export type MonthlyProductRow = {
   monthsAmt: number[]; // 12
 };
 
-/** Actual invoiced sales per product line per month, optionally filtered to one region. */
-export async function getMonthlyProductSales(year: number, companyId: string, region?: string) {
+/** Actual invoiced sales per product line per month, optionally filtered to one region and/or province. */
+export async function getMonthlyProductSales(year: number, companyId: string, region?: string, province?: string) {
   const from = new Date(year, 0, 1);
   const to = new Date(year, 11, 31, 23, 59, 59, 999);
+  const customerFilter = region || province ? { customer: { ...(region ? { region } : {}), ...(province ? { province } : {}) } } : {};
   const srs = await prisma.salesReceipt.findMany({
     where: {
       companyId,
       status: { not: "Void" },
       invoiceDate: { gte: from, lte: to },
-      ...(region ? { customer: { region } } : {}),
+      ...customerFilter,
     },
     include: { deliveryReceipt: { include: { lines: { include: { product: true } } } } },
   });

@@ -1,15 +1,17 @@
 import { requirePerm } from "@/lib/auth";
 import { getActiveCompany } from "@/lib/company";
-import { getSalesReport, parseRange } from "@/lib/reports";
+import { getSalesReport, getProvinces, parseRange } from "@/lib/reports";
 import { peso, fmtDate } from "@/lib/format";
 import { PageHeader } from "@/components/ui";
 import { PrintButton } from "@/components/print-button";
 
-export default async function SalesReportPage({ searchParams }: { searchParams: { from?: string; to?: string } }) {
+export default async function SalesReportPage({ searchParams }: { searchParams: { from?: string; to?: string; province?: string } }) {
   await requirePerm("reports");
   const company = await getActiveCompany();
   const range = parseRange(searchParams);
-  const r = await getSalesReport(range, company.id);
+  const provinces = await getProvinces();
+  const province = provinces.includes(searchParams.province || "") ? searchParams.province! : "";
+  const r = await getSalesReport(range, company.id, province ? { province } : undefined);
   const fromStr = range.from.toISOString().slice(0, 10);
   const toStr = range.to.toISOString().slice(0, 10);
 
@@ -17,18 +19,25 @@ export default async function SalesReportPage({ searchParams }: { searchParams: 
     <div className="print-page">
       <PageHeader title="Sales Report">
         <a href="/reports/sales-monthly" className="btn-secondary no-print">📅 Monthly per Region</a>
-        <a href={`/api/export/sales?from=${fromStr}&to=${toStr}`} className="btn-secondary no-print">⬇ Excel</a>
+        <a href={`/api/export/sales?from=${fromStr}&to=${toStr}${province ? `&province=${encodeURIComponent(province)}` : ""}`} className="btn-secondary no-print">⬇ Excel</a>
         <span className="no-print"><PrintButton /></span>
       </PageHeader>
 
       <form method="GET" className="no-print mb-4 flex flex-wrap items-end gap-2">
         <div><label className="label">From</label><input type="date" name="from" defaultValue={fromStr} className="input" /></div>
         <div><label className="label">To</label><input type="date" name="to" defaultValue={toStr} className="input" /></div>
+        <div>
+          <label className="label">Province</label>
+          <select name="province" defaultValue={province} className="input w-48">
+            <option value="">All provinces</option>
+            {provinces.map((p) => <option key={p}>{p}</option>)}
+          </select>
+        </div>
         <button className="btn-secondary" type="submit">Apply</button>
       </form>
 
       <p className="mb-4 text-sm text-gray-600">
-        {fmtDate(range.from)} – {fmtDate(range.to)} · Total invoiced sales:{" "}
+        {fmtDate(range.from)} – {fmtDate(range.to)}{province ? ` · Province: ${province}` : ""} · Total invoiced sales:{" "}
         <span className="text-lg font-bold text-emerald-800">{peso(r.total)}</span> · {r.invoices.length} invoice(s)
       </p>
 

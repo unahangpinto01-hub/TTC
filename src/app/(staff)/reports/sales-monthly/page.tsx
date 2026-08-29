@@ -2,7 +2,7 @@ import { Fragment } from "react";
 import Link from "next/link";
 import { requirePerm } from "@/lib/auth";
 import { getActiveCompany } from "@/lib/company";
-import { getMonthlyProductSales } from "@/lib/reports";
+import { getMonthlyProductSales, getProvinces } from "@/lib/reports";
 import { peso } from "@/lib/format";
 import { PageHeader } from "@/components/ui";
 import { PrintButton, BackButton } from "@/components/print-button";
@@ -10,12 +10,14 @@ import { PrintButton, BackButton } from "@/components/print-button";
 const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
 const REGIONS = ["Luzon", "Visayas", "Mindanao"];
 
-export default async function MonthlySalesPage({ searchParams }: { searchParams: { year?: string; region?: string } }) {
+export default async function MonthlySalesPage({ searchParams }: { searchParams: { year?: string; region?: string; province?: string } }) {
   await requirePerm("reports");
   const company = await getActiveCompany();
   const year = Number(searchParams.year) || new Date().getFullYear();
   const region = REGIONS.includes(searchParams.region || "") ? searchParams.region! : "";
-  const rows = await getMonthlyProductSales(year, company.id, region || undefined);
+  const provinces = await getProvinces();
+  const province = provinces.includes(searchParams.province || "") ? searchParams.province! : "";
+  const rows = await getMonthlyProductSales(year, company.id, region || undefined, province || undefined);
 
   const monthQty = (mi: number) => rows.reduce((s, r) => s + r.monthsQty[mi], 0);
   const monthAmt = (mi: number) => rows.reduce((s, r) => s + r.monthsAmt[mi], 0);
@@ -30,12 +32,12 @@ export default async function MonthlySalesPage({ searchParams }: { searchParams:
         <BackButton />
         <div className="flex flex-wrap items-center gap-2">
           <Link href="/reports/sales" className="btn-secondary">Summary view</Link>
-          <a href={`/api/export/sales-monthly?year=${year}${region ? `&region=${region}` : ""}`} className="btn-secondary">⬇ Excel</a>
+          <a href={`/api/export/sales-monthly?year=${year}${region ? `&region=${region}` : ""}${province ? `&province=${encodeURIComponent(province)}` : ""}`} className="btn-secondary">⬇ Excel</a>
           <PrintButton />
         </div>
       </div>
 
-      <PageHeader title={`Monthly Sales per Product — ${region || "All Regions"} ${year}`} />
+      <PageHeader title={`Monthly Sales per Product — ${province || region || "All Regions"} ${year}`} />
 
       <form method="GET" className="no-print mb-4 flex flex-wrap items-end gap-2">
         <div>
@@ -47,6 +49,13 @@ export default async function MonthlySalesPage({ searchParams }: { searchParams:
           <select name="region" defaultValue={region} className="input w-40">
             <option value="">All Regions</option>
             {REGIONS.map((r) => <option key={r}>{r}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="label">Province</label>
+          <select name="province" defaultValue={province} className="input w-48">
+            <option value="">All provinces</option>
+            {provinces.map((p) => <option key={p}>{p}</option>)}
           </select>
         </div>
         <button className="btn-primary" type="submit">View</button>
