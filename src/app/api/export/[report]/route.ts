@@ -3,7 +3,7 @@ import { getUser } from "@/lib/auth";
 import { sheetResponse, PESO_FMT, QTY_FMT } from "@/lib/xlsx-helpers";
 import { getSalesReport, getExpenseReport, getPnl, getArAging, getMovements, getDeliveryPerformance, getMonthlyProductSales, getMerchandiseInventory, parseRange } from "@/lib/reports";
 import { cartonBreakdown } from "@/lib/units";
-import { getActiveCompany } from "@/lib/company";
+import { getActiveCompany, allowedCompanies } from "@/lib/company";
 import { prisma } from "@/lib/db";
 
 export async function GET(req: NextRequest, { params }: { params: { report: string } }) {
@@ -195,6 +195,47 @@ export async function GET(req: NextRequest, { params }: { params: { report: stri
         ...perf.map((d) => [d.date, d.count, d.count >= 5 ? "MET" : `${5 - d.count} short`]),
       ];
       return sheetResponse(rows, "Deliveries", `delivery-performance-${tag}.xlsx`);
+    }
+    case "price-list": {
+      // the company may be picked on the report, but only from the ones this user may access
+      const companies = await allowedCompanies(user);
+      const target = companies.find((c) => c.id === sp.company) ?? company;
+      const category = sp.category || "";
+      const q = (sp.q || "").trim();
+      const showInactive = sp.inactive === "1";
+      const sortKey = sp.sort === "category" ? "category" : sp.sort === "srp" ? "srp" : "name";
+      const orderBy: any =
+        sortKey === "category" ? [{ category: "asc" }, { name: "asc" }]
+        : sortKey === "srp" ? [{ srp: "desc" }, { name: "asc" }]
+        : [{ name: "asc" }];
+      const where: any = { companyId: target.id };
+      if (!showInactive) where.status = "Active";
+      if (category) where.category = category;
+      if (q) {
+        where.OR = [
+          { name: { contains: q, mode: "insensitive" } },
+          { sku: { contains: q, mode: "insensitive" } },
+          { packSize: { contains: q, mode: "insensitive" } },
+          { activeIngredient: { contains: q, mode: "insensitive" } },
+        ];
+      }
+      const products = await prisma.product.findMany({ where, orderBy });
+      const today = new Date().toISOString().slice(0, 10);
+      const HEADER_ROW = 4;
+      const rows: (string | number)[][] = [
+        [target.companyName],
+        ["PRODUCT PRICE LIST"],
+        [`Generated: ${today} · ${category || "All Categories"}${q ? ` · Search "${q}"` : ""}${showInactive ? " · including inactive" : " · active products only"}`],
+        [],
+        ["#", "Product Name", "Size", "SRP"],
+        ...products.map((p, i) => [i + 1, p.name, p.packSize || "", p.itemClass === "NON_INVENTORY" ? "" : p.srp]),
+        [],
+        ["", `${products.length} product(s) listed`],
+      ];
+      return sheetResponse(rows, "Price List", `Product_Price_List_${today}.xlsx`, {
+        colWidths: [5, 46, 18, 14],
+        numFmts: [{ col: 3, fmt: PESO_FMT, fromRow: HEADER_ROW + 1 }],
+      });
     }
     default:
       return new Response("Unknown report", { status: 404 });

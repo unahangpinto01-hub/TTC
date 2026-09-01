@@ -32,9 +32,21 @@
   }
 }
 
+@page {
+  size: A4;
+  margin: 12mm;
+}
+
 @media print {
   .no-print {
     display: none !important;
+  }
+  /* long reports: repeat the column headers on every sheet and keep rows intact */
+  thead {
+    display: table-header-group;
+  }
+  tr {
+    break-inside: avoid;
   }
   body {
     background: white !important;
