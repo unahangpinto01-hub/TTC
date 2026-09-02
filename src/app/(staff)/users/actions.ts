@@ -73,7 +73,7 @@ export async function renameUser(formData: FormData) {
   const me = await requireStaffWrite(["SUPER_ADMIN"]);
   await requireStepUp("/users");
   const id = String(formData.get("id"));
-  const name = String(formData.get("name") || "").trim().replace(/s+/g, " ");
+  const name = String(formData.get("name") || "").trim().replace(/\s+/g, " ");
   if (name.length < 2 || name.length > 80) redirect(`/users/${id}?error=name`);
   const before = await prisma.user.findUniqueOrThrow({ where: { id }, select: { name: true } });
   if (before.name === name) redirect(`/users/${id}`);
