@@ -1,29 +1,39 @@
 import { requirePerm } from "@/lib/auth";
-import { getActiveCompany } from "@/lib/company";
+import { resolveReportScope } from "@/lib/report-scope";
 import { getSalesReport, getProvinces, parseRange } from "@/lib/reports";
 import { peso, fmtDate } from "@/lib/format";
 import { PageHeader } from "@/components/ui";
 import { PrintButton } from "@/components/print-button";
+import { CompanyFilter, CompanyTag } from "@/components/company-filter";
 
-export default async function SalesReportPage({ searchParams }: { searchParams: { from?: string; to?: string; province?: string } }) {
-  await requirePerm("reports");
-  const company = await getActiveCompany();
+export default async function SalesReportPage({
+  searchParams,
+}: {
+  searchParams: { from?: string; to?: string; province?: string; company?: string };
+}) {
+  const user = await requirePerm("reports");
+  const scope = await resolveReportScope(user, searchParams.company);
   const range = parseRange(searchParams);
   const provinces = await getProvinces();
   const province = provinces.includes(searchParams.province || "") ? searchParams.province! : "";
-  const r = await getSalesReport(range, company.id, province ? { province } : undefined);
+  const r = await getSalesReport(range, scope.ids, province ? { province } : undefined);
   const fromStr = range.from.toISOString().slice(0, 10);
   const toStr = range.to.toISOString().slice(0, 10);
+
+  const qs = new URLSearchParams({ from: fromStr, to: toStr });
+  if (province) qs.set("province", province);
+  qs.set("company", scope.value);
 
   return (
     <div className="print-page">
       <PageHeader title="Sales Report">
         <a href="/reports/sales-monthly" className="btn-secondary no-print">📅 Monthly per Region</a>
-        <a href={`/api/export/sales?from=${fromStr}&to=${toStr}${province ? `&province=${encodeURIComponent(province)}` : ""}`} className="btn-secondary no-print">⬇ Excel</a>
+        <a href={`/api/export/sales?${qs.toString()}`} className="btn-secondary no-print">⬇ Excel</a>
         <span className="no-print"><PrintButton /></span>
       </PageHeader>
 
       <form method="GET" className="no-print mb-4 flex flex-wrap items-end gap-2">
+        <CompanyFilter scope={scope} />
         <div><label className="label">From</label><input type="date" name="from" defaultValue={fromStr} className="input" /></div>
         <div><label className="label">To</label><input type="date" name="to" defaultValue={toStr} className="input" /></div>
         <div>
@@ -37,9 +47,35 @@ export default async function SalesReportPage({ searchParams }: { searchParams: 
       </form>
 
       <p className="mb-4 text-sm text-gray-600">
-        {fmtDate(range.from)} – {fmtDate(range.to)}{province ? ` · Province: ${province}` : ""} · Total invoiced sales:{" "}
+        <span className="font-semibold">{scope.label}</span> · {fmtDate(range.from)} – {fmtDate(range.to)}
+        {province ? ` · Province: ${province}` : ""} · Total invoiced sales:{" "}
         <span className="text-lg font-bold text-emerald-800">{peso(r.total)}</span> · {r.invoices.length} invoice(s)
       </p>
+
+      {/* combined view: each company's own total, then the grand total */}
+      {scope.combined && (
+        <div className="card mb-4 overflow-x-auto p-0">
+          <table className="w-full">
+            <thead className="border-b border-gray-200 bg-gray-50">
+              <tr><th className="table-th">Company</th><th className="table-th text-right">Invoices</th><th className="table-th text-right">Sales Total</th></tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {r.byCompany.map((c) => (
+                <tr key={c.name}>
+                  <td className="table-td font-medium">{c.name}</td>
+                  <td className="table-td text-right">{c.count}</td>
+                  <td className="table-td text-right">{peso(c.amount)}</td>
+                </tr>
+              ))}
+              <tr className="bg-gray-50 font-bold">
+                <td className="table-td">COMBINED GRAND TOTAL</td>
+                <td className="table-td text-right">{r.invoices.length}</td>
+                <td className="table-td text-right text-emerald-800">{peso(r.total)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-2">
         <div>
@@ -90,6 +126,42 @@ export default async function SalesReportPage({ searchParams }: { searchParams: 
             </table>
           </div>
         </div>
+      </div>
+
+      {/* transaction-level listing: every invoice, tagged with its company */}
+      <h2 className="mb-2 mt-6 font-semibold">Invoices</h2>
+      <div className="card overflow-x-auto p-0">
+        <table className="w-full min-w-[640px]">
+          <thead className="border-b border-gray-200 bg-gray-50">
+            <tr>
+              <th className="table-th">Date</th>
+              {scope.combined && <th className="table-th">Company</th>}
+              <th className="table-th">Invoice No.</th>
+              <th className="table-th">Customer</th>
+              <th className="table-th text-right">Amount</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {r.invoices.map((sr) => (
+              <tr key={sr.id}>
+                <td className="table-td text-sm">{fmtDate(sr.invoiceDate)}</td>
+                {scope.combined && <td className="table-td"><CompanyTag name={sr.company.companyName} /></td>}
+                <td className="table-td font-mono text-sm">{sr.srNumber}</td>
+                <td className="table-td text-sm">{sr.customer.businessName}</td>
+                <td className="table-td text-right">{peso(sr.amount)}</td>
+              </tr>
+            ))}
+            {!r.invoices.length && (
+              <tr><td colSpan={scope.combined ? 5 : 4} className="p-6 text-center text-sm text-gray-500">No invoices in range.</td></tr>
+            )}
+          </tbody>
+          <tfoot className="border-t border-gray-200 bg-gray-50 font-bold">
+            <tr>
+              <td className="table-td" colSpan={scope.combined ? 4 : 3}>{scope.combined ? "COMBINED GRAND TOTAL" : "TOTAL"}</td>
+              <td className="table-td text-right text-emerald-800">{peso(r.total)}</td>
+            </tr>
+          </tfoot>
+        </table>
       </div>
     </div>
   );

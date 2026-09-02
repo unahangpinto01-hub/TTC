@@ -1,7 +1,8 @@
 import { Fragment } from "react";
 import { prisma } from "@/lib/db";
 import { requirePerm } from "@/lib/auth";
-import { getActiveCompany, allowedCompanies } from "@/lib/company";
+import { resolveReportScope } from "@/lib/report-scope";
+import { CompanyFilter, CompanyTag } from "@/components/company-filter";
 import { peso, fmtDateTime } from "@/lib/format";
 import { getCategoryNames } from "@/lib/categories";
 import { PrintButton, BackButton } from "@/components/print-button";
@@ -23,10 +24,8 @@ const SORTS: Record<string, { label: string; order: any }> = {
 
 export default async function PriceListPage({ searchParams }: { searchParams: SP }) {
   const user = await requirePerm("reports");
-  const active = await getActiveCompany(user);
-  const companies = await allowedCompanies(user);
-  // a company may be picked, but only from the ones this user may access
-  const company = companies.find((c) => c.id === searchParams.company) ?? active;
+  const scope = await resolveReportScope(user, searchParams.company);
+  const company = scope.company;
 
   const categories = await getCategoryNames();
   const category = searchParams.category || "";
@@ -34,7 +33,7 @@ export default async function PriceListPage({ searchParams }: { searchParams: SP
   const sortKey = SORTS[searchParams.sort ?? ""] ? searchParams.sort! : "name";
   const showInactive = searchParams.inactive === "1";
 
-  const where: any = { companyId: company.id };
+  const where: any = { companyId: { in: scope.ids } };
   if (!showInactive) where.status = "Active"; // discontinued products are out unless asked for
   if (category) where.category = category;
   if (q) {
@@ -48,11 +47,11 @@ export default async function PriceListPage({ searchParams }: { searchParams: SP
   const products = await prisma.product.findMany({
     where,
     orderBy: SORTS[sortKey].order,
-    select: { id: true, sku: true, name: true, packSize: true, srp: true, category: true, status: true, itemClass: true },
+    select: { id: true, sku: true, name: true, packSize: true, srp: true, category: true, status: true, itemClass: true, company: { select: { companyName: true } } },
   });
 
   const params = new URLSearchParams();
-  if (company.id !== active.id) params.set("company", company.id);
+  params.set("company", scope.value);
   if (category) params.set("category", category);
   if (q) params.set("q", q);
   if (sortKey !== "name") params.set("sort", sortKey);
@@ -80,16 +79,7 @@ export default async function PriceListPage({ searchParams }: { searchParams: SP
         <BackButton />
         <div className="flex flex-wrap items-end gap-2">
           <form method="GET" className="flex flex-wrap items-end gap-2">
-            {companies.length > 1 && (
-              <div>
-                <label className="label">Company</label>
-                <select name="company" defaultValue={company.id} className="input max-w-[190px]">
-                  {companies.map((c) => (
-                    <option key={c.id} value={c.id}>{c.companyName}</option>
-                  ))}
-                </select>
-              </div>
-            )}
+            <CompanyFilter scope={scope} className="max-w-[190px]" />
             <div>
               <label className="label">Category</label>
               <select name="category" defaultValue={category} className="input max-w-[170px]">
@@ -130,7 +120,7 @@ export default async function PriceListPage({ searchParams }: { searchParams: SP
             </div>
           )}
           <div>
-            <h1 className="text-xl font-bold uppercase text-emerald-900">{company.companyName}</h1>
+            <h1 className="text-xl font-bold uppercase text-emerald-900">{scope.combined ? "All Companies" : company.companyName}</h1>
             {company.address && <p className="text-xs text-gray-500">{company.address}</p>}
             {contact && <p className="text-xs text-gray-500">{contact}</p>}
           </div>
@@ -146,6 +136,7 @@ export default async function PriceListPage({ searchParams }: { searchParams: SP
         <PriceListTable
           rows={products.map((p) => ({
             id: p.id,
+            company: scope.combined ? p.company.companyName : "",
             sku: p.sku,
             name: p.name,
             size: p.packSize || "—",

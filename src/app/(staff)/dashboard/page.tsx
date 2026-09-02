@@ -59,8 +59,8 @@ export default async function DashboardPage() {
   let salesData: Awaited<ReturnType<typeof getSalesReport>> | null = null;
   let ytd: Awaited<ReturnType<typeof getPnl>> | null = null;
   if (canFinance) {
-    salesData = await getSalesReport({ from: new Date(now.getFullYear(), now.getMonth() - 2, 1), to: now }, company.id);
-    ytd = await getPnl({ from: new Date(now.getFullYear(), 0, 1), to: now }, company.id);
+    salesData = await getSalesReport({ from: new Date(now.getFullYear(), now.getMonth() - 2, 1), to: now }, [company.id]);
+    ytd = await getPnl({ from: new Date(now.getFullYear(), 0, 1), to: now }, [company.id]);
   }
 
   return (

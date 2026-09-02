@@ -22,15 +22,16 @@ export async function getProvinces(): Promise<string[]> {
   return rows.map((r) => r.province).filter(Boolean);
 }
 
-export async function getSalesReport({ from, to }: Range, companyId: string, filters?: { province?: string }) {
+export async function getSalesReport({ from, to }: Range, companyIds: string[], filters?: { province?: string }) {
   const srs = await prisma.salesReceipt.findMany({
     where: {
-      companyId,
+      companyId: { in: companyIds },
       status: { not: "Void" },
       invoiceDate: { gte: from, lte: to },
       ...(filters?.province ? { customer: { province: filters.province } } : {}),
     },
     include: {
+      company: { select: { companyName: true } },
       customer: true,
       deliveryReceipt: { include: { lines: { include: { product: true } } } },
     },
@@ -41,6 +42,8 @@ export async function getSalesReport({ from, to }: Range, companyId: string, fil
   // product totals roll up to the parent item (product line); standalone products use their own name
   const byProduct = new Map<string, { name: string; qty: number; amount: number }>();
   const byRegion = new Map<string, number>();
+  // per-company subtotals, so a combined report shows each company and a grand total
+  const byCompany = new Map<string, { name: string; count: number; amount: number }>();
   let total = 0;
 
   for (const sr of srs) {
@@ -50,6 +53,10 @@ export async function getSalesReport({ from, to }: Range, companyId: string, fil
     c.amount = round2(c.amount + sr.amount);
     byCustomer.set(sr.customerId, c);
     byRegion.set(sr.customer.region, round2((byRegion.get(sr.customer.region) ?? 0) + sr.amount));
+    const co = byCompany.get(sr.companyId) ?? { name: sr.company.companyName, count: 0, amount: 0 };
+    co.count++;
+    co.amount = round2(co.amount + sr.amount);
+    byCompany.set(sr.companyId, co);
     for (const l of sr.deliveryReceipt.lines) {
       const key = l.product.parentItem?.trim() || l.product.name;
       const p = byProduct.get(key) ?? { name: key, qty: 0, amount: 0 };
@@ -65,6 +72,7 @@ export async function getSalesReport({ from, to }: Range, companyId: string, fil
     byCustomer: [...byCustomer.values()].sort((a, b) => b.amount - a.amount),
     byProduct: [...byProduct.values()].sort((a, b) => b.amount - a.amount),
     byRegion: [...byRegion.entries()].map(([region, amount]) => ({ region, amount })).sort((a, b) => b.amount - a.amount),
+    byCompany: [...byCompany.values()].sort((a, b) => b.amount - a.amount),
   };
 }
 
@@ -76,13 +84,13 @@ export type MonthlyProductRow = {
 };
 
 /** Actual invoiced sales per product line per month, optionally filtered to one region and/or province. */
-export async function getMonthlyProductSales(year: number, companyId: string, region?: string, province?: string) {
+export async function getMonthlyProductSales(year: number, companyIds: string[], region?: string, province?: string) {
   const from = new Date(year, 0, 1);
   const to = new Date(year, 11, 31, 23, 59, 59, 999);
   const customerFilter = region || province ? { customer: { ...(region ? { region } : {}), ...(province ? { province } : {}) } } : {};
   const srs = await prisma.salesReceipt.findMany({
     where: {
-      companyId,
+      companyId: { in: companyIds },
       status: { not: "Void" },
       invoiceDate: { gte: from, lte: to },
       ...customerFilter,
@@ -113,28 +121,33 @@ export async function getMonthlyProductSales(year: number, companyId: string, re
   );
 }
 
-export async function getExpenseReport({ from, to }: Range, companyId: string) {
+export async function getExpenseReport({ from, to }: Range, companyIds: string[]) {
   const expenses = await prisma.expense.findMany({
-    where: { companyId, date: { gte: from, lte: to } },
+    where: { companyId: { in: companyIds }, date: { gte: from, lte: to } },
     orderBy: { date: "desc" },
-    include: { user: { select: { name: true } } },
+    include: { company: { select: { companyName: true } }, user: { select: { name: true } } },
   });
   const byCategory = new Map<string, number>();
+  const byCompany = new Map<string, { name: string; amount: number }>();
   let total = 0;
   for (const e of expenses) {
     total += e.amount;
     byCategory.set(e.category, round2((byCategory.get(e.category) ?? 0) + e.amount));
+    const co = byCompany.get(e.companyId) ?? { name: e.company.companyName, amount: 0 };
+    co.amount = round2(co.amount + e.amount);
+    byCompany.set(e.companyId, co);
   }
   return {
     expenses,
     total: round2(total),
     byCategory: [...byCategory.entries()].map(([category, amount]) => ({ category, amount })).sort((a, b) => b.amount - a.amount),
+    byCompany: [...byCompany.values()].sort((a, b) => b.amount - a.amount),
   };
 }
 
-export async function getPnl(range: Range, companyId: string) {
-  const sales = await getSalesReport(range, companyId);
-  const expenseReport = await getExpenseReport(range, companyId);
+export async function getPnl(range: Range, companyIds: string[]) {
+  const sales = await getSalesReport(range, companyIds);
+  const expenseReport = await getExpenseReport(range, companyIds);
   // COGS at the weighted-average cost captured when the goods were delivered (per PCS × base PCS).
   // Pre-feature lines have no snapshot (0) and fall back to the product's current cost.
   let cogs = 0;
@@ -154,6 +167,7 @@ export async function getPnl(range: Range, companyId: string) {
 export type AgingRow = {
   customerId: string;
   customer: string;
+  company: string;
   region: string;
   current: number;
   d1_30: number;
@@ -163,10 +177,10 @@ export type AgingRow = {
   total: number;
 };
 
-export async function getArAging(companyId: string): Promise<{ rows: AgingRow[]; totals: Omit<AgingRow, "customerId" | "customer" | "region"> }> {
+export async function getArAging(companyIds: string[]): Promise<{ rows: AgingRow[]; totals: Omit<AgingRow, "customerId" | "customer" | "company" | "region"> }> {
   const srs = await prisma.salesReceipt.findMany({
-    where: { companyId, status: { in: ["Open", "Partial"] } },
-    include: { customer: true, payments: true },
+    where: { companyId: { in: companyIds }, status: { in: ["Open", "Partial"] } },
+    include: { company: { select: { companyName: true } }, customer: true, payments: true },
   });
   const now = new Date();
   const map = new Map<string, AgingRow>();
@@ -175,9 +189,12 @@ export async function getArAging(companyId: string): Promise<{ rows: AgingRow[];
     const bal = round2(sr.amount - paid);
     if (bal <= 0) continue;
     const days = Math.floor((now.getTime() - sr.dueDate.getTime()) / 86400000);
-    const row = map.get(sr.customerId) ?? {
+    // one row per customer PER company — balances from different companies never merge
+    const key = `${sr.companyId}:${sr.customerId}`;
+    const row = map.get(key) ?? {
       customerId: sr.customerId,
       customer: sr.customer.businessName,
+      company: sr.company.companyName,
       region: sr.customer.region,
       current: 0, d1_30: 0, d31_60: 0, d61_90: 0, d90plus: 0, total: 0,
     };
@@ -187,7 +204,7 @@ export async function getArAging(companyId: string): Promise<{ rows: AgingRow[];
     else if (days <= 90) row.d61_90 = round2(row.d61_90 + bal);
     else row.d90plus = round2(row.d90plus + bal);
     row.total = round2(row.total + bal);
-    map.set(sr.customerId, row);
+    map.set(key, row);
   }
   const rows = [...map.values()].sort((a, b) => b.total - a.total);
   const totals = rows.reduce(
@@ -206,6 +223,7 @@ export async function getArAging(companyId: string): Promise<{ rows: AgingRow[];
 
 export type MerchandiseInventoryRow = {
   id: string;
+  company: string;
   sku: string;
   name: string;
   packSize: string;
@@ -231,7 +249,7 @@ export type MerchandiseInventoryReport = {
  * Valuation always uses the CURRENT unit cost — the system stores a single static cost per product.
  */
 export async function getMerchandiseInventory(opts: {
-  companyId: string;
+  companyIds: string[];
   asOf?: Date | null;
   category?: string;
   q?: string;
@@ -239,7 +257,7 @@ export async function getMerchandiseInventory(opts: {
   /** "INVENTORY" (default — merchandise only) or "NON_INVENTORY" (promo materials, valued separately) */
   itemClass?: string;
 }): Promise<MerchandiseInventoryReport> {
-  const where: any = { companyId: opts.companyId };
+  const where: any = { companyId: { in: opts.companyIds } };
   where.itemClass = opts.itemClass === "NON_INVENTORY" ? "NON_INVENTORY" : "INVENTORY";
   if (opts.category) where.category = opts.category;
   if (opts.q) {
@@ -250,7 +268,7 @@ export async function getMerchandiseInventory(opts: {
       { activeIngredient: { contains: opts.q, mode: "insensitive" } },
     ];
   }
-  const products = await prisma.product.findMany({ where, orderBy: [{ category: "asc" }, { name: "asc" }] });
+  const products = await prisma.product.findMany({ where, orderBy: [{ category: "asc" }, { name: "asc" }], include: { company: { select: { companyName: true } } } });
 
   // historical only when the as-of date ends before now; today (or future) = live stock
   let asOfEnd: Date | null = null;
@@ -277,6 +295,7 @@ export async function getMerchandiseInventory(opts: {
     const stock = stockOf(p);
     return {
       id: p.id,
+      company: p.company.companyName,
       sku: p.sku,
       name: p.name,
       packSize: p.packSize,
@@ -301,39 +320,43 @@ export async function getMerchandiseInventory(opts: {
   };
 }
 
-export async function getMovements({ from, to }: Range, companyId: string) {
+export async function getMovements({ from, to }: Range, companyIds: string[]) {
   return prisma.stockMovement.findMany({
-    where: { date: { gte: from, lte: to }, product: { companyId } },
+    where: { date: { gte: from, lte: to }, product: { companyId: { in: companyIds } } },
     orderBy: { date: "desc" },
     take: 500,
-    include: { product: true, user: { select: { name: true } } },
+    include: { product: { include: { company: { select: { companyName: true } } } }, user: { select: { name: true } } },
   });
 }
 
-export async function getDeliveryPerformance({ from, to }: Range, companyId: string) {
+export async function getDeliveryPerformance({ from, to }: Range, companyIds: string[]) {
   const delivered = await prisma.deliveryReceipt.findMany({
-    where: { companyId, deliveredAt: { gte: from, lte: to }, status: { in: ["Delivered", "Invoiced"] } },
-    select: { deliveredAt: true },
+    where: { companyId: { in: companyIds }, deliveredAt: { gte: from, lte: to }, status: { in: ["Delivered", "Invoiced"] } },
+    select: { deliveredAt: true, company: { select: { companyName: true } } },
   });
-  const byDay = new Map<string, number>();
+  const byDay = new Map<string, { count: number; byCompany: Record<string, number> }>();
   for (const d of delivered) {
     const key = d.deliveredAt!.toISOString().slice(0, 10);
-    byDay.set(key, (byDay.get(key) ?? 0) + 1);
+    const row = byDay.get(key) ?? { count: 0, byCompany: {} };
+    row.count++;
+    row.byCompany[d.company.companyName] = (row.byCompany[d.company.companyName] ?? 0) + 1;
+    byDay.set(key, row);
   }
-  return [...byDay.entries()].map(([date, count]) => ({ date, count })).sort((a, b) => a.date.localeCompare(b.date));
+  return [...byDay.entries()].map(([date, r]) => ({ date, count: r.count, byCompany: r.byCompany })).sort((a, b) => a.date.localeCompare(b.date));
 }
 
 /** Journal-style ledger entries derived from sales, purchases, expenses, collections. */
-export async function getLedger({ from, to }: Range, companyId: string) {
+export async function getLedger({ from, to }: Range, companyIds: string[]) {
   const [srs, payments, expenses, poIns] = await Promise.all([
-    prisma.salesReceipt.findMany({ where: { companyId, status: { not: "Void" }, invoiceDate: { gte: from, lte: to } }, include: { customer: true } }),
-    prisma.payment.findMany({ where: { date: { gte: from, lte: to }, salesReceipt: { companyId } }, include: { salesReceipt: { include: { customer: true } } } }),
-    prisma.expense.findMany({ where: { companyId, date: { gte: from, lte: to } } }),
-    prisma.stockMovement.findMany({ where: { date: { gte: from, lte: to }, type: "IN", refType: "PO", product: { companyId } }, include: { product: true } }),
+    prisma.salesReceipt.findMany({ where: { companyId: { in: companyIds }, status: { not: "Void" }, invoiceDate: { gte: from, lte: to } }, include: { company: { select: { companyName: true } }, customer: true } }),
+    prisma.payment.findMany({ where: { date: { gte: from, lte: to }, salesReceipt: { companyId: { in: companyIds } } }, include: { salesReceipt: { include: { company: { select: { companyName: true } }, customer: true } } } }),
+    prisma.expense.findMany({ where: { companyId: { in: companyIds }, date: { gte: from, lte: to } }, include: { company: { select: { companyName: true } } } }),
+    prisma.stockMovement.findMany({ where: { date: { gte: from, lte: to }, type: "IN", refType: "PO", product: { companyId: { in: companyIds } } }, include: { product: { include: { company: { select: { companyName: true } } } } } }),
   ]);
   const entries = [
     ...srs.map((sr) => ({
       date: sr.invoiceDate,
+      company: sr.company.companyName,
       ref: sr.srNumber,
       description: `Sale on account — ${sr.customer.businessName}`,
       debit: "Accounts Receivable",
@@ -342,6 +365,7 @@ export async function getLedger({ from, to }: Range, companyId: string) {
     })),
     ...payments.map((p) => ({
       date: p.date,
+      company: p.salesReceipt.company.companyName,
       ref: p.refNo || p.salesReceipt.srNumber,
       description: `Collection — ${p.salesReceipt.customer.businessName} (${p.method})`,
       debit: "Cash",
@@ -350,6 +374,7 @@ export async function getLedger({ from, to }: Range, companyId: string) {
     })),
     ...expenses.map((e) => ({
       date: e.date,
+      company: e.company.companyName,
       ref: "EXP",
       description: `${e.category} expense${e.notes ? ` — ${e.notes}` : ""}`,
       debit: `Expense: ${e.category}`,
@@ -358,6 +383,7 @@ export async function getLedger({ from, to }: Range, companyId: string) {
     })),
     ...poIns.map((m) => ({
       date: m.date,
+      company: m.product.company.companyName,
       ref: m.refNo ?? "PO",
       description: `Inventory received — ${m.product.name} × ${m.qty}`,
       debit: "Inventory",
@@ -366,4 +392,141 @@ export async function getLedger({ from, to }: Range, companyId: string) {
     })),
   ];
   return entries.sort((a, b) => b.date.getTime() - a.date.getTime());
+}
+
+export type CollectionRow = {
+  id: string;
+  date: Date;
+  company: string;
+  srNumber: string;
+  customer: string;
+  method: string;
+  refNo: string;
+  amount: number;
+};
+
+/** Payments actually received in the period — the collections report. */
+export async function getCollections({ from, to }: Range, companyIds: string[], filters?: { method?: string; customerId?: string }) {
+  const payments = await prisma.payment.findMany({
+    where: {
+      date: { gte: from, lte: to },
+      ...(filters?.method ? { method: filters.method } : {}),
+      salesReceipt: {
+        companyId: { in: companyIds },
+        status: { not: "Void" },
+        ...(filters?.customerId ? { customerId: filters.customerId } : {}),
+      },
+    },
+    include: { salesReceipt: { include: { company: { select: { companyName: true } }, customer: true } } },
+    orderBy: { date: "asc" },
+  });
+
+  const rows: CollectionRow[] = payments.map((p) => ({
+    id: p.id,
+    date: p.date,
+    company: p.salesReceipt.company.companyName,
+    srNumber: p.salesReceipt.srNumber,
+    customer: p.salesReceipt.customer.businessName,
+    method: p.method,
+    refNo: p.refNo ?? "",
+    amount: p.amount,
+  }));
+
+  const group = (key: (r: CollectionRow) => string) => {
+    const m = new Map<string, { name: string; count: number; amount: number }>();
+    for (const r of rows) {
+      const k = key(r);
+      const cur = m.get(k) ?? { name: k, count: 0, amount: 0 };
+      cur.count++;
+      cur.amount = round2(cur.amount + r.amount);
+      m.set(k, cur);
+    }
+    return [...m.values()].sort((a, b) => b.amount - a.amount);
+  };
+
+  return {
+    rows,
+    total: round2(rows.reduce((s, r) => s + r.amount, 0)),
+    byCompany: group((r) => r.company),
+    byMethod: group((r) => r.method),
+    byCustomer: group((r) => r.customer),
+  };
+}
+
+/** Per-customer sales performance across the period: invoices, sales, collections, balance. */
+export async function getCustomerReport({ from, to }: Range, companyIds: string[]) {
+  const srs = await prisma.salesReceipt.findMany({
+    where: { companyId: { in: companyIds }, status: { not: "Void" }, invoiceDate: { gte: from, lte: to } },
+    include: { company: { select: { companyName: true } }, customer: true, payments: true },
+  });
+  const map = new Map<string, {
+    key: string; customerId: string; customer: string; company: string; region: string; province: string;
+    invoices: number; sales: number; collected: number; balance: number;
+  }>();
+  for (const sr of srs) {
+    // customers are shared, but their figures stay attributed to the company that billed them
+    const key = `${sr.companyId}:${sr.customerId}`;
+    const row = map.get(key) ?? {
+      key, customerId: sr.customerId, customer: sr.customer.businessName, company: sr.company.companyName,
+      region: sr.customer.region, province: sr.customer.province,
+      invoices: 0, sales: 0, collected: 0, balance: 0,
+    };
+    row.invoices++;
+    row.sales = round2(row.sales + sr.amount);
+    const paid = sr.payments.reduce((s, p) => s + p.amount, 0);
+    row.collected = round2(row.collected + paid);
+    row.balance = round2(row.balance + (sr.amount - paid));
+    map.set(key, row);
+  }
+  const rows = [...map.values()].sort((a, b) => b.sales - a.sales);
+  return {
+    rows,
+    totals: {
+      invoices: rows.reduce((s, r) => s + r.invoices, 0),
+      sales: round2(rows.reduce((s, r) => s + r.sales, 0)),
+      collected: round2(rows.reduce((s, r) => s + r.collected, 0)),
+      balance: round2(rows.reduce((s, r) => s + r.balance, 0)),
+    },
+  };
+}
+
+/** Per-product sales performance across the period: quantity sold, revenue, COGS, margin. */
+export async function getProductReport({ from, to }: Range, companyIds: string[], filters?: { category?: string }) {
+  const srs = await prisma.salesReceipt.findMany({
+    where: { companyId: { in: companyIds }, status: { not: "Void" }, invoiceDate: { gte: from, lte: to } },
+    include: {
+      company: { select: { companyName: true } },
+      deliveryReceipt: { include: { lines: { include: { product: true } } } },
+    },
+  });
+  const map = new Map<string, {
+    key: string; sku: string; name: string; company: string; category: string;
+    qty: number; revenue: number; cogs: number;
+  }>();
+  for (const sr of srs) {
+    for (const l of sr.deliveryReceipt.lines) {
+      if (filters?.category && l.product.category !== filters.category) continue;
+      const key = `${sr.companyId}:${l.productId}`;
+      const row = map.get(key) ?? {
+        key, sku: l.product.sku, name: l.product.name, company: sr.company.companyName,
+        category: l.product.category, qty: 0, revenue: 0, cogs: 0,
+      };
+      row.qty += l.baseQty; // base PCS
+      row.revenue = round2(row.revenue + l.qty * l.unitPrice);
+      row.cogs = round2(row.cogs + l.baseQty * (l.unitCostAtSale > 0 ? l.unitCostAtSale : l.product.unitCost));
+      map.set(key, row);
+    }
+  }
+  const rows = [...map.values()]
+    .map((r) => ({ ...r, margin: round2(r.revenue - r.cogs) }))
+    .sort((a, b) => b.revenue - a.revenue);
+  return {
+    rows,
+    totals: {
+      qty: rows.reduce((s, r) => s + r.qty, 0),
+      revenue: round2(rows.reduce((s, r) => s + r.revenue, 0)),
+      cogs: round2(rows.reduce((s, r) => s + r.cogs, 0)),
+      margin: round2(rows.reduce((s, r) => s + r.margin, 0)),
+    },
+  };
 }

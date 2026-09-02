@@ -1,15 +1,16 @@
 import { requirePerm } from "@/lib/auth";
-import { getActiveCompany } from "@/lib/company";
+import { resolveReportScope } from "@/lib/report-scope";
+import { CompanyFilter, CompanyTag } from "@/components/company-filter";
 import { getMovements, parseRange } from "@/lib/reports";
 import { fmtDate } from "@/lib/format";
 import { PageHeader } from "@/components/ui";
 import { PrintButton } from "@/components/print-button";
 
-export default async function InventoryReportPage({ searchParams }: { searchParams: { from?: string; to?: string } }) {
-  await requirePerm("reports");
-  const company = await getActiveCompany();
+export default async function InventoryReportPage({ searchParams }: { searchParams: { from?: string; to?: string; company?: string } }) {
+  const user = await requirePerm("reports");
+  const scope = await resolveReportScope(user, searchParams.company);
   const range = parseRange(searchParams);
-  const moves = await getMovements(range, company.id);
+  const moves = await getMovements(range, scope.ids);
   const fromStr = range.from.toISOString().slice(0, 10);
   const toStr = range.to.toISOString().slice(0, 10);
   const totalIn = moves.filter((m) => m.type === "IN").reduce((s, m) => s + m.qty, 0);
@@ -18,12 +19,13 @@ export default async function InventoryReportPage({ searchParams }: { searchPara
   return (
     <div className="print-page">
       <PageHeader title="Inventory Movement Report">
-        <a href={`/api/export/inventory-movement?from=${fromStr}&to=${toStr}`} className="btn-secondary no-print">⬇ Movements Excel</a>
-        <a href="/api/export/stock-on-hand" className="btn-secondary no-print">⬇ Stock on Hand Excel</a>
+        <a href={`/api/export/inventory-movement?from=${fromStr}&to=${toStr}&company=${scope.value}`} className="btn-secondary no-print">⬇ Movements Excel</a>
+        <a href={`/api/export/stock-on-hand?company=${scope.value}`} className="btn-secondary no-print">⬇ Stock on Hand Excel</a>
         <span className="no-print"><PrintButton /></span>
       </PageHeader>
 
       <form method="GET" className="no-print mb-4 flex flex-wrap items-end gap-2">
+        <CompanyFilter scope={scope} />
         <div><label className="label">From</label><input type="date" name="from" defaultValue={fromStr} className="input" /></div>
         <div><label className="label">To</label><input type="date" name="to" defaultValue={toStr} className="input" /></div>
         <button className="btn-secondary" type="submit">Apply</button>

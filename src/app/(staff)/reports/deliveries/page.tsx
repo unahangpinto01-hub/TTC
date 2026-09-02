@@ -1,5 +1,6 @@
 import { requirePerm } from "@/lib/auth";
-import { getActiveCompany } from "@/lib/company";
+import { resolveReportScope } from "@/lib/report-scope";
+import { CompanyFilter } from "@/components/company-filter";
 import { getDeliveryPerformance, parseRange } from "@/lib/reports";
 import { fmtDate } from "@/lib/format";
 import { PageHeader } from "@/components/ui";
@@ -7,11 +8,11 @@ import { PrintButton } from "@/components/print-button";
 
 const TARGET = 5;
 
-export default async function DeliveryPerformancePage({ searchParams }: { searchParams: { from?: string; to?: string } }) {
-  await requirePerm("reports");
-  const company = await getActiveCompany();
+export default async function DeliveryPerformancePage({ searchParams }: { searchParams: { from?: string; to?: string; company?: string } }) {
+  const user = await requirePerm("reports");
+  const scope = await resolveReportScope(user, searchParams.company);
   const range = parseRange(searchParams);
-  const perf = await getDeliveryPerformance(range, company.id);
+  const perf = await getDeliveryPerformance(range, scope.ids);
   const fromStr = range.from.toISOString().slice(0, 10);
   const toStr = range.to.toISOString().slice(0, 10);
   const total = perf.reduce((s, d) => s + d.count, 0);
@@ -20,11 +21,12 @@ export default async function DeliveryPerformancePage({ searchParams }: { search
   return (
     <div className="print-page mx-auto max-w-2xl">
       <PageHeader title="Delivery Performance">
-        <a href={`/api/export/delivery-performance?from=${fromStr}&to=${toStr}`} className="btn-secondary no-print">⬇ Excel</a>
+        <a href={`/api/export/delivery-performance?from=${fromStr}&to=${toStr}&company=${scope.value}`} className="btn-secondary no-print">⬇ Excel</a>
         <span className="no-print"><PrintButton /></span>
       </PageHeader>
 
       <form method="GET" className="no-print mb-4 flex flex-wrap items-end gap-2">
+        <CompanyFilter scope={scope} />
         <div><label className="label">From</label><input type="date" name="from" defaultValue={fromStr} className="input" /></div>
         <div><label className="label">To</label><input type="date" name="to" defaultValue={toStr} className="input" /></div>
         <button className="btn-secondary" type="submit">Apply</button>

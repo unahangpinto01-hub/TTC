@@ -1,33 +1,35 @@
 import { requirePerm } from "@/lib/auth";
-import { getActiveCompany } from "@/lib/company";
+import { resolveReportScope } from "@/lib/report-scope";
+import { CompanyFilter } from "@/components/company-filter";
 import { getPnl, parseRange } from "@/lib/reports";
 import { peso, fmtDate } from "@/lib/format";
 import { PageHeader } from "@/components/ui";
 import { PrintButton } from "@/components/print-button";
 
-export default async function PnlPage({ searchParams }: { searchParams: { from?: string; to?: string } }) {
-  await requirePerm("reports");
-  const company = await getActiveCompany();
+export default async function PnlPage({ searchParams }: { searchParams: { from?: string; to?: string; company?: string } }) {
+  const user = await requirePerm("reports");
+  const scope = await resolveReportScope(user, searchParams.company);
   const range = parseRange(searchParams);
-  const r = await getPnl(range, company.id);
+  const r = await getPnl(range, scope.ids);
   const fromStr = range.from.toISOString().slice(0, 10);
   const toStr = range.to.toISOString().slice(0, 10);
 
   return (
     <div className="print-page mx-auto max-w-2xl">
       <PageHeader title="Income Statement (P&L)">
-        <a href={`/api/export/pnl?from=${fromStr}&to=${toStr}`} className="btn-secondary no-print">⬇ Excel</a>
+        <a href={`/api/export/pnl?from=${fromStr}&to=${toStr}&company=${scope.value}`} className="btn-secondary no-print">⬇ Excel</a>
         <span className="no-print"><PrintButton /></span>
       </PageHeader>
 
       <form method="GET" className="no-print mb-4 flex flex-wrap items-end gap-2">
+        <CompanyFilter scope={scope} />
         <div><label className="label">From</label><input type="date" name="from" defaultValue={fromStr} className="input" /></div>
         <div><label className="label">To</label><input type="date" name="to" defaultValue={toStr} className="input" /></div>
         <button className="btn-secondary" type="submit">Apply</button>
       </form>
 
       <div className="card">
-        <p className="mb-4 text-center text-sm text-gray-500">Teamagro Trading Corp. · {fmtDate(range.from)} – {fmtDate(range.to)}</p>
+        <p className="mb-4 text-center text-sm text-gray-500">{scope.label} · {fmtDate(range.from)} – {fmtDate(range.to)}</p>
         <table className="w-full text-sm">
           <tbody>
             <tr className="border-b border-gray-100"><td className="py-2">Revenue (invoiced sales)</td><td className="py-2 text-right font-semibold">{peso(r.revenue)}</td></tr>

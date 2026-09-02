@@ -1,6 +1,7 @@
 import { Fragment } from "react";
 import { requirePerm } from "@/lib/auth";
-import { getActiveCompany } from "@/lib/company";
+import { resolveReportScope } from "@/lib/report-scope";
+import { CompanyFilter, CompanyTag } from "@/components/company-filter";
 import { peso, fmtDate } from "@/lib/format";
 import { getMerchandiseInventory } from "@/lib/reports";
 import { PrintButton, BackButton } from "@/components/print-button";
@@ -9,10 +10,10 @@ import { getCategoryNames } from "@/lib/categories";
 export default async function MerchandiseInventoryPage({
   searchParams,
 }: {
-  searchParams: { asOf?: string; category?: string; q?: string; zero?: string; class?: string };
+  searchParams: { asOf?: string; category?: string; q?: string; zero?: string; class?: string; company?: string };
 }) {
-  await requirePerm("reports");
-  const company = await getActiveCompany();
+  const user = await requirePerm("reports");
+  const scope = await resolveReportScope(user, searchParams.company);
   const CATEGORIES = await getCategoryNames();
   const today = new Date().toISOString().slice(0, 10);
   const asOfStr = searchParams.asOf || today;
@@ -22,7 +23,7 @@ export default async function MerchandiseInventoryPage({
   const itemClass = searchParams.class === "NON_INVENTORY" ? "NON_INVENTORY" : "INVENTORY";
 
   const report = await getMerchandiseInventory({
-    companyId: company.id,
+    companyIds: scope.ids,
     asOf: new Date(asOfStr),
     category,
     q,
@@ -32,6 +33,7 @@ export default async function MerchandiseInventoryPage({
 
   const exportParams = new URLSearchParams();
   exportParams.set("asOf", asOfStr);
+  exportParams.set("company", scope.value);
   if (category) exportParams.set("category", category);
   if (q) exportParams.set("q", q);
   if (showZero) exportParams.set("zero", "1");
@@ -52,6 +54,7 @@ export default async function MerchandiseInventoryPage({
         <BackButton />
         <div className="flex flex-wrap items-end gap-2">
           <form method="GET" className="flex flex-wrap items-end gap-2">
+            <CompanyFilter scope={scope} />
             <div>
               <label className="label">As of Date</label>
               <input name="asOf" type="date" defaultValue={asOfStr} max={today} className="input" />
@@ -88,7 +91,7 @@ export default async function MerchandiseInventoryPage({
       <header className="mb-4 border-b-2 border-emerald-800 pb-3">
         <div className="flex items-start justify-between">
           <div>
-            <h1 className="text-xl font-bold text-emerald-900">TEAMAGRO TRADING CORP.</h1>
+            <h1 className="text-xl font-bold uppercase text-emerald-900">{scope.label}</h1>
             <p className="text-sm font-semibold text-gray-700">MERCHANDISE INVENTORY — Valuation at Cost</p>
           </div>
           <div className="text-right text-sm text-gray-600">
@@ -108,6 +111,7 @@ export default async function MerchandiseInventoryPage({
         <thead>
           <tr className="border-b-2 border-gray-300 text-left">
             <th className="py-1.5 pr-2">#</th>
+            {scope.combined && <th className="py-1.5 pr-2">Company</th>}
             <th className="py-1.5 pr-2">SKU</th>
             <th className="py-1.5 pr-2">Product Name</th>
             <th className="py-1.5 pr-2">Pack</th>
@@ -124,11 +128,12 @@ export default async function MerchandiseInventoryPage({
               <Fragment key={r.id}>
                 {showCat && !category && (
                   <tr className="bg-gray-100 print:bg-gray-100">
-                    <td colSpan={7} className="py-1 pl-1 text-xs font-bold uppercase tracking-wide text-emerald-900">{r.category}</td>
+                    <td colSpan={scope.combined ? 8 : 7} className="py-1 pl-1 text-xs font-bold uppercase tracking-wide text-emerald-900">{r.category}</td>
                   </tr>
                 )}
                 <tr className={`border-b border-gray-200 ${r.stock < 0 ? "bg-red-50 text-red-700" : ""}`}>
                   <td className="py-1.5 pr-2 text-gray-400">{i + 1}</td>
+                  {scope.combined && <td className="py-1.5 pr-2"><CompanyTag name={r.company} /></td>}
                   <td className="py-1.5 pr-2 font-mono text-xs">{r.sku}</td>
                   <td className="py-1.5 pr-2">{r.name}</td>
                   <td className="py-1.5 pr-2">{r.packSize}</td>
@@ -140,12 +145,12 @@ export default async function MerchandiseInventoryPage({
             );
           })}
           {!report.rows.length && (
-            <tr><td colSpan={7} className="p-8 text-center text-gray-500">No products match the filters{showZero ? "" : " (zero-stock products are hidden — tick “Show zero stock”)"}.</td></tr>
+            <tr><td colSpan={scope.combined ? 8 : 7} className="p-8 text-center text-gray-500">No products match the filters{showZero ? "" : " (zero-stock products are hidden — tick “Show zero stock”)"}.</td></tr>
           )}
         </tbody>
         <tfoot>
           <tr className="border-t-2 border-gray-400 text-base font-bold">
-            <td colSpan={6} className="py-2 pr-2 text-right">TOTAL INVENTORY VALUE</td>
+            <td colSpan={scope.combined ? 7 : 6} className="py-2 pr-2 text-right">{scope.combined ? "COMBINED TOTAL INVENTORY VALUE" : "TOTAL INVENTORY VALUE"}</td>
             <td className="py-2 text-right text-emerald-900">{peso(report.totalValue)}</td>
           </tr>
         </tfoot>

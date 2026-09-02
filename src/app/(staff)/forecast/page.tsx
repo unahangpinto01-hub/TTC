@@ -6,15 +6,19 @@ import { PageHeader } from "@/components/ui";
 import { createForecast, deleteForecast } from "./actions";
 import { getParentInfos } from "./parents";
 import { getActiveCompany } from "@/lib/company";
+import { resolveReportScope } from "@/lib/report-scope";
+import { CompanyFilter, CompanyTag } from "@/components/company-filter";
 
-export default async function ForecastListPage() {
+export default async function ForecastListPage({ searchParams }: { searchParams: { company?: string } }) {
   const user = await requirePerm("forecast");
   const company = await getActiveCompany(user);
+  // the list may span companies for a Super Admin; new forecasts still belong to the active company
+  const scope = await resolveReportScope(user, searchParams.company);
   const [forecasts, parentMap] = await Promise.all([
     prisma.forecast.findMany({
-      where: { companyId: company.id },
+      where: { companyId: { in: scope.ids } },
       orderBy: [{ year: "desc" }, { createdAt: "desc" }],
-      include: { lines: true },
+      include: { lines: true, company: { select: { companyName: true } } },
     }),
     getParentInfos(company.id),
   ]);
@@ -24,6 +28,10 @@ export default async function ForecastListPage() {
   return (
     <div>
       <PageHeader title="Sales Forecast" />
+      <form method="GET" className="mb-4 flex flex-wrap items-end gap-2">
+        <CompanyFilter scope={scope} />
+        {scope.options.length > 1 && <button className="btn-secondary" type="submit">Apply</button>}
+      </form>
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="lg:col-span-2">
           <div className="card overflow-x-auto p-0">
@@ -31,6 +39,7 @@ export default async function ForecastListPage() {
               <thead className="border-b border-gray-200 bg-gray-50">
                 <tr>
                   <th className="table-th">Title</th>
+                  {scope.combined && <th className="table-th">Company</th>}
                   <th className="table-th">Year</th>
                   <th className="table-th">Area</th>
                   <th className="table-th text-right">Products</th>
@@ -58,6 +67,7 @@ export default async function ForecastListPage() {
                         <Link href={`/forecast/${f.id}`} className="font-medium text-emerald-700 hover:underline">{f.title}</Link>
                         <p className="text-xs text-gray-400">created {fmtDate(f.createdAt)}</p>
                       </td>
+                      {scope.combined && <td className="table-td"><CompanyTag name={f.company.companyName} /></td>}
                       <td className="table-td">{f.year}</td>
                       <td className="table-td">{f.area}</td>
                       <td className="table-td text-right">{f.lines.length}</td>
@@ -75,7 +85,7 @@ export default async function ForecastListPage() {
                   );
                 })}
                 {!forecasts.length && (
-                  <tr><td colSpan={7} className="p-8 text-center text-sm text-gray-500">No forecasts yet — create your first one.</td></tr>
+                  <tr><td colSpan={scope.combined ? 8 : 7} className="p-8 text-center text-sm text-gray-500">No forecasts yet — create your first one.</td></tr>
                 )}
               </tbody>
             </table>

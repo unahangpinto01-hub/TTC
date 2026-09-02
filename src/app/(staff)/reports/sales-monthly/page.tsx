@@ -1,7 +1,8 @@
 import { Fragment } from "react";
 import Link from "next/link";
 import { requirePerm } from "@/lib/auth";
-import { getActiveCompany } from "@/lib/company";
+import { resolveReportScope } from "@/lib/report-scope";
+import { CompanyFilter } from "@/components/company-filter";
 import { getMonthlyProductSales, getProvinces } from "@/lib/reports";
 import { peso } from "@/lib/format";
 import { PageHeader } from "@/components/ui";
@@ -10,14 +11,14 @@ import { PrintButton, BackButton } from "@/components/print-button";
 const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
 const REGIONS = ["Luzon", "Visayas", "Mindanao"];
 
-export default async function MonthlySalesPage({ searchParams }: { searchParams: { year?: string; region?: string; province?: string } }) {
-  await requirePerm("reports");
-  const company = await getActiveCompany();
+export default async function MonthlySalesPage({ searchParams }: { searchParams: { year?: string; region?: string; province?: string; company?: string } }) {
+  const user = await requirePerm("reports");
+  const scope = await resolveReportScope(user, searchParams.company);
   const year = Number(searchParams.year) || new Date().getFullYear();
   const region = REGIONS.includes(searchParams.region || "") ? searchParams.region! : "";
   const provinces = await getProvinces();
   const province = provinces.includes(searchParams.province || "") ? searchParams.province! : "";
-  const rows = await getMonthlyProductSales(year, company.id, region || undefined, province || undefined);
+  const rows = await getMonthlyProductSales(year, scope.ids, region || undefined, province || undefined);
 
   const monthQty = (mi: number) => rows.reduce((s, r) => s + r.monthsQty[mi], 0);
   const monthAmt = (mi: number) => rows.reduce((s, r) => s + r.monthsAmt[mi], 0);
@@ -40,6 +41,7 @@ export default async function MonthlySalesPage({ searchParams }: { searchParams:
       <PageHeader title={`Monthly Sales per Product — ${province || region || "All Regions"} ${year}`} />
 
       <form method="GET" className="no-print mb-4 flex flex-wrap items-end gap-2">
+        <CompanyFilter scope={scope} />
         <div>
           <label className="label">Year</label>
           <input name="year" type="number" defaultValue={year} className="input w-28" />
