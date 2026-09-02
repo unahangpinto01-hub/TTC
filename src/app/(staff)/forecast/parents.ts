@@ -1,29 +1,37 @@
 import { prisma } from "@/lib/db";
 
-export type ParentInfo = {
+export type ForecastProduct = {
+  id: string;
+  sku: string;
   name: string;
   category: string;
-  price: number; // average dealer price across the parent's pack sizes
-  packs: number;
+  companyId: string;
+  company: string;
+  /** current active SRP — forecast value uses SRP only, never cost or dealer price */
+  srp: number;
 };
 
-/** Product-line options for forecasting: every distinct parent item of ONE company
-    (standalone products appear under their own name), with category and average dealer price. */
-export async function getParentInfos(companyId: string): Promise<Map<string, ParentInfo>> {
+/**
+ * Products a forecast may include, across every company the user is allowed to see.
+ * Forecasts are shared, but the caller passes the permitted company ids so a user
+ * never sees products from a company they cannot access.
+ */
+export async function getForecastProducts(companyIds: string[]): Promise<ForecastProduct[]> {
   const products = await prisma.product.findMany({
-    where: { companyId, status: "Active" },
-    select: { name: true, parentItem: true, category: true, dealerPrice: true },
+    where: { companyId: { in: companyIds }, status: "Active", itemClass: "INVENTORY" },
+    select: {
+      id: true, sku: true, name: true, category: true, srp: true,
+      companyId: true, company: { select: { companyName: true } },
+    },
+    orderBy: [{ company: { isPrimary: "desc" } }, { name: "asc" }],
   });
-  const map = new Map<string, ParentInfo>();
-  for (const p of products) {
-    const key = p.parentItem?.trim() || p.name;
-    const existing = map.get(key);
-    if (existing) {
-      existing.price = (existing.price * existing.packs + p.dealerPrice) / (existing.packs + 1);
-      existing.packs += 1;
-    } else {
-      map.set(key, { name: key, category: p.category, price: p.dealerPrice, packs: 1 });
-    }
-  }
-  return map;
+  return products.map((p) => ({
+    id: p.id,
+    sku: p.sku,
+    name: p.name,
+    category: p.category,
+    companyId: p.companyId,
+    company: p.company.companyName,
+    srp: p.srp,
+  }));
 }

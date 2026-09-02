@@ -4,14 +4,14 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requirePermWrite } from "@/lib/auth";
-import { getActiveCompany } from "@/lib/company";
+import { allowedCompanyIds } from "@/lib/company";
 
 export async function createForecast(formData: FormData) {
-  const actor = await requirePermWrite("forecast");
-  const company = await getActiveCompany(actor);
+  await requirePermWrite("forecast");
   const forecast = await prisma.forecast.create({
     data: {
-      companyId: company.id,
+      // shared across companies — products on the lines carry their own company
+      companyId: null,
       title: String(formData.get("title")).trim(),
       year: Number(formData.get("year")) || new Date().getFullYear(),
       area: String(formData.get("area")).trim(),
@@ -21,15 +21,14 @@ export async function createForecast(formData: FormData) {
 }
 
 export async function deleteForecast(formData: FormData) {
-  const actor = await requirePermWrite("forecast");
-  const company = await getActiveCompany(actor);
+  await requirePermWrite("forecast");
   const id = String(formData.get("id"));
-  await prisma.forecast.deleteMany({ where: { id, companyId: company.id } }); // company isolation
+  await prisma.forecast.delete({ where: { id } }).catch(() => {});
   revalidatePath("/forecast");
   redirect("/forecast");
 }
 
-export type ForecastRowInput = { parentItem: string; months: number[] };
+export type ForecastRowInput = { productId: string; months: number[] };
 
 /** Save the whole grid: header fields + upsert every row, delete removed rows. */
 export async function saveForecast(input: {
@@ -40,10 +39,18 @@ export async function saveForecast(input: {
   rows: ForecastRowInput[];
 }): Promise<{ ok: boolean }> {
   const actor = await requirePermWrite("forecast");
-  const company = await getActiveCompany(actor);
   const { forecastId } = input;
-  const owned = await prisma.forecast.findUnique({ where: { id: forecastId } });
-  if (!owned || owned.companyId !== company.id) redirect("/denied"); // company isolation
+  const forecast = await prisma.forecast.findUnique({ where: { id: forecastId } });
+  if (!forecast) redirect("/forecast");
+
+  // a user may only put products from companies they are allowed to work in
+  const permitted = await allowedCompanyIds(actor);
+  const products = await prisma.product.findMany({
+    where: { id: { in: input.rows.map((r) => r.productId).filter(Boolean) } },
+    select: { id: true, companyId: true },
+  });
+  const allowed = new Set(products.filter((p) => permitted.includes(p.companyId)).map((p) => p.id));
+
   await prisma.forecast.update({
     where: { id: forecastId },
     data: {
@@ -54,14 +61,19 @@ export async function saveForecast(input: {
   });
 
   const clean = input.rows
-    .filter((r) => r.parentItem.trim())
+    .filter((r) => allowed.has(r.productId))
     .map((r) => ({
-      parentItem: r.parentItem.trim(),
+      productId: r.productId,
       months: Array.from({ length: 12 }, (_, i) => Math.max(0, Math.floor(Number(r.months[i]) || 0))),
     }));
 
+  // only prune rows the user could see — another company's lines stay untouched
   await prisma.forecastLine.deleteMany({
-    where: { forecastId, parentItem: { notIn: clean.map((r) => r.parentItem) } },
+    where: {
+      forecastId,
+      productId: { notIn: clean.map((r) => r.productId) },
+      product: { companyId: { in: permitted } },
+    },
   });
   for (const r of clean) {
     const months = {
@@ -70,8 +82,8 @@ export async function saveForecast(input: {
       m9: r.months[8], m10: r.months[9], m11: r.months[10], m12: r.months[11],
     };
     await prisma.forecastLine.upsert({
-      where: { forecastId_parentItem: { forecastId, parentItem: r.parentItem } },
-      create: { forecastId, parentItem: r.parentItem, ...months },
+      where: { forecastId_productId: { forecastId, productId: r.productId } },
+      create: { forecastId, productId: r.productId, ...months },
       update: months,
     });
   }
