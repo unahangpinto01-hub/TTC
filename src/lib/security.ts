@@ -191,7 +191,7 @@ export type SecurityAction =
   | "RECOVERY_CODE_USED" | "RECOVERY_CODES_REGENERATED"
   | "PASSWORD_CHANGED" | "STEP_UP_SUCCESS" | "STEP_UP_FAILED"
   | "SESSION_REVOKED" | "ALL_SESSIONS_REVOKED" | "TRUSTED_DEVICE_ADDED" | "TRUSTED_DEVICE_REVOKED"
-  | "COMPANY_ACCESS_CHANGED";
+  | "COMPANY_ACCESS_CHANGED" | "USER_RENAMED";
 
 /** Append to the security audit trail. Never pass secrets/codes/tokens in here. */
 export async function logSecurityEvent(opts: {

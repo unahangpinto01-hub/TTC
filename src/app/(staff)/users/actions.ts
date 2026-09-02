@@ -68,6 +68,23 @@ export async function resetUserPassword(formData: FormData) {
 
 /** Explicitly assign which companies a user may access (Super Admin only, step-up protected).
     Null/empty = primary company only. You cannot remove your own access to all companies. */
+/** Rename a user. Super Admin only; the audit trail records who made the change. */
+export async function renameUser(formData: FormData) {
+  const me = await requireStaffWrite(["SUPER_ADMIN"]);
+  await requireStepUp("/users");
+  const id = String(formData.get("id"));
+  const name = String(formData.get("name") || "").trim().replace(/s+/g, " ");
+  if (name.length < 2 || name.length > 80) redirect(`/users/${id}?error=name`);
+  const before = await prisma.user.findUniqueOrThrow({ where: { id }, select: { name: true } });
+  if (before.name === name) redirect(`/users/${id}`);
+  await prisma.user.update({ where: { id }, data: { name } });
+  // the event sits on the renamed account; email carries the super admin who did it
+  await logSecurityEvent({ action: "USER_RENAMED", success: true, userId: id, email: me.email });
+  revalidatePath(`/users/${id}`);
+  revalidatePath("/users");
+  redirect(`/users/${id}?renamed=ok`);
+}
+
 export async function setUserCompanies(formData: FormData) {
   const me = await requireStaffWrite(["SUPER_ADMIN"]);
   await requireStepUp("/users");

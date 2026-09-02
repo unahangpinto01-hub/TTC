@@ -2,10 +2,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requirePerm } from "@/lib/auth";
-import { fmtDate } from "@/lib/format";
+import { fmtDate, fmtDateTime } from "@/lib/format";
 import { FUNCTIONS, getStoredPerm } from "@/lib/permissions";
 import { PageHeader } from "@/components/ui";
-import { updateUserPerms, resetUserPassword, setUserCompanies } from "../actions";
+import { updateUserPerms, resetUserPassword, setUserCompanies, renameUser } from "../actions";
 import { getPrimaryCompany } from "@/lib/company";
 
 const LEVELS = [
@@ -14,13 +14,14 @@ const LEVELS = [
   ["READ_ONLY", "Read Only"],
 ] as const;
 
-export default async function UserDetailPage({ params, searchParams }: { params: { id: string }; searchParams: { error?: string; reset?: string } }) {
+export default async function UserDetailPage({ params, searchParams }: { params: { id: string }; searchParams: { error?: string; reset?: string; renamed?: string } }) {
   const viewer = await requirePerm("users");
   const target = await prisma.user.findUnique({ where: { id: params.id }, include: { customer: true } });
   if (!target) notFound();
-  const [companies, primary] = await Promise.all([
+  const [companies, primary, events] = await Promise.all([
     prisma.company.findMany({ where: { status: "Active" }, orderBy: { createdAt: "asc" } }),
     getPrimaryCompany(),
+    prisma.securityEvent.findMany({ where: { userId: target.id }, orderBy: { createdAt: "desc" }, take: 10 }),
   ]);
   let targetCompanyIds: string[] = [primary.id];
   if (target.companyIdsJson) {
@@ -37,6 +38,12 @@ export default async function UserDetailPage({ params, searchParams }: { params:
       {searchParams.error === "weakpw" && (
         <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">Password rejected — minimum 12 characters and not a common password.</p>
       )}
+      {searchParams.error === "name" && (
+        <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">Name must be between 2 and 80 characters.</p>
+      )}
+      {searchParams.renamed === "ok" && (
+        <p className="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">&#10004; Name updated and recorded in the audit trail.</p>
+      )}
       {searchParams.reset === "ok" && (
         <p className="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">✔ Password reset. The user was signed out everywhere. Their 2FA (if enabled) still applies.</p>
       )}
@@ -47,6 +54,20 @@ export default async function UserDetailPage({ params, searchParams }: { params:
         <div className="card py-3"><p className="text-xs text-gray-500">Account</p><p className="text-sm font-semibold">{target.access === "NONE" ? "No Access" : target.access === "READ_ONLY" ? "Read Only (capped)" : "Enabled"}</p></div>
         <div className="card py-3"><p className="text-xs text-gray-500">{target.role === "DEALER" ? "Dealer Account" : "Created"}</p><p className="text-sm font-semibold">{target.role === "DEALER" ? target.customer?.businessName ?? "—" : fmtDate(target.createdAt)}</p></div>
       </div>
+
+      {viewer.role === "SUPER_ADMIN" && viewer.access === "READ_WRITE" && (
+        <form action={renameUser} className="card mb-4 flex flex-wrap items-end gap-3">
+          <input type="hidden" name="id" value={target.id} />
+          <div className="flex-1">
+            <label className="label">Full Name</label>
+            <input name="name" defaultValue={target.name} required minLength={2} maxLength={80} className="input" />
+            <p className="mt-1 text-xs text-gray-500">
+              Renaming is recorded in this account&apos;s audit trail, together with the super admin who made the change.
+            </p>
+          </div>
+          <button className="btn-secondary" type="submit">Save Name</button>
+        </form>
+      )}
 
       {viewer.role === "SUPER_ADMIN" && viewer.access === "READ_WRITE" && target.role !== "DEALER" && (
         <form action={setUserCompanies} className="card mb-4">
@@ -133,6 +154,38 @@ export default async function UserDetailPage({ params, searchParams }: { params:
             <p className="text-xs text-gray-500">Changes take effect on the user's next page load.</p>
           </div>
         </form>
+      )}
+
+      {viewer.role === "SUPER_ADMIN" && (
+        <div className="mt-6">
+          <h2 className="mb-2 font-semibold">Audit Trail</h2>
+          <div className="card overflow-x-auto p-0">
+            <table className="w-full">
+              <thead className="border-b border-gray-200 bg-gray-50">
+                <tr>
+                  <th className="table-th">When</th>
+                  <th className="table-th">Event</th>
+                  <th className="table-th">By / Identifier</th>
+                  <th className="table-th">IP</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {events.map((e) => (
+                  <tr key={e.id}>
+                    <td className="table-td whitespace-nowrap text-sm text-gray-600">{fmtDateTime(e.createdAt)}</td>
+                    <td className={"table-td text-sm font-medium " + (e.success ? "" : "text-red-600")}>{e.action.replaceAll("_", " ")}</td>
+                    <td className="table-td text-xs text-gray-500">{e.email ?? "\u2014"}</td>
+                    <td className="table-td text-xs text-gray-500">{e.ip ?? "\u2014"}</td>
+                  </tr>
+                ))}
+                {!events.length && (
+                  <tr><td colSpan={4} className="p-6 text-center text-sm text-gray-500">No recorded activity yet.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          <p className="mt-2 text-xs text-gray-500">Last 10 security events recorded against this account.</p>
+        </div>
       )}
     </div>
   );
