@@ -14,8 +14,10 @@ export type GridRow = {
   category: string;
   companyId: string;
   company: string;
-  /** current active SRP — forecast value never uses unit cost or dealer price */
+  /** the product's current active SRP — the fallback when this row has no own price */
   srp: number;
+  /** planning price for this row only; null follows the SRP. Never written back to the product. */
+  price: number | null;
   months: number[];
 };
 
@@ -93,7 +95,7 @@ export function ForecastGrid({
       ...prev,
       {
         productId: p.id, sku: p.sku, name: p.name, category: p.category,
-        companyId: p.companyId, company: p.company, srp: p.srp, months: Array(12).fill(0),
+        companyId: p.companyId, company: p.company, srp: p.srp, price: null, months: Array(12).fill(0),
       },
     ]);
     setPick("");
@@ -101,11 +103,21 @@ export function ForecastGrid({
 
   const removeRow = (productId: string) => setRows((prev) => prev.filter((r) => r.productId !== productId));
 
+  // blank the box to go back to following the product's SRP
+  const setPrice = (productId: string, value: string) => {
+    const raw = value.trim();
+    const n = Number(raw);
+    const price = raw === "" || !Number.isFinite(n) || n < 0 ? null : n;
+    setRows((prev) => prev.map((r) => (r.productId === productId ? { ...r, price } : r)));
+  };
+
+  /** the price this row is actually valued at: its own planning price, else the product's SRP */
+  const priceOf = (r: GridRow) => r.price ?? r.srp;
   const rowTotal = (r: GridRow) => r.months.reduce((s, m) => s + m, 0);
   const monthQty = (rs: GridRow[], mi: number) => rs.reduce((s, r) => s + r.months[mi], 0);
-  const monthValue = (rs: GridRow[], mi: number) => rs.reduce((s, r) => s + r.months[mi] * r.srp, 0);
+  const monthValue = (rs: GridRow[], mi: number) => rs.reduce((s, r) => s + r.months[mi] * priceOf(r), 0);
   const totalQty = (rs: GridRow[]) => rs.reduce((s, r) => s + rowTotal(r), 0);
-  const totalValue = (rs: GridRow[]) => rs.reduce((s, r) => s + rowTotal(r) * r.srp, 0);
+  const totalValue = (rs: GridRow[]) => rs.reduce((s, r) => s + rowTotal(r) * priceOf(r), 0);
 
   // one subtotal line per company that actually has rows in the current view
   const perCompany = companies
@@ -121,7 +133,7 @@ export function ForecastGrid({
       title,
       year,
       area,
-      rows: rows.map((r) => ({ productId: r.productId, months: r.months })),
+      rows: rows.map((r) => ({ productId: r.productId, unitPrice: r.price, months: r.months })),
     });
     setSaving(false);
     setSavedAt(new Date().toLocaleTimeString());
@@ -200,7 +212,7 @@ export function ForecastGrid({
                 <th key={m} className="px-1 py-2 text-right font-semibold">{m}</th>
               ))}
               <th className="px-2 py-2 text-right font-bold text-red-600">FORECAST QTY</th>
-              <th className="px-2 py-2 text-right font-semibold">UNIT SRP</th>
+              <th className="px-2 py-2 text-right font-semibold">UNIT PRICE</th>
               <th className="px-2 py-2 text-right font-bold">FORECAST VALUE</th>
               {!readOnly && <th className="no-print px-1 py-2" />}
             </tr>
@@ -219,6 +231,7 @@ export function ForecastGrid({
                   showCompany={showCompanyColumn}
                   readOnly={readOnly}
                   onCell={setCell}
+                  onPrice={setPrice}
                   onRemove={removeRow}
                   total={rowTotal(r)}
                 />
@@ -273,7 +286,10 @@ export function ForecastGrid({
         </table>
       </div>
       <p className="mt-2 text-xs text-gray-500">
-        One row per product. Forecast Value = Forecast Quantity &times; the product&rsquo;s current active SRP &mdash; unit cost and dealer price are never used.
+        One row per product. Forecast Value = Forecast Quantity &times; Unit Price. Unit Price starts at the product&rsquo;s
+        current active SRP; type a different figure to plan this forecast at that price instead &mdash; it stays inside this
+        forecast and never changes the product, the price list or the dealer catalog. Clear the box to follow the SRP again.
+        Unit cost and dealer price are never used.
       </p>
     </div>
   );
@@ -286,6 +302,7 @@ function ProductRow({
   showCompany,
   readOnly,
   onCell,
+  onPrice,
   onRemove,
   total,
 }: {
@@ -295,9 +312,12 @@ function ProductRow({
   showCompany: boolean;
   readOnly: boolean;
   onCell: (productId: string, mi: number, value: string) => void;
+  onPrice: (productId: string, value: string) => void;
   onRemove: (productId: string) => void;
   total: number;
 }) {
+  const price = row.price ?? row.srp;
+  const overridden = row.price !== null && row.price !== row.srp;
   return (
     <>
       {groupLabel && (
@@ -328,8 +348,29 @@ function ProductRow({
           </td>
         ))}
         <td className="px-2 py-1 text-right font-semibold text-red-600">{total.toLocaleString()}</td>
-        <td className="px-2 py-1 text-right text-gray-600">{fmtPeso(row.srp)}</td>
-        <td className="px-2 py-1 text-right font-semibold">{fmtPeso(total * row.srp)}</td>
+        <td className="px-2 py-1 text-right">
+          {readOnly ? (
+            <span className={overridden ? "font-semibold text-amber-700" : "text-gray-600"}>{fmtPeso(price)}</span>
+          ) : (
+            <input
+              type="number"
+              min={0}
+              step="0.01"
+              value={row.price ?? ""}
+              placeholder={row.srp.toFixed(2)}
+              onChange={(e) => onPrice(row.productId, e.target.value)}
+              title={overridden ? `Forecast price. Product SRP is ${fmtPeso(row.srp)} — clear the box to follow it.` : "Following the product's current SRP"}
+              className={
+                "w-24 rounded border px-1 py-0.5 text-right text-xs focus:outline-none " +
+                (overridden
+                  ? "border-amber-400 bg-amber-50 font-semibold text-amber-800 focus:border-amber-600"
+                  : "border-gray-200 text-gray-600 focus:border-emerald-600")
+              }
+            />
+          )}
+          {overridden && <p className="text-[10px] text-amber-600">SRP {fmtPeso(row.srp)}</p>}
+        </td>
+        <td className="px-2 py-1 text-right font-semibold">{fmtPeso(total * price)}</td>
         {!readOnly && (
           <td className="no-print px-1 py-1 text-center">
             <button onClick={() => onRemove(row.productId)} className="text-red-400 hover:text-red-600" title="Remove row" type="button">&times;</button>

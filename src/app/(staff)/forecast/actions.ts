@@ -28,7 +28,12 @@ export async function deleteForecast(formData: FormData) {
   redirect("/forecast");
 }
 
-export type ForecastRowInput = { productId: string; months: number[] };
+export type ForecastRowInput = {
+  productId: string;
+  /** planning price for this row; null follows the product's current SRP */
+  unitPrice: number | null;
+  months: number[];
+};
 
 /** Save the whole grid: header fields + upsert every row, delete removed rows. */
 export async function saveForecast(input: {
@@ -62,10 +67,15 @@ export async function saveForecast(input: {
 
   const clean = input.rows
     .filter((r) => allowed.has(r.productId))
-    .map((r) => ({
-      productId: r.productId,
-      months: Array.from({ length: 12 }, (_, i) => Math.max(0, Math.floor(Number(r.months[i]) || 0))),
-    }));
+    .map((r) => {
+      // a blank or nonsensical price means "follow the product's SRP"
+      const price = Number(r.unitPrice);
+      return {
+        productId: r.productId,
+        unitPrice: r.unitPrice === null || !Number.isFinite(price) || price < 0 ? null : price,
+        months: Array.from({ length: 12 }, (_, i) => Math.max(0, Math.floor(Number(r.months[i]) || 0))),
+      };
+    });
 
   // only prune rows the user could see — another company's lines stay untouched
   await prisma.forecastLine.deleteMany({
@@ -83,8 +93,8 @@ export async function saveForecast(input: {
     };
     await prisma.forecastLine.upsert({
       where: { forecastId_productId: { forecastId, productId: r.productId } },
-      create: { forecastId, productId: r.productId, ...months },
-      update: months,
+      create: { forecastId, productId: r.productId, unitPrice: r.unitPrice, ...months },
+      update: { unitPrice: r.unitPrice, ...months },
     });
   }
   revalidatePath(`/forecast/${forecastId}`);

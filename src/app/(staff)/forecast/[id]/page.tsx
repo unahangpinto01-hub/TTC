@@ -21,6 +21,7 @@ export default async function ForecastDetailPage({ params }: { params: { id: str
     include: {
       lines: {
         include: { product: { select: { id: true, sku: true, name: true, category: true, srp: true, companyId: true } } },
+        orderBy: { id: "asc" },
       },
     },
   });
@@ -39,6 +40,7 @@ export default async function ForecastDetailPage({ params }: { params: { id: str
       companyId: l.product.companyId,
       company: names[l.product.companyId] ?? "",
       srp: l.product.srp,
+      price: l.unitPrice,
       months: [l.m1, l.m2, l.m3, l.m4, l.m5, l.m6, l.m7, l.m8, l.m9, l.m10, l.m11, l.m12],
     }));
 

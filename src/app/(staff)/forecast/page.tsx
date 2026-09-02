@@ -54,7 +54,8 @@ export default async function ForecastListPage({ searchParams }: { searchParams:
                   const qty = (l: (typeof lines)[number]) =>
                     l.m1 + l.m2 + l.m3 + l.m4 + l.m5 + l.m6 + l.m7 + l.m8 + l.m9 + l.m10 + l.m11 + l.m12;
                   const totalQty = lines.reduce((s, l) => s + qty(l), 0);
-                  const totalValue = lines.reduce((s, l) => s + qty(l) * l.product.srp, 0);
+                  // a line priced by hand is valued at that price; the rest follow the product SRP
+                  const totalValue = lines.reduce((s, l) => s + qty(l) * (l.unitPrice ?? l.product.srp), 0);
                   const inThis = Array.from(new Set(lines.map((l) => l.product.companyId)));
                   return (
                     <tr key={f.id} className="hover:bg-gray-50">
@@ -93,7 +94,8 @@ export default async function ForecastListPage({ searchParams }: { searchParams:
             </table>
           </div>
           <p className="mt-2 text-xs text-gray-500">
-            A forecast is shared: it can hold products from any company. Forecast Value = quantity × the product&rsquo;s current active SRP.
+            A forecast is shared: it can hold products from any company. Forecast Value = quantity × unit price, which
+            follows the product&rsquo;s current active SRP unless a planning price was typed on that row.
           </p>
         </div>
         {canEdit && (

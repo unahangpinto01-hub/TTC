@@ -501,6 +501,9 @@ model ForecastLine {
   forecast   Forecast @relation(fields: [forecastId], references: [id], onDelete: Cascade)
   productId  String   // forecast is per product, so the SRP and company are unambiguous
   product    Product  @relation(fields: [productId], references: [id])
+  // planning price for this row only. Null = follow the product's current active SRP;
+  // a value here overrides it inside this forecast and never touches the product record.
+  unitPrice  Float?
   m1  Int @default(0)
   m2  Int @default(0)
   m3  Int @default(0)
