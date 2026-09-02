@@ -285,7 +285,7 @@ export function ForecastGrid({
           )}
         </table>
       </div>
-      <p className="mt-2 text-xs text-gray-500">
+      <p className="no-print mt-2 text-xs text-gray-500">
         One row per product. Forecast Value = Forecast Quantity &times; Unit Price. Unit Price starts at the product&rsquo;s
         current active SRP; type a different figure to plan this forecast at that price instead &mdash; it stays inside this
         forecast and never changes the product, the price list or the dealer catalog. Clear the box to follow the SRP again.

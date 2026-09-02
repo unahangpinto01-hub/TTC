@@ -4,6 +4,8 @@ import { prisma } from "@/lib/db";
 import { requirePerm } from "@/lib/auth";
 import { PageHeader } from "@/components/ui";
 import { PrintButton } from "@/components/print-button";
+import { FitOnePageA3 } from "@/components/print-fit";
+import { ForecastPrintHeader } from "@/components/forecast-print-header";
 import { allowedCompanies } from "@/lib/company";
 import { getCategoryNames } from "@/lib/categories";
 
@@ -105,19 +107,21 @@ export default async function CombinedForecastPage({ searchParams }: { searchPar
 
   let lastGroup = "";
 
+  const printCompanies = perCompany.map((c) => c.companyName);
+
   return (
     <div className="print-page">
+      {/* forecasts print on a single A3 landscape sheet with narrow margins */}
+      <style>{`@page { size: A3 landscape; margin: 8mm; }`}</style>
       <div className="no-print mb-3 flex items-center justify-between">
         <Link href="/forecast" className="inline-flex items-center gap-1 text-sm font-medium text-emerald-700 hover:underline">
           ← Back to Forecasts
         </Link>
         <PrintButton />
       </div>
-      <PageHeader title={`Combined Forecast — All Areas ${year}`} />
-      <p className="mb-3 hidden text-sm text-gray-600 print:block">
-        Year {year} · {areas.map((a) => a.area).join(" + ")}
-      </p>
-
+      <div className="no-print">
+        <PageHeader title={`Combined Forecast — All Areas ${year}`} />
+      </div>
       <form method="GET" className="no-print mb-4 flex flex-wrap items-end gap-2">
         <div>
           <label className="label">Year</label>
@@ -131,6 +135,13 @@ export default async function CombinedForecastPage({ searchParams }: { searchPar
         </span>
       </form>
 
+      {/* the header sits inside the fit block so header + tables are scaled onto one sheet together */}
+      <FitOnePageA3>
+      <ForecastPrintHeader
+        companies={printCompanies.join(" & ") || companies[0]?.companyName || ""}
+        title={`Combined Forecast — All Areas ${year}`}
+        period={`January – December ${year} · Combines: ${areas.map((a) => a.area).join(", ")}`}
+      />
       <div className="card mb-4 overflow-x-auto p-0">
         <table className="w-full">
           <thead className="border-b border-gray-200 bg-gray-50">
@@ -253,7 +264,8 @@ export default async function CombinedForecastPage({ searchParams }: { searchPar
           </table>
         </div>
       )}
-      <p className="mt-2 text-xs text-gray-500">
+      </FitOnePageA3>
+      <p className="no-print mt-2 text-xs text-gray-500">
         One row per product, added up across every area forecast of the year. A product priced differently in
         different areas shows &ldquo;varies&rdquo; — its value still adds each area at that area&rsquo;s own price.
         This page is read-only; open an area forecast to make changes.

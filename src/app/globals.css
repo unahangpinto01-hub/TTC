@@ -65,3 +65,37 @@
     max-width: 100% !important;
   }
 }
+
+/* Sales forecast: one A3 landscape page. `.print-sim` recreates the print layout on
+   screen for a moment so FitOnePageA3 can measure the report; `--fit-scale` then shrinks
+   the whole block (fonts, spacing, columns together) exactly enough to fit the sheet. */
+.print-sim .no-print {
+  display: none !important;
+}
+.print-sim .fit-one-page {
+  width: max-content;
+}
+.print-sim .fit-one-page .card {
+  overflow: visible !important;
+}
+@media print {
+  /* zoom (not transform) so pagination sees the shrunken size — transform is
+     ignored when the browser splits content into pages */
+  .fit-one-page {
+    width: max-content;
+    zoom: var(--fit-scale, 1);
+  }
+  .fit-one-page .card {
+    overflow: visible !important;
+    border: none !important;
+    box-shadow: none !important;
+  }
+  /* the whole report is scaled onto one sheet — never split its rows */
+  .fit-one-page tr {
+    break-inside: auto;
+  }
+  .fit-one-page,
+  .fit-one-page table {
+    page-break-inside: avoid;
+  }
+}

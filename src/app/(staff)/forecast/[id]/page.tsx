@@ -4,6 +4,8 @@ import { prisma } from "@/lib/db";
 import { requirePerm } from "@/lib/auth";
 import { PageHeader } from "@/components/ui";
 import { PrintButton } from "@/components/print-button";
+import { FitOnePageA3 } from "@/components/print-fit";
+import { ForecastPrintHeader } from "@/components/forecast-print-header";
 import { getForecastProducts } from "../parents";
 import { ForecastGrid, type GridRow } from "./forecast-grid";
 import { allowedCompanies } from "@/lib/company";
@@ -44,18 +46,28 @@ export default async function ForecastDetailPage({ params }: { params: { id: str
       months: [l.m1, l.m2, l.m3, l.m4, l.m5, l.m6, l.m7, l.m8, l.m9, l.m10, l.m11, l.m12],
     }));
 
+  const printCompanies = Array.from(new Set(rows.map((r) => r.company).filter(Boolean)));
+
   return (
     <div className="print-page">
+      {/* forecasts print on a single A3 landscape sheet with narrow margins */}
+      <style>{`@page { size: A3 landscape; margin: 8mm; }`}</style>
       <div className="no-print mb-3 flex items-center justify-between">
         <Link href="/forecast" className="inline-flex items-center gap-1 text-sm font-medium text-emerald-700 hover:underline">
           ← Back to Forecasts
         </Link>
         <PrintButton />
       </div>
-      <PageHeader title={forecast.title} />
-      <p className="mb-3 hidden text-sm text-gray-600 print:block">
-        Year {forecast.year} · Area {forecast.area}
-      </p>
+      <div className="no-print">
+        <PageHeader title={forecast.title} />
+      </div>
+      {/* the header sits inside the fit block so header + table are scaled onto one sheet together */}
+      <FitOnePageA3>
+      <ForecastPrintHeader
+        companies={printCompanies.join(" & ") || companies[0]?.companyName || ""}
+        title={forecast.title}
+        period={`January – December ${forecast.year} · ${forecast.area}`}
+      />
       <ForecastGrid
         forecastId={forecast.id}
         initialTitle={forecast.title}
@@ -67,6 +79,7 @@ export default async function ForecastDetailPage({ params }: { params: { id: str
         readOnly={user.perm !== "READ_WRITE"}
         categoryOrder={await getCategoryNames()}
       />
+      </FitOnePageA3>
     </div>
   );
 }
