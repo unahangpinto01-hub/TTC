@@ -27,7 +27,9 @@ export default async function ForecastListPage({ searchParams }: { searchParams:
 
   return (
     <div>
-      <PageHeader title="Sales Forecast" />
+      <PageHeader title="Sales Forecast">
+        <Link href="/forecast/combined" className="btn-secondary">Σ Combined View (All Areas)</Link>
+      </PageHeader>
       <form method="GET" className="mb-4 flex flex-wrap items-end gap-2">
         <CompanyFilter scope={scope} />
         {scope.options.length > 1 && <button className="btn-secondary" type="submit">Apply</button>}
