@@ -4,6 +4,7 @@ import { requirePerm } from "@/lib/auth";
 import { fmtDate } from "@/lib/format";
 import { PageHeader } from "@/components/ui";
 import { createUser, setUserAccess } from "./actions";
+import { UserNotice } from "./notice";
 
 const ACCESS_OPTIONS = [
   ["NONE", "No Access"],
@@ -22,7 +23,7 @@ function AccessBadge({ access }: { access: string }) {
   return <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${cls}`}>{label}</span>;
 }
 
-export default async function UsersPage({ searchParams }: { searchParams: { error?: string } }) {
+export default async function UsersPage({ searchParams }: { searchParams: Record<string, string | string[] | undefined> }) {
   const me = await requirePerm("users");
   const [users, customers] = await Promise.all([
     prisma.user.findMany({ orderBy: { createdAt: "asc" }, include: { customer: true } }),
@@ -32,11 +33,7 @@ export default async function UsersPage({ searchParams }: { searchParams: { erro
   return (
     <div>
       <PageHeader title="User Management" />
-      {searchParams.error === "self" && (
-        <p className="mb-4 rounded-xl bg-red-50 p-3 text-sm text-red-700">
-          ⚠ You cannot change your own access level.
-        </p>
-      )}
+      <UserNotice searchParams={searchParams} />
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="lg:col-span-2">
           <div className="card overflow-x-auto p-0">

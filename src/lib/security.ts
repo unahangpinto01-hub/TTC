@@ -138,16 +138,33 @@ const WEAK_PASSWORDS = new Set([
   "teamagro", "teamagro123", "teamagro2026",
 ]);
 
+/** Why a password was rejected. Server actions redirect with the code so the page can
+    tell the operator exactly what went wrong instead of a vague "rejected". */
+export const PASSWORD_POLICY_MESSAGES = {
+  pw_short: "Password must be at least 12 characters long.",
+  pw_common: "That password is too common — choose something less guessable.",
+  pw_contains: "That password contains a very common password — choose something less guessable.",
+  pw_repeat: "Password cannot be a single repeated character.",
+} as const;
+
+export type PasswordPolicyCode = keyof typeof PASSWORD_POLICY_MESSAGES;
+
+/** Returns the reason code, or null when the password is acceptable. */
+export function passwordPolicyCode(password: string): PasswordPolicyCode | null {
+  if (password.length < 12) return "pw_short";
+  const lower = password.toLowerCase();
+  if (WEAK_PASSWORDS.has(lower)) return "pw_common";
+  for (const weak of WEAK_PASSWORDS) {
+    if (weak.length >= 8 && lower.includes(weak)) return "pw_contains";
+  }
+  if (/^(.)\1+$/.test(password)) return "pw_repeat";
+  return null;
+}
+
 /** Returns an error message, or null when the password is acceptable. */
 export function passwordPolicyError(password: string): string | null {
-  if (password.length < 12) return "Password must be at least 12 characters long.";
-  const lower = password.toLowerCase();
-  if (WEAK_PASSWORDS.has(lower)) return "That password is too common — choose something less guessable.";
-  for (const weak of WEAK_PASSWORDS) {
-    if (weak.length >= 8 && lower.includes(weak)) return "That password contains a very common password — choose something less guessable.";
-  }
-  if (/^(.)\1+$/.test(password)) return "Password cannot be a single repeated character.";
-  return null;
+  const code = passwordPolicyCode(password);
+  return code ? PASSWORD_POLICY_MESSAGES[code] : null;
 }
 
 /* -------------------------------------------------------------- request meta */
@@ -191,7 +208,7 @@ export type SecurityAction =
   | "RECOVERY_CODE_USED" | "RECOVERY_CODES_REGENERATED"
   | "PASSWORD_CHANGED" | "STEP_UP_SUCCESS" | "STEP_UP_FAILED"
   | "SESSION_REVOKED" | "ALL_SESSIONS_REVOKED" | "TRUSTED_DEVICE_ADDED" | "TRUSTED_DEVICE_REVOKED"
-  | "COMPANY_ACCESS_CHANGED" | "USER_RENAMED";
+  | "COMPANY_ACCESS_CHANGED" | "USER_RENAMED" | "USER_EMAIL_CHANGED";
 
 /** Append to the security audit trail. Never pass secrets/codes/tokens in here. */
 export async function logSecurityEvent(opts: {

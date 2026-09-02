@@ -5,7 +5,8 @@ import { requirePerm } from "@/lib/auth";
 import { fmtDate, fmtDateTime } from "@/lib/format";
 import { FUNCTIONS, getStoredPerm } from "@/lib/permissions";
 import { PageHeader } from "@/components/ui";
-import { updateUserPerms, resetUserPassword, setUserCompanies, renameUser } from "../actions";
+import { updateUserPerms, resetUserPassword, setUserCompanies, renameUser, changeUserEmail } from "../actions";
+import { UserNotice } from "../notice";
 import { getPrimaryCompany } from "@/lib/company";
 
 const LEVELS = [
@@ -14,7 +15,7 @@ const LEVELS = [
   ["READ_ONLY", "Read Only"],
 ] as const;
 
-export default async function UserDetailPage({ params, searchParams }: { params: { id: string }; searchParams: { error?: string; reset?: string; renamed?: string } }) {
+export default async function UserDetailPage({ params, searchParams }: { params: { id: string }; searchParams: Record<string, string | string[] | undefined> }) {
   const viewer = await requirePerm("users");
   const target = await prisma.user.findUnique({ where: { id: params.id }, include: { customer: true } });
   if (!target) notFound();
@@ -35,18 +36,7 @@ export default async function UserDetailPage({ params, searchParams }: { params:
       </Link>
       <PageHeader title={target.name} />
 
-      {searchParams.error === "weakpw" && (
-        <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">Password rejected — minimum 12 characters and not a common password.</p>
-      )}
-      {searchParams.error === "name" && (
-        <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">Name must be between 2 and 80 characters.</p>
-      )}
-      {searchParams.renamed === "ok" && (
-        <p className="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">&#10004; Name updated and recorded in the audit trail.</p>
-      )}
-      {searchParams.reset === "ok" && (
-        <p className="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">✔ Password reset. The user was signed out everywhere. Their 2FA (if enabled) still applies.</p>
-      )}
+      <UserNotice searchParams={searchParams} />
 
       <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4">
         <div className="card py-3"><p className="text-xs text-gray-500">Email</p><p className="text-sm font-semibold">{target.email}</p></div>
@@ -69,14 +59,28 @@ export default async function UserDetailPage({ params, searchParams }: { params:
         </form>
       )}
 
+      {viewer.role === "SUPER_ADMIN" && viewer.access === "READ_WRITE" && (
+        <form action={changeUserEmail} className="card mb-4 flex flex-wrap items-end gap-3">
+          <input type="hidden" name="id" value={target.id} />
+          <div className="flex-1">
+            <label className="label">Email Address (sign-in)</label>
+            <input name="email" type="email" defaultValue={target.email} required maxLength={120} className="input" />
+            <p className="mt-1 text-xs text-gray-500">
+              This is how {target.id === viewer.id ? "you" : "this user"} sign
+              {target.id === viewer.id ? "" : "s"} in. Changing it signs the account out everywhere, and the old and new
+              addresses are both recorded in the audit trail.
+            </p>
+          </div>
+          <button className="btn-secondary" type="submit">Save Email</button>
+        </form>
+      )}
+
       {viewer.role === "SUPER_ADMIN" && viewer.access === "READ_WRITE" && target.role !== "DEALER" && (
         <form action={setUserCompanies} className="card mb-4">
           <input type="hidden" name="id" value={target.id} />
           <p className="mb-2 font-semibold">Company Access</p>
           <p className="mb-3 text-xs text-gray-500">
             Which companies this user can work in. Access is explicit — nobody gets a company automatically.
-            {searchParams.error === "selfco" && <span className="ml-2 font-semibold text-red-600">You cannot remove your own access to every company.</span>}
-            {(searchParams as Record<string, string>).companies === "ok" && <span className="ml-2 font-semibold text-emerald-700">✔ Saved.</span>}
           </p>
           <div className="mb-3 flex flex-wrap gap-4">
             {companies.map((c) => (
