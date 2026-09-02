@@ -212,7 +212,7 @@ export function ForecastGrid({
                 <th key={m} className="px-1 py-2 text-right font-semibold">{m}</th>
               ))}
               <th className="px-2 py-2 text-right font-bold text-red-600">FORECAST QTY</th>
-              <th className="px-2 py-2 text-right font-semibold">UNIT PRICE</th>
+              <th className="no-print px-2 py-2 text-right font-semibold">UNIT PRICE</th>
               <th className="px-2 py-2 text-right font-bold">FORECAST VALUE</th>
               {!readOnly && <th className="no-print px-1 py-2" />}
             </tr>
@@ -254,7 +254,7 @@ export function ForecastGrid({
                       <td key={mi} className="px-1 py-1.5 text-right">{monthQty(c.rows, mi).toLocaleString()}</td>
                     ))}
                     <td className="px-2 py-1.5 text-right font-semibold">{totalQty(c.rows).toLocaleString()}</td>
-                    <td />
+                    <td className="no-print" />
                     <td className="px-2 py-1.5 text-right font-semibold">{fmtPeso(totalValue(c.rows))}</td>
                     {!readOnly && <td className="no-print" />}
                   </tr>
@@ -266,7 +266,7 @@ export function ForecastGrid({
                   <td key={mi} className="px-1 py-1.5 text-right">{monthQty(sorted, mi).toLocaleString()}</td>
                 ))}
                 <td className="bg-yellow-100 px-2 py-1.5 text-right text-red-600">{totalQty(sorted).toLocaleString()}</td>
-                <td />
+                <td className="no-print" />
                 <td className="px-2 py-1.5" />
                 {!readOnly && <td className="no-print" />}
               </tr>
@@ -277,7 +277,7 @@ export function ForecastGrid({
                   <td key={mi} className="px-1 py-1.5 text-right">{monthValue(sorted, mi).toLocaleString("en-PH", { maximumFractionDigits: 0 })}</td>
                 ))}
                 <td className="px-2 py-1.5" />
-                <td />
+                <td className="no-print" />
                 <td className="bg-yellow-100 px-2 py-1.5 text-right font-bold">{fmtPeso(totalValue(sorted))}</td>
                 {!readOnly && <td className="no-print" />}
               </tr>
@@ -348,7 +348,7 @@ function ProductRow({
           </td>
         ))}
         <td className="px-2 py-1 text-right font-semibold text-red-600">{total.toLocaleString()}</td>
-        <td className="px-2 py-1 text-right">
+        <td className="no-print px-2 py-1 text-right">
           {readOnly ? (
             <span className={overridden ? "font-semibold text-amber-700" : "text-gray-600"}>{fmtPeso(price)}</span>
           ) : (

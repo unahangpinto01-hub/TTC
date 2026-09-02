@@ -190,7 +190,7 @@ export default async function CombinedForecastPage({ searchParams }: { searchPar
                   <th key={m} className="px-1 py-2 text-right font-semibold">{m}</th>
                 ))}
                 <th className="px-2 py-2 text-right font-bold text-red-600">FORECAST QTY</th>
-                <th className="px-2 py-2 text-right font-semibold">UNIT PRICE</th>
+                <th className="no-print px-2 py-2 text-right font-semibold">UNIT PRICE</th>
                 <th className="px-2 py-2 text-right font-bold">FORECAST VALUE</th>
               </tr>
             </thead>
@@ -217,7 +217,7 @@ export default async function CombinedForecastPage({ searchParams }: { searchPar
                         <td key={mi} className="px-0.5 py-0.5 text-right"><span className="pr-1">{m ? m.toLocaleString() : "-"}</span></td>
                       ))}
                       <td className="px-2 py-1 text-right font-semibold text-red-600">{r.qty.toLocaleString()}</td>
-                      <td className="px-2 py-1 text-right text-gray-600">
+                      <td className="no-print px-2 py-1 text-right text-gray-600">
                         {uniform !== null ? fmtPeso(uniform) : <span title="Priced differently per area — the value column adds each area at its own price">varies</span>}
                       </td>
                       <td className="px-2 py-1 text-right font-semibold">{fmtPeso(r.value)}</td>
@@ -236,7 +236,7 @@ export default async function CombinedForecastPage({ searchParams }: { searchPar
                       <td key={mi} className="px-1 py-1.5 text-right">{monthQty(c.rows, mi).toLocaleString()}</td>
                     ))}
                     <td className="px-2 py-1.5 text-right font-semibold">{totalQty(c.rows).toLocaleString()}</td>
-                    <td />
+                    <td className="no-print" />
                     <td className="px-2 py-1.5 text-right font-semibold">{fmtPeso(totalValue(c.rows))}</td>
                   </tr>
                 ))}
@@ -247,7 +247,7 @@ export default async function CombinedForecastPage({ searchParams }: { searchPar
                   <td key={mi} className="px-1 py-1.5 text-right">{monthQty(rows, mi).toLocaleString()}</td>
                 ))}
                 <td className="bg-yellow-100 px-2 py-1.5 text-right text-red-600">{totalQty(rows).toLocaleString()}</td>
-                <td />
+                <td className="no-print" />
                 <td className="px-2 py-1.5" />
               </tr>
               <tr className="font-semibold text-emerald-900">
@@ -257,7 +257,7 @@ export default async function CombinedForecastPage({ searchParams }: { searchPar
                   <td key={mi} className="px-1 py-1.5 text-right">{monthValue(rows, mi).toLocaleString("en-PH", { maximumFractionDigits: 0 })}</td>
                 ))}
                 <td className="px-2 py-1.5" />
-                <td />
+                <td className="no-print" />
                 <td className="bg-yellow-100 px-2 py-1.5 text-right font-bold">{fmtPeso(totalValue(rows))}</td>
               </tr>
             </tfoot>
