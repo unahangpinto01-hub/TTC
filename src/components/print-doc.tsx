@@ -53,6 +53,10 @@ export async function PrintDoc({
   ].filter(Boolean).join(" · ");
   const charges = extraCharges.filter((c) => c.amount > 0);
   const total = lines.reduce((s, l) => s + l.qty * l.unitPrice, 0) + charges.reduce((s, c) => s + c.amount, 0);
+  // goods-only documents total both selling units: cartons ordered and the pieces they come to
+  const totalCartons = lines.reduce((s, l) => s + (l.unit === "CARTON" ? l.qty : 0), 0);
+  const totalPieces = lines.reduce((s, l) => s + (l.baseQty ?? l.qty), 0);
+  const loosePieces = lines.reduce((s, l) => s + (l.unit === "CARTON" ? 0 : l.baseQty ?? l.qty), 0);
   const { net, vat } = vatBreakdown(total);
   return (
     <div className="print-page mx-auto max-w-[210mm] rounded-xl border border-gray-200 bg-white p-10 shadow-sm">
@@ -143,8 +147,13 @@ export async function PrintDoc({
         ) : (
           <tfoot>
             <tr className="border-t-2 border-gray-300 font-bold">
-              <td colSpan={2} className="py-2 text-right">TOTAL QTY{lines.some((l) => l.baseQty != null) ? " (PCS)" : ""}</td>
-              <td className="py-2 pr-16 text-right">{lines.reduce((s, l) => s + (l.baseQty ?? l.qty), 0)}</td>
+              <td colSpan={2} className="py-2 text-right">TOTAL QTY{totalCartons > 0 ? " CTN (PCS)" : " (PCS)"}</td>
+              <td className="py-2 pr-16 text-right">
+                {totalCartons > 0 ? `${totalCartons.toLocaleString()} CTN (${totalPieces.toLocaleString()} PCS)` : totalPieces.toLocaleString()}
+                {loosePieces > 0 && totalCartons > 0 && (
+                  <span className="block text-xs font-normal text-gray-500">incl. {loosePieces.toLocaleString()} loose PCS</span>
+                )}
+              </td>
             </tr>
           </tfoot>
         )}
