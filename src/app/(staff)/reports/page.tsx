@@ -11,6 +11,7 @@ export default async function ReportsHub() {
 
   const reports = [
     { title: "Sales Report", desc: "By customer, product, and region", href: `/reports/sales?from=${monthStart}&to=${today}`, alt: `/reports/sales?from=${yearStart}&to=${today}` },
+    { title: "Sales Journal", desc: "Chronological register of every posted invoice, by product line", href: `/reports/sales-journal?from=${monthStart}&to=${today}`, alt: `/reports/sales-journal?from=${yearStart}&to=${today}` },
     { title: "Monthly Sales per Region", desc: "Products sold per month with totals, filtered by region", href: "/reports/sales-monthly", label: "Open Report" },
     { title: "Expense Report", desc: "By category with detail listing", href: `/finance/expenses?from=${monthStart}&to=${today}`, alt: `/finance/expenses?from=${yearStart}&to=${today}` },
     { title: "Income Statement (P&L)", desc: "Revenue, COGS, expenses, net income", href: `/reports/pnl?from=${monthStart}&to=${today}`, alt: `/reports/pnl?from=${yearStart}&to=${today}` },

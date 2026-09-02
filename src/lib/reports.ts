@@ -530,3 +530,139 @@ export async function getProductReport({ from, to }: Range, companyIds: string[]
     },
   };
 }
+
+export type SalesJournalRow = {
+  key: string;
+  date: Date;
+  company: string;
+  invoiceNo: string;
+  invoiceId: string;
+  customer: string;
+  customerId: string;
+  reference: string;       // internal order / sales order references
+  product: string;
+  sku: string;
+  productId: string | null; // null on the freight row
+  qty: string;              // "5 CTN" etc, blank on the freight row
+  unitPrice: number | null;
+  gross: number;            // product line amount, or the freight amount on the freight row
+  freight: number;          // only set on the freight row
+  net: number;              // gross - freight
+  paymentStatus: string;
+  salesperson: string;
+  transactionStatus: "Posted" | "Void";
+};
+
+/**
+ * Sales journal: every posted invoice broken out by product line, in date order.
+ * Freight is carried as its own row inside the invoice, so Gross totals to what was
+ * billed, Freight totals separately, and Net Sales = Gross - Freight exactly.
+ * Read-only — the rows are derived from Sales Receipts and cannot be edited here.
+ */
+export async function getSalesJournal(
+  { from, to }: Range,
+  companyIds: string[],
+  filters?: { customerId?: string; productId?: string; salesperson?: string; txStatus?: string; q?: string }
+) {
+  const srs = await prisma.salesReceipt.findMany({
+    where: {
+      companyId: { in: companyIds },
+      invoiceDate: { gte: from, lte: to },
+      ...(filters?.customerId ? { customerId: filters.customerId } : {}),
+      ...(filters?.txStatus === "Posted" ? { status: { not: "Void" } } : {}),
+      ...(filters?.txStatus === "Void" ? { status: "Void" } : {}),
+      ...(filters?.q
+        ? {
+            OR: [
+              { srNumber: { contains: filters.q, mode: "insensitive" as const } },
+              { customer: { businessName: { contains: filters.q, mode: "insensitive" as const } } },
+            ],
+          }
+        : {}),
+    },
+    include: {
+      company: { select: { companyName: true } },
+      customer: true,
+      deliveryReceipt: {
+        include: {
+          lines: { include: { product: true } },
+          salesOrder: { include: { preparedBy: { select: { name: true } }, incomingOrder: { select: { orderNo: true } } } },
+        },
+      },
+    },
+    orderBy: [{ invoiceDate: "asc" }, { srNumber: "asc" }],
+  });
+
+  const rows: SalesJournalRow[] = [];
+  for (const sr of srs) {
+    const so = sr.deliveryReceipt.salesOrder;
+    const salesperson = so.preparedBy?.name ?? "—";
+    if (filters?.salesperson && salesperson !== filters.salesperson) continue;
+    const reference = [so.incomingOrder?.orderNo, so.soNumber].filter(Boolean).join(" / ");
+    const tx: "Posted" | "Void" = sr.status === "Void" ? "Void" : "Posted";
+    const base = {
+      date: sr.invoiceDate,
+      company: sr.company.companyName,
+      invoiceNo: sr.srNumber,
+      invoiceId: sr.id,
+      customer: sr.customer.businessName,
+      customerId: sr.customerId,
+      reference,
+      paymentStatus: tx === "Void" ? "—" : sr.status,
+      salesperson,
+      transactionStatus: tx,
+    };
+
+    for (const l of sr.deliveryReceipt.lines) {
+      if (filters?.productId && l.productId !== filters.productId) continue;
+      const gross = round2(l.qty * l.unitPrice);
+      rows.push({
+        ...base,
+        key: `${sr.id}:${l.id}`,
+        product: l.product.name,
+        sku: l.product.sku,
+        productId: l.productId,
+        qty: `${l.qty.toLocaleString()} ${l.unit === "CARTON" ? "CTN" : "PCS"}`,
+        unitPrice: l.unitPrice,
+        gross,
+        freight: 0,
+        net: gross,
+      });
+    }
+    // freight rides on the invoice, not on any product — its own row keeps every column honest
+    if (sr.freightCharge > 0 && !filters?.productId) {
+      rows.push({
+        ...base,
+        key: `${sr.id}:freight`,
+        product: "Freight Charge",
+        sku: "",
+        productId: null,
+        qty: "",
+        unitPrice: null,
+        gross: sr.freightCharge,
+        freight: sr.freightCharge,
+        net: 0,
+      });
+    }
+  }
+
+  // voided invoices stay visible but never count toward the totals
+  const counted = rows.filter((r) => r.transactionStatus === "Posted");
+  const sum = (pick: (r: SalesJournalRow) => number) => round2(counted.reduce((s, r) => s + pick(r), 0));
+  const byCompany = new Map<string, { name: string; gross: number; freight: number; net: number }>();
+  for (const r of counted) {
+    const c = byCompany.get(r.company) ?? { name: r.company, gross: 0, freight: 0, net: 0 };
+    c.gross = round2(c.gross + r.gross);
+    c.freight = round2(c.freight + r.freight);
+    c.net = round2(c.net + r.net);
+    byCompany.set(r.company, c);
+  }
+
+  return {
+    rows,
+    totals: { gross: sum((r) => r.gross), freight: sum((r) => r.freight), net: sum((r) => r.net) },
+    byCompany: [...byCompany.values()].sort((a, b) => b.gross - a.gross),
+    voidedCount: rows.filter((r) => r.transactionStatus === "Void").length,
+    invoiceCount: new Set(counted.map((r) => r.invoiceNo)).size,
+  };
+}

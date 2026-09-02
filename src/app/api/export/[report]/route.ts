@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { getUser } from "@/lib/auth";
 import { sheetResponse, PESO_FMT, QTY_FMT } from "@/lib/xlsx-helpers";
-import { getSalesReport, getExpenseReport, getPnl, getArAging, getMovements, getDeliveryPerformance, getMonthlyProductSales, getMerchandiseInventory, getCollections, getCustomerReport, getProductReport, parseRange } from "@/lib/reports";
+import { getSalesReport, getExpenseReport, getPnl, getArAging, getMovements, getDeliveryPerformance, getMonthlyProductSales, getMerchandiseInventory, getCollections, getCustomerReport, getProductReport, getSalesJournal, parseRange } from "@/lib/reports";
 import { cartonBreakdown } from "@/lib/units";
 import { getActiveCompany, allowedCompanies } from "@/lib/company";
 import { scopeIds } from "@/lib/report-scope";
@@ -290,6 +290,40 @@ export async function GET(req: NextRequest, { params }: { params: { report: stri
         ["TOTAL", "", ...(scope.combined ? [""] : []), "", r.totals.qty, r.totals.revenue, r.totals.cogs, r.totals.margin],
       ];
       return sheetResponse(rows, "Products", `product-report-${tag}.xlsx`);
+    }
+    case "sales-journal": {
+      const j = await getSalesJournal(range, scope.ids, {
+        customerId: sp.customer || undefined,
+        productId: sp.product || undefined,
+        salesperson: sp.salesperson || undefined,
+        txStatus: sp.tx || undefined,
+        q: sp.q || undefined,
+      });
+      const HEADER_ROW = 4;
+      const rows: (string | number)[][] = [
+        ["SALES JOURNAL", tag, scope.label],
+        [`${j.invoiceCount} invoice(s) · ${j.rows.length} entries${j.voidedCount ? ` · ${j.voidedCount} voided (excluded from totals)` : ""}`],
+        [],
+        [],
+        ["Date", ...(scope.combined ? ["Company"] : []), "Invoice No.", "Customer", "Reference", "Product", "Qty", "Unit Price", "Gross Sales", "Freight", "Net Sales", "Payment", "Salesperson", "Status"],
+        ...j.rows.map((r) => [
+          r.date.toISOString().slice(0, 10),
+          ...(scope.combined ? [r.company] : []),
+          r.invoiceNo, r.customer, r.reference, r.product, r.qty,
+          r.unitPrice ?? "", r.gross, r.freight || "", r.net,
+          r.paymentStatus, r.salesperson, r.transactionStatus,
+        ]),
+        [],
+        ...(scope.combined ? j.byCompany.map((c) => [`${c.name} Net Sales`, "", "", "", "", "", "", "", "", "", c.net]) : []),
+        [`Gross Sales`, "", "", "", "", "", "", "", j.totals.gross],
+        [`Less: Freight Charge`, "", "", "", "", "", "", "", j.totals.freight],
+        [`Net Sales`, "", "", "", "", "", "", "", j.totals.net],
+      ];
+      const money = scope.combined ? [8, 9, 10, 11] : [7, 8, 9, 10];
+      return sheetResponse(rows, "Sales Journal", `sales-journal-${tag}.xlsx`, {
+        colWidths: scope.combined ? [12, 20, 16, 26, 22, 34, 12, 13, 15, 13, 15, 11, 16, 10] : [12, 16, 26, 22, 34, 12, 13, 15, 13, 15, 11, 16, 10],
+        numFmts: money.map((col) => ({ col, fmt: PESO_FMT, fromRow: HEADER_ROW + 1 })),
+      });
     }
     default:
       return new Response("Unknown report", { status: 404 });
