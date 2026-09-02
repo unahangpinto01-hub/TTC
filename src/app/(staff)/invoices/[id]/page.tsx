@@ -66,6 +66,10 @@ export default async function SRDetailPage({ params, searchParams }: { params: {
                 <td className="table-td text-right">
                   {peso(l.unitPrice)}
                   <span className="text-xs text-gray-400"> / {l.unit === "CARTON" ? "CTN" : "PC"}</span>
+                  {/* carton lines also show what that works out to per piece */}
+                  {l.unit === "CARTON" && l.qty > 0 && l.baseQty > 0 && (
+                    <p className="text-xs font-normal text-gray-400">= {peso(l.unitPrice / (l.baseQty / l.qty))} / PC</p>
+                  )}
                 </td>
                 <td className="table-td text-right">{peso(l.qty * l.unitPrice)}</td>
               </tr>
