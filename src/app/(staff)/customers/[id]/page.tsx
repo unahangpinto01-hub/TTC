@@ -7,12 +7,17 @@ import { PageHeader, StatusBadge } from "@/components/ui";
 import { updateCustomer, setCustomerSalesperson } from "../actions";
 import { getSalespeople, getAuditTrail } from "@/lib/salespeople";
 
+const MONTHS = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
 export default async function CustomerDetailPage({
   params,
   searchParams,
 }: {
   params: { id: string };
-  searchParams: { edit?: string; salesperson?: string; error?: string };
+  searchParams: { edit?: string; salesperson?: string; error?: string; salesYear?: string };
 }) {
   const user = await requirePerm("customers");
   const customer = await prisma.customer.findUnique({
@@ -37,6 +42,26 @@ export default async function CustomerDetailPage({
 
   const canEdit = user.perm === "READ_WRITE";
   const editing = canEdit && searchParams.edit === "1";
+
+  // monthly sales for one year, from the same invoices listed below (void excluded)
+  const salesYears = [...new Set(invoiced.map((sr) => sr.invoiceDate.getUTCFullYear()))].sort((a, b) => b - a);
+  const wantedYear = Number(searchParams.salesYear);
+  const salesYear = salesYears.includes(wantedYear) ? wantedYear : salesYears[0] ?? new Date().getFullYear();
+  const monthly = MONTHS.map((label, i) => {
+    const rows = invoiced.filter(
+      (sr) => sr.invoiceDate.getUTCFullYear() === salesYear && sr.invoiceDate.getUTCMonth() === i
+    );
+    return {
+      label,
+      count: rows.length,
+      amount: rows.reduce((s, sr) => s + sr.amount, 0),
+      paid: rows.reduce((s, sr) => s + sr.payments.reduce((a, pm) => a + pm.amount, 0), 0),
+    };
+  });
+  const yearTotal = monthly.reduce((s, m) => s + m.amount, 0);
+  const yearPaid = monthly.reduce((s, m) => s + m.paid, 0);
+  const yearCount = monthly.reduce((s, m) => s + m.count, 0);
+  const peak = Math.max(1, ...monthly.map((m) => m.amount));
 
   return (
     <div>
@@ -167,6 +192,76 @@ export default async function CustomerDetailPage({
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {salesYears.length > 0 && (
+        <div className="mb-4">
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            <h2 className="text-lg font-semibold">Monthly Sales</h2>
+            {salesYears.map((y) => (
+              <Link
+                key={y}
+                href={`/customers/${customer.id}?salesYear=${y}`}
+                className={y === salesYear ? "btn-primary px-3 py-1 text-xs" : "btn-secondary px-3 py-1 text-xs"}
+              >
+                {y}
+              </Link>
+            ))}
+          </div>
+          <div className="card overflow-x-auto p-0">
+            <table className="w-full min-w-[520px]">
+              <thead className="border-b border-gray-200 bg-gray-50">
+                <tr>
+                  <th className="table-th">Month</th>
+                  <th className="table-th text-right">Invoices</th>
+                  <th className="table-th text-right">Sales</th>
+                  <th className="table-th text-right">Collected</th>
+                  <th className="table-th text-right">Balance</th>
+                  <th className="table-th w-32" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {monthly.map((m) => (
+                  <tr key={m.label} className={m.amount ? "hover:bg-gray-50" : "text-gray-300"}>
+                    <td className="table-td font-medium">{m.label}</td>
+                    <td className="table-td text-right text-sm">{m.count || "—"}</td>
+                    <td className={"table-td text-right " + (m.amount ? "font-semibold" : "")}>
+                      {m.amount ? peso(m.amount) : "—"}
+                    </td>
+                    <td className="table-td text-right text-sm">{m.paid ? peso(m.paid) : "—"}</td>
+                    <td className={"table-td text-right text-sm " + (m.amount - m.paid > 0.005 ? "font-semibold text-red-600" : "")}>
+                      {m.amount ? peso(m.amount - m.paid) : "—"}
+                    </td>
+                    <td className="table-td">
+                      {m.amount > 0 && (
+                        <span className="block h-2 rounded bg-emerald-100">
+                          <span
+                            className="block h-2 rounded bg-emerald-600"
+                            style={{ width: `${Math.max(3, (m.amount / peak) * 100)}%` }}
+                          />
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot className="border-t-2 border-gray-300 bg-gray-50 font-bold">
+                <tr>
+                  <td className="table-td">TOTAL {salesYear}</td>
+                  <td className="table-td text-right">{yearCount}</td>
+                  <td className="table-td text-right">{peso(yearTotal)}</td>
+                  <td className="table-td text-right">{peso(yearPaid)}</td>
+                  <td className="table-td text-right text-red-600">{peso(yearTotal - yearPaid)}</td>
+                  <td className="table-td" />
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+          <p className="mt-2 text-xs text-gray-500">
+            Invoiced sales by invoice date, voided invoices excluded — the same invoices listed below. Amounts include
+            freight, so they tie to this customer&rsquo;s outstanding balance.
+          </p>
         </div>
       )}
 
