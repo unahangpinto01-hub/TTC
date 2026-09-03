@@ -3,7 +3,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { requirePerm } from "@/lib/auth";
 import { resolveReportScope } from "@/lib/report-scope";
-import { CompanyFilter, CompanyTag } from "@/components/company-filter";
+import { CompanyFilter } from "@/components/company-filter";
 import { peso, fmtDateTime } from "@/lib/format";
 import { PrintButton, BackButton } from "@/components/print-button";
 import { getSalespeople, NO_SALESPERSON, NO_CUSTOMER } from "@/lib/salespeople";
@@ -376,7 +376,6 @@ export default async function ForecastReportPage({ searchParams }: { searchParam
             <thead className="border-b-2 border-gray-300 bg-gray-50">
               <tr>
                 <th className="table-th">Salesperson / Customer / Product</th>
-                {scope.combined && <th className="table-th">Company</th>}
                 <th className="table-th text-right">Forecast Qty</th>
                 <th className="table-th text-right">Sales Qty</th>
                 <th className="table-th text-right">Forecast Value</th>
@@ -390,7 +389,6 @@ export default async function ForecastReportPage({ searchParams }: { searchParam
                 <Fragment key={sp.key}>
                   <tr className="bg-emerald-100 font-bold text-emerald-900">
                     <td className="px-3 py-1.5">👤 {sp.label}</td>
-                    {scope.combined && <td />}
                     <td className="px-3 py-1.5 text-right"><GroupQty pcs={sp.t.fcPcs} /></td>
                     <td className="px-3 py-1.5 text-right"><GroupQty pcs={sp.t.actPcs} /></td>
                     <td className="px-3 py-1.5 text-right">{peso(sp.t.fcValue)}</td>
@@ -402,7 +400,6 @@ export default async function ForecastReportPage({ searchParams }: { searchParam
                     <Fragment key={c.key}>
                       <tr className="bg-emerald-50/70 font-semibold text-emerald-800">
                         <td className="px-3 py-1 pl-6">🏢 {c.label}</td>
-                        {scope.combined && <td />}
                         <td className="px-3 py-1 text-right"><GroupQty pcs={c.t.fcPcs} /></td>
                         <td className="px-3 py-1 text-right"><GroupQty pcs={c.t.actPcs} /></td>
                         <td className="px-3 py-1 text-right">{peso(c.t.fcValue)}</td>
@@ -416,9 +413,6 @@ export default async function ForecastReportPage({ searchParams }: { searchParam
                             {r.productName}
                             <span className="ml-1 text-xs text-gray-400">{r.sku}</span>
                           </td>
-                          {scope.combined && (
-                            <td className="px-3 py-1"><CompanyTag name={scope.names[r.companyId] ?? ""} /></td>
-                          )}
                           <td className="px-3 py-1 text-right"><Qty pcs={r.fcPcs} ppc={r.piecesPerCarton} /></td>
                           <td className="px-3 py-1 text-right"><Qty pcs={r.actPcs} ppc={r.piecesPerCarton} /></td>
                           <td className="px-3 py-1 text-right">{peso(r.fcValue)}</td>
@@ -435,7 +429,6 @@ export default async function ForecastReportPage({ searchParams }: { searchParam
             <tfoot className="border-t-2 border-gray-300 bg-gray-50 font-bold">
               <tr>
                 <td className="px-3 py-2">GRAND TOTAL</td>
-                {scope.combined && <td />}
                 <td className="px-3 py-2 text-right"><GroupQty pcs={grand.fcPcs} /></td>
                 <td className="px-3 py-2 text-right"><GroupQty pcs={grand.actPcs} /></td>
                 <td className="px-3 py-2 text-right">{peso(grand.fcValue)}</td>
