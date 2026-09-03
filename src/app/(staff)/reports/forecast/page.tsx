@@ -51,8 +51,6 @@ export default async function ForecastReportPage({ searchParams }: { searchParam
 
   const where: any = { product: { companyId: { in: scope.ids } } };
   if (forecastId) where.forecastId = forecastId;
-  if (searchParams.salesperson === "none") where.salespersonId = null;
-  else if (searchParams.salesperson) where.salespersonId = searchParams.salesperson;
   if (searchParams.customer === "none") where.customerId = null;
   else if (searchParams.customer) where.customerId = searchParams.customer;
 
@@ -60,7 +58,8 @@ export default async function ForecastReportPage({ searchParams }: { searchParam
     where,
     include: {
       product: { select: { id: true, sku: true, name: true, srp: true, companyId: true } },
-      customer: { select: { id: true, businessName: true } },
+      // the customer's CURRENT owner, used only when the line was never stamped
+      customer: { select: { id: true, businessName: true, salespersonId: true, salesperson: { select: { name: true } } } },
       salesperson: { select: { id: true, name: true } },
       forecast: { select: { title: true, year: true } },
     },
@@ -72,9 +71,11 @@ export default async function ForecastReportPage({ searchParams }: { searchParam
     .map((l) => {
       const qty = l.m1 + l.m2 + l.m3 + l.m4 + l.m5 + l.m6 + l.m7 + l.m8 + l.m9 + l.m10 + l.m11 + l.m12;
       const price = l.unitPrice ?? l.product.srp;
+      // a line stamped at save time keeps that salesperson for good; one that was never
+      // stamped follows whoever owns the account today, exactly as the grid shows it
       return {
-        spId: l.salespersonId ?? "none",
-        spName: l.salesperson?.name ?? NO_SALESPERSON,
+        spId: l.salespersonId ?? l.customer?.salespersonId ?? "none",
+        spName: l.salesperson?.name ?? l.customer?.salesperson?.name ?? NO_SALESPERSON,
         customerId: l.customerId ?? "none",
         customerName: l.customer?.businessName ?? NO_CUSTOMER,
         productId: l.productId,
@@ -95,13 +96,20 @@ export default async function ForecastReportPage({ searchParams }: { searchParam
         a.productName.localeCompare(b.productName)
     );
 
-  const grandQty = rows.reduce((s, r) => s + r.qty, 0);
-  const grandValue = rows.reduce((s, r) => s + r.value, 0);
+  const shown =
+    searchParams.salesperson === "none"
+      ? rows.filter((r) => r.spId === "none")
+      : searchParams.salesperson
+        ? rows.filter((r) => r.spId === searchParams.salesperson)
+        : rows;
+
+  const grandQty = shown.reduce((s, r) => s + r.qty, 0);
+  const grandValue = shown.reduce((s, r) => s + r.value, 0);
 
   /** roll the rows up by any key, keeping insertion order */
   const rollup = <K extends keyof Row>(keyField: K, labelField: keyof Row) => {
     const out: { key: string; label: string; qty: number; value: number; rows: Row[] }[] = [];
-    for (const r of rows) {
+    for (const r of shown) {
       const key = String(r[keyField]);
       let g = out.find((x) => x.key === key);
       if (!g) {
@@ -213,7 +221,7 @@ export default async function ForecastReportPage({ searchParams }: { searchParam
         <div className="card py-3"><p className="text-xs text-gray-500">Total Forecast Value</p><p className="text-lg font-bold text-emerald-800">{peso(grandValue)}</p></div>
       </div>
 
-      {!rows.length ? (
+      {!shown.length ? (
         <div className="card p-10 text-center text-sm text-gray-500">
           No forecast lines match these filters.
         </div>
@@ -314,7 +322,7 @@ export default async function ForecastReportPage({ searchParams }: { searchParam
               <tr>
                 <td className="px-3 py-2">TOTAL</td>
                 <td />
-                <td className="px-3 py-2 text-right">{rows.length.toLocaleString()}</td>
+                <td className="px-3 py-2 text-right">{shown.length.toLocaleString()}</td>
                 <td className="px-3 py-2 text-right">{grandQty.toLocaleString()}</td>
                 <td className="px-3 py-2 text-right text-emerald-900">{peso(grandValue)}</td>
                 <td className="px-3 py-2 text-right">100%</td>

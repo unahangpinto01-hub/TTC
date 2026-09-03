@@ -23,6 +23,7 @@ export default async function ForecastListPage({ searchParams }: { searchParams:
         include: {
           product: { select: { srp: true, companyId: true } },
           salesperson: { select: { name: true } },
+          customer: { select: { salesperson: { select: { name: true } } } },
         },
       },
     },
@@ -66,7 +67,9 @@ export default async function ForecastListPage({ searchParams }: { searchParams:
                   // a line priced by hand is valued at that price; the rest follow the product SRP
                   const totalValue = lines.reduce((s, l) => s + qty(l) * (l.unitPrice ?? l.product.srp), 0);
                   const inThis = Array.from(new Set(lines.map((l) => l.product.companyId)));
-                  const spCount = new Set(lines.map((l) => l.salesperson?.name ?? "—")).size;
+                  const spCount = new Set(
+                    lines.map((l) => l.salesperson?.name ?? l.customer?.salesperson?.name ?? "—")
+                  ).size;
                   return (
                     <tr key={f.id} className="hover:bg-gray-50">
                       <td className="table-td">
