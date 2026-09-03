@@ -6,6 +6,7 @@ import { peso, fmtDate, fmtDateTime, termLabel, daysUntil } from "@/lib/format";
 import { PageHeader, StatusBadge } from "@/components/ui";
 import { updateCustomer, setCustomerSalesperson } from "../actions";
 import { getSalespeople, getAuditTrail } from "@/lib/salespeople";
+import { getActiveCompany, allowedCompanies } from "@/lib/company";
 
 const MONTHS = [
   "January", "February", "March", "April", "May", "June",
@@ -20,16 +21,38 @@ export default async function CustomerDetailPage({
   searchParams: { edit?: string; salesperson?: string; error?: string; salesYear?: string };
 }) {
   const user = await requirePerm("customers");
+  // A customer is shared between companies, but its ORDERS and INVOICES are not: they follow
+  // the company selector, exactly as AR/Aging and Invoices do. Without this the page would
+  // both show figures the user has no access to and link to records that cannot be opened.
+  const company = await getActiveCompany(user);
   const customer = await prisma.customer.findUnique({
     where: { id: params.id },
     include: {
       salesperson: { select: { id: true, name: true, position: true } },
-      salesOrders: { orderBy: { orderDate: "desc" }, take: 50, include: { lines: true } },
-      salesReceipts: { orderBy: { invoiceDate: "desc" }, include: { payments: true } },
+      salesOrders: { where: { companyId: company.id }, orderBy: { orderDate: "desc" }, take: 50, include: { lines: true } },
+      salesReceipts: { where: { companyId: company.id }, orderBy: { invoiceDate: "desc" }, include: { payments: true } },
     },
   });
   if (!customer) notFound();
-  const [salespeople, auditTrail] = await Promise.all([getSalespeople(), getAuditTrail("Customer", params.id)]);
+  const [salespeople, auditTrail, myCompanies] = await Promise.all([
+    getSalespeople(),
+    getAuditTrail("Customer", params.id),
+    allowedCompanies(user),
+  ]);
+  // does this customer also trade with another company the viewer may open?
+  const elsewhere = myCompanies.filter((c) => c.id !== company.id);
+  const alsoIn = elsewhere.length
+    ? await prisma.company.findMany({
+        where: {
+          id: { in: elsewhere.map((c) => c.id) },
+          OR: [
+            { salesOrders: { some: { customerId: params.id } } },
+            { salesReceipts: { some: { customerId: params.id } } },
+          ],
+        },
+        select: { id: true, companyName: true },
+      })
+    : [];
 
   const invoiced = customer.salesReceipts.filter((sr) => sr.status !== "Void");
   const totalInvoiced = invoiced.reduce((s, sr) => s + sr.amount, 0);
@@ -112,6 +135,22 @@ export default async function CustomerDetailPage({
           <button className="btn-primary" type="submit">💾 Save Changes</button>
         </form>
       )}
+
+      <p className="mb-3 text-xs text-gray-500">
+        Orders, invoices and monthly sales below are <strong>{company.companyName}</strong> only.
+        {alsoIn.length > 0 && (
+          <>
+            {" "}This customer also trades with{" "}
+            {alsoIn.map((c, i) => (
+              <span key={c.id}>
+                {i > 0 && ", "}
+                <strong>{c.companyName}</strong>
+              </span>
+            ))}
+            {" "}— switch company at the top of the sidebar to see those.
+          </>
+        )}
+      </p>
 
       <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-6">
         <div className="card py-3">
@@ -259,8 +298,8 @@ export default async function CustomerDetailPage({
             </table>
           </div>
           <p className="mt-2 text-xs text-gray-500">
-            Invoiced sales by invoice date, voided invoices excluded — the same invoices listed below. Amounts include
-            freight, so they tie to this customer&rsquo;s outstanding balance.
+            {company.companyName} invoiced sales by invoice date, voided invoices excluded — the same invoices listed
+            below. Amounts include freight, so they tie to this customer&rsquo;s outstanding balance.
           </p>
         </div>
       )}
