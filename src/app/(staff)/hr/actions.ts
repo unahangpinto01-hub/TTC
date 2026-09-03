@@ -17,6 +17,7 @@ export async function createEmployee(formData: FormData) {
       department: String(formData.get("department")).trim(),
       hireDate: new Date(String(formData.get("hireDate"))),
       basicSalary: Number(formData.get("basicSalary")) || 0,
+      isSalesperson: formData.get("isSalesperson") === "on",
     },
   });
   revalidatePath("/hr");
@@ -39,6 +40,7 @@ export async function updateEmployee(formData: FormData) {
       position: String(formData.get("position")).trim(),
       department: String(formData.get("department")).trim(),
       basicSalary: round2(Number(formData.get("basicSalary")) || 0),
+      isSalesperson: formData.get("isSalesperson") === "on",
       status: formData.get("status") === "Inactive" ? "Inactive" : "Active",
       ...items,
     },

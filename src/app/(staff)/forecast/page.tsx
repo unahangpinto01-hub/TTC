@@ -19,7 +19,12 @@ export default async function ForecastListPage({ searchParams }: { searchParams:
   const forecasts = await prisma.forecast.findMany({
     orderBy: [{ year: "desc" }, { createdAt: "desc" }],
     include: {
-      lines: { include: { product: { select: { srp: true, companyId: true } } } },
+      lines: {
+        include: {
+          product: { select: { srp: true, companyId: true } },
+          salesperson: { select: { name: true } },
+        },
+      },
     },
   });
   const canEdit = user.perm === "READ_WRITE";
@@ -33,6 +38,7 @@ export default async function ForecastListPage({ searchParams }: { searchParams:
       <form method="GET" className="mb-4 flex flex-wrap items-end gap-2">
         <CompanyFilter scope={scope} />
         {scope.options.length > 1 && <button className="btn-secondary" type="submit">Apply</button>}
+        <Link href="/reports/forecast" className="btn-secondary">📊 Forecast Reports</Link>
       </form>
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="lg:col-span-2">
@@ -44,6 +50,7 @@ export default async function ForecastListPage({ searchParams }: { searchParams:
                   {companies.length > 1 && <th className="table-th">Companies</th>}
                   <th className="table-th">Year</th>
                   <th className="table-th">Area</th>
+                  <th className="table-th text-right">Salespeople</th>
                   <th className="table-th text-right">Products</th>
                   <th className="table-th text-right">Total Qty</th>
                   <th className="table-th text-right">Forecast Value</th>
@@ -59,6 +66,7 @@ export default async function ForecastListPage({ searchParams }: { searchParams:
                   // a line priced by hand is valued at that price; the rest follow the product SRP
                   const totalValue = lines.reduce((s, l) => s + qty(l) * (l.unitPrice ?? l.product.srp), 0);
                   const inThis = Array.from(new Set(lines.map((l) => l.product.companyId)));
+                  const spCount = new Set(lines.map((l) => l.salesperson?.name ?? "—")).size;
                   return (
                     <tr key={f.id} className="hover:bg-gray-50">
                       <td className="table-td">
@@ -75,6 +83,7 @@ export default async function ForecastListPage({ searchParams }: { searchParams:
                       )}
                       <td className="table-td">{f.year}</td>
                       <td className="table-td">{f.area}</td>
+                      <td className="table-td text-right">{spCount}</td>
                       <td className="table-td text-right">{lines.length}</td>
                       <td className="table-td text-right font-semibold">{totalQty.toLocaleString()}</td>
                       <td className="table-td text-right font-semibold">{peso(totalValue)}</td>
@@ -90,14 +99,15 @@ export default async function ForecastListPage({ searchParams }: { searchParams:
                   );
                 })}
                 {!forecasts.length && (
-                  <tr><td colSpan={companies.length > 1 ? 8 : 7} className="p-8 text-center text-sm text-gray-500">No forecasts yet — create your first one.</td></tr>
+                  <tr><td colSpan={companies.length > 1 ? 9 : 8} className="p-8 text-center text-sm text-gray-500">No forecasts yet — create your first one.</td></tr>
                 )}
               </tbody>
             </table>
           </div>
           <p className="mt-2 text-xs text-gray-500">
-            A forecast is shared: it can hold products from any company. Forecast Value = quantity × unit price, which
-            follows the product&rsquo;s current active SRP unless a planning price was typed on that row.
+            A forecast is shared: it can hold products from any company. Every line names its salesperson and customer, and
+            Forecast Value = quantity × unit price, which follows the product&rsquo;s current active SRP unless a planning
+            price was typed on that row.
           </p>
         </div>
         {canEdit && (

@@ -38,6 +38,13 @@ export default async function EmployeesPage({ searchParams }: { searchParams: { 
               <label className="label">Status</label>
               <select name="status" defaultValue={editing.status} className="input"><option>Active</option><option>Inactive</option></select>
             </div>
+            <div>
+              <label className="label">Salesperson</label>
+              <label className="flex items-center gap-2 pt-1.5 text-sm">
+                <input type="checkbox" name="isSalesperson" defaultChecked={editing.isSalesperson} className="h-4 w-4 accent-emerald-700" />
+                Can be assigned customers
+              </label>
+            </div>
           </div>
           <div>
             <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-emerald-700">Default Allowances (per cutoff — prefill only)</p>
@@ -74,6 +81,7 @@ export default async function EmployeesPage({ searchParams }: { searchParams: { 
                   <th className="table-th">Name</th>
                   <th className="table-th">Position</th>
                   <th className="table-th">Department</th>
+                  <th className="table-th">Salesperson</th>
                   <th className="table-th">Hired</th>
                   <th className="table-th text-right">Basic Salary</th>
                   <th className="table-th">Status</th>
@@ -86,6 +94,13 @@ export default async function EmployeesPage({ searchParams }: { searchParams: { 
                     <td className="table-td font-medium">{e.name}</td>
                     <td className="table-td text-sm">{e.position}</td>
                     <td className="table-td text-sm text-gray-600">{e.department}</td>
+                    <td className="table-td text-sm">
+                      {e.isSalesperson ? (
+                        <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800">Salesperson</span>
+                      ) : (
+                        <span className="text-gray-300">—</span>
+                      )}
+                    </td>
                     <td className="table-td text-sm">{fmtDate(e.hireDate)}</td>
                     <td className="table-td text-right">{peso(e.basicSalary)}</td>
                     <td className="table-td"><StatusBadge status={e.status} /></td>
@@ -105,6 +120,10 @@ export default async function EmployeesPage({ searchParams }: { searchParams: { 
           <div><label className="label">Department</label><input name="department" required className="input" /></div>
           <div><label className="label">Hire Date</label><input name="hireDate" type="date" defaultValue={today} required className="input" /></div>
           <div><label className="label">Basic Salary (₱/month)</label><input name="basicSalary" type="number" step="0.01" required className="input" /></div>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" name="isSalesperson" className="h-4 w-4 accent-emerald-700" />
+            Salesperson &mdash; can be assigned customers
+          </label>
           <p className="text-xs text-gray-500">Set default allowances and deductions after saving, via Edit.</p>
           <button className="btn-primary" type="submit">Add Employee</button>
         </form>

@@ -4,6 +4,8 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requirePermWrite } from "@/lib/auth";
 import { parseUpload } from "@/lib/xlsx-helpers";
+import { logAudit } from "@/lib/salespeople";
+import { revalidatePath } from "next/cache";
 import type { ImportResult } from "../inventory/import/actions";
 
 export async function createCustomer(formData: FormData) {
@@ -20,9 +22,45 @@ export async function createCustomer(formData: FormData) {
       province: String(formData.get("province") || "").trim(),
       creditLimit: Number(formData.get("creditLimit")) || 0,
       allowedTerms: terms.length ? terms.join(",") : "COD",
+      salespersonId: String(formData.get("salespersonId") || "") || null,
     },
   });
   redirect(`/customers/${c.id}`);
+}
+
+/** Assign or change the salesperson who owns this account. Recorded in the audit trail.
+    Existing forecast lines keep the salesperson they were planned under. */
+export async function setCustomerSalesperson(formData: FormData) {
+  const me = await requirePermWrite("customers");
+  const id = String(formData.get("id"));
+  const nextId = String(formData.get("salespersonId") || "") || null;
+
+  const before = await prisma.customer.findUniqueOrThrow({
+    where: { id },
+    select: { businessName: true, salespersonId: true, salesperson: { select: { name: true } } },
+  });
+  if (before.salespersonId === nextId) redirect(`/customers/${id}`);
+
+  const next = nextId
+    ? await prisma.employee.findFirst({ where: { id: nextId, isSalesperson: true }, select: { id: true, name: true } })
+    : null;
+  if (nextId && !next) redirect(`/customers/${id}?error=salesperson`);
+
+  await prisma.customer.update({ where: { id }, data: { salespersonId: next?.id ?? null } });
+
+  const fromName = before.salesperson?.name ?? "(none)";
+  const toName = next?.name ?? "(none)";
+  await logAudit({
+    entity: "Customer",
+    entityId: id,
+    action: !before.salespersonId ? "SALESPERSON_ASSIGNED" : next ? "SALESPERSON_CHANGED" : "SALESPERSON_CLEARED",
+    detail: `Salesperson: ${fromName} → ${toName}`,
+    actorName: me.name,
+    actorEmail: me.email,
+  });
+  revalidatePath(`/customers/${id}`);
+  revalidatePath("/customers");
+  redirect(`/customers/${id}?salesperson=ok`);
 }
 
 export async function updateCustomer(formData: FormData) {

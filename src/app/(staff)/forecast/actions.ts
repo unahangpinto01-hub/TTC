@@ -29,7 +29,10 @@ export async function deleteForecast(formData: FormData) {
 }
 
 export type ForecastRowInput = {
+  customerId: string;
   productId: string;
+  /** the salesperson this row is planned under — stamped once, then left alone */
+  salespersonId: string | null;
   /** planning price for this row; null follows the product's current SRP */
   unitPrice: number | null;
   months: number[];
@@ -54,7 +57,19 @@ export async function saveForecast(input: {
     where: { id: { in: input.rows.map((r) => r.productId).filter(Boolean) } },
     select: { id: true, companyId: true },
   });
-  const allowed = new Set(products.filter((p) => permitted.includes(p.companyId)).map((p) => p.id));
+  const allowedProducts = new Set(
+    products.filter((p) => permitted.includes(p.companyId)).map((p) => p.id)
+  );
+  const customers = await prisma.customer.findMany({
+    where: { id: { in: input.rows.map((r) => r.customerId).filter(Boolean) } },
+    select: { id: true, salespersonId: true },
+  });
+  const customerById = new Map(customers.map((c) => [c.id, c]));
+  const salespeople = await prisma.employee.findMany({
+    where: { isSalesperson: true },
+    select: { id: true },
+  });
+  const validSalesperson = new Set(salespeople.map((s) => s.id));
 
   await prisma.forecast.update({
     where: { id: forecastId },
@@ -66,25 +81,34 @@ export async function saveForecast(input: {
   });
 
   const clean = input.rows
-    .filter((r) => allowed.has(r.productId))
+    .filter((r) => allowedProducts.has(r.productId) && customerById.has(r.customerId))
     .map((r) => {
       // a blank or nonsensical price means "follow the product's SRP"
       const price = Number(r.unitPrice);
+      // stamp the salesperson the row is planned under; fall back to whoever owns the
+      // account right now, but never overwrite a stamp that already exists
+      const stamped =
+        r.salespersonId && validSalesperson.has(r.salespersonId)
+          ? r.salespersonId
+          : customerById.get(r.customerId)!.salespersonId;
       return {
+        customerId: r.customerId,
         productId: r.productId,
+        salespersonId: stamped ?? null,
         unitPrice: r.unitPrice === null || !Number.isFinite(price) || price < 0 ? null : price,
         months: Array.from({ length: 12 }, (_, i) => Math.max(0, Math.floor(Number(r.months[i]) || 0))),
       };
     });
 
   // only prune rows the user could see — another company's lines stay untouched
-  await prisma.forecastLine.deleteMany({
-    where: {
-      forecastId,
-      productId: { notIn: clean.map((r) => r.productId) },
-      product: { companyId: { in: permitted } },
-    },
+  const keep = new Set(clean.map((r) => `${r.customerId}:${r.productId}`));
+  const existing = await prisma.forecastLine.findMany({
+    where: { forecastId, product: { companyId: { in: permitted } } },
+    select: { id: true, customerId: true, productId: true },
   });
+  const stale = existing.filter((l) => !keep.has(`${l.customerId}:${l.productId}`)).map((l) => l.id);
+  if (stale.length) await prisma.forecastLine.deleteMany({ where: { id: { in: stale } } });
+
   for (const r of clean) {
     const months = {
       m1: r.months[0], m2: r.months[1], m3: r.months[2], m4: r.months[3],
@@ -92,9 +116,22 @@ export async function saveForecast(input: {
       m9: r.months[8], m10: r.months[9], m11: r.months[10], m12: r.months[11],
     };
     await prisma.forecastLine.upsert({
-      where: { forecastId_productId: { forecastId, productId: r.productId } },
-      create: { forecastId, productId: r.productId, unitPrice: r.unitPrice, ...months },
-      update: { unitPrice: r.unitPrice, ...months },
+      where: {
+        forecastId_customerId_productId: {
+          forecastId,
+          customerId: r.customerId,
+          productId: r.productId,
+        },
+      },
+      create: {
+        forecastId,
+        customerId: r.customerId,
+        productId: r.productId,
+        salespersonId: r.salespersonId,
+        unitPrice: r.unitPrice,
+        ...months,
+      },
+      update: { salespersonId: r.salespersonId, unitPrice: r.unitPrice, ...months },
     });
   }
   revalidatePath(`/forecast/${forecastId}`);

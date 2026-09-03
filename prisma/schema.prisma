@@ -9,28 +9,28 @@ datasource db {
 
 // Roles: SUPER_ADMIN | ADMIN | CLERK | DEALER
 model User {
-  id           String   @id @default(cuid())
-  name         String
-  email        String   @unique
-  passwordHash String
-  role         String
-  access       String  @default("READ_WRITE") // NONE | READ_WRITE | READ_ONLY (account-level master)
-  permsJson    String? // per-function permissions {fnKey: NONE|READ_WRITE|READ_ONLY}; null = role defaults
-  companyIdsJson String? // JSON array of Company ids this user may access; null = primary company only
-  customerId   String?
-  customer     Customer? @relation(fields: [customerId], references: [id])
-  createdAt    DateTime @default(now())
+  id                   String    @id @default(cuid())
+  name                 String
+  email                String    @unique
+  passwordHash         String
+  role                 String
+  access               String    @default("READ_WRITE") // NONE | READ_WRITE | READ_ONLY (account-level master)
+  permsJson            String? // per-function permissions {fnKey: NONE|READ_WRITE|READ_ONLY}; null = role defaults
+  companyIdsJson       String? // JSON array of Company ids this user may access; null = primary company only
+  customerId           String?
+  customer             Customer? @relation(fields: [customerId], references: [id])
+  createdAt            DateTime  @default(now())
   // Two-factor authentication (TOTP). Secrets are AES-256-GCM encrypted at rest — never exposed after setup.
-  twoFactorEnabled    Boolean   @default(false)
-  twoFactorSecretEnc  String?   // encrypted verified TOTP secret
-  pendingTotpSecretEnc String?  // encrypted secret during enrollment, before first successful code
-  twoFactorEnabledAt  DateTime?
+  twoFactorEnabled     Boolean   @default(false)
+  twoFactorSecretEnc   String? // encrypted verified TOTP secret
+  pendingTotpSecretEnc String? // encrypted secret during enrollment, before first successful code
+  twoFactorEnabledAt   DateTime?
 
-  salesOrders   SalesOrder[]
-  stockMoves    StockMovement[]
-  expenses      Expense[]
-  notifications Notification[]
-  evaluations   Evaluation[]
+  salesOrders    SalesOrder[]
+  stockMoves     StockMovement[]
+  expenses       Expense[]
+  notifications  Notification[]
+  evaluations    Evaluation[]
   sessions       AuthSession[]
   recoveryCodes  RecoveryCode[]
   trustedDevices TrustedDevice[]
@@ -87,8 +87,8 @@ model SecurityEvent {
   id        String   @id @default(cuid())
   userId    String?
   user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
-  email     String?  // identifier attempted (for failed logins with no user match)
-  action    String   // LOGIN_SUCCESS | LOGIN_FAILED | TWO_FACTOR_* | RECOVERY_CODE_USED | PASSWORD_CHANGED | SESSION_REVOKED | ...
+  email     String? // identifier attempted (for failed logins with no user match)
+  action    String // LOGIN_SUCCESS | LOGIN_FAILED | TWO_FACTOR_* | RECOVERY_CODE_USED | PASSWORD_CHANGED | SESSION_REVOKED | ...
   success   Boolean
   ip        String?
   userAgent String?
@@ -100,20 +100,25 @@ model SecurityEvent {
 }
 
 model Customer {
-  id             String  @id @default(cuid())
-  businessName   String
-  contactPerson  String
-  mobile         String
+  id              String   @id @default(cuid())
+  businessName    String
+  contactPerson   String
+  mobile          String
   messengerHandle String?
-  address        String?
-  region         String  // Luzon | Visayas | Mindanao
-  province       String
-  creditLimit    Float   @default(0)
-  allowedTerms   String  // comma list: COD,30,60,90
-  status         String  @default("Active")
-  createdAt      DateTime @default(now())
+  address         String?
+  region          String // Luzon | Visayas | Mindanao
+  province        String
+  creditLimit     Float    @default(0)
+  allowedTerms    String // comma list: COD,30,60,90
+  status          String   @default("Active")
+  createdAt       DateTime @default(now())
+
+  // the employee who owns this account. One salesperson may hold many customers.
+  salespersonId String?
+  salesperson   Employee? @relation(fields: [salespersonId], references: [id])
 
   users          User[]
+  forecastLines  ForecastLine[]
   incomingOrders IncomingOrder[]
   salesOrders    SalesOrder[]
   salesReceipts  SalesReceipt[]
@@ -130,44 +135,44 @@ model ProductCategory {
 }
 
 model Supplier {
-  id      String @id @default(cuid())
+  id      String  @id @default(cuid())
   name    String
   contact String?
   address String?
-  status  String @default("Active") // Active | Inactive
+  status  String  @default("Active") // Active | Inactive
 
   products       Product[]
   purchaseOrders PurchaseOrder[]
 }
 
 model Product {
-  id               String  @id @default(cuid())
-  companyId        String
-  company          Company @relation(fields: [companyId], references: [id])
-  sku              String  // unique per company (see @@unique below) — both companies may use the same code
-  name             String
-  activeIngredient String
-  category         String  // Insecticide | Herbicide | Fungicide | Molluscicide | Foliar Fertilizer | Others
-  itemClass        String  @default("INVENTORY") // INVENTORY (merchandise) | NON_INVENTORY (promo materials — stock + cost tracked, no SRP)
-  cropTags         String  // comma list
-  packSize         String
-  unitCost         Float
-  dealerPrice      Float
-  srp              Float
-  reorderPoint     Int     @default(10)
-  stockQty         Int     @default(0)
-  batchNo          String?
-  mfgDate          DateTime?
-  expDate          DateTime?
-  parentItem       String? // manual grouping label, e.g. "FungiStop 50 SC"; null = standalone row
+  id                String    @id @default(cuid())
+  companyId         String
+  company           Company   @relation(fields: [companyId], references: [id])
+  sku               String // unique per company (see @@unique below) — both companies may use the same code
+  name              String
+  activeIngredient  String
+  category          String // Insecticide | Herbicide | Fungicide | Molluscicide | Foliar Fertilizer | Others
+  itemClass         String    @default("INVENTORY") // INVENTORY (merchandise) | NON_INVENTORY (promo materials — stock + cost tracked, no SRP)
+  cropTags          String // comma list
+  packSize          String
+  unitCost          Float
+  dealerPrice       Float
+  srp               Float
+  reorderPoint      Int       @default(10)
+  stockQty          Int       @default(0)
+  batchNo           String?
+  mfgDate           DateTime?
+  expDate           DateTime?
+  parentItem        String? // manual grouping label, e.g. "FungiStop 50 SC"; null = standalone row
   // Packaging: PCS is always the base inventory unit; CARTON is a selling/purchasing unit only.
-  piecesPerCarton  Int?    // null = product not sold by carton
+  piecesPerCarton   Int? // null = product not sold by carton
   cartonDealerPrice Float? // override; null = dealerPrice × piecesPerCarton
   packGrossWeightKg Float? // gross weight (kg) of one selling pack: the carton when configured, else one piece; null = not maintained
-  supplierId       String?
-  supplier         Supplier? @relation(fields: [supplierId], references: [id])
-  status           String  @default("Active")
-  createdAt        DateTime @default(now())
+  supplierId        String?
+  supplier          Supplier? @relation(fields: [supplierId], references: [id])
+  status            String    @default("Active")
+  createdAt         DateTime  @default(now())
 
   stockMoves         StockMovement[]
   incomingOrderLines IncomingOrderLine[]
@@ -190,32 +195,32 @@ model StockMovement {
   createdAt    DateTime @default(now())
   enteredQty   Int?
   enteredUnit  String?
-  type         String   // IN | OUT | ADJUST
+  type         String // IN | OUT | ADJUST
   qty          Int
   balanceAfter Int
-  refType      String?  // PO | DR | OPENING | ADJUST
+  refType      String? // PO | DR | OPENING | ADJUST
   refNo        String?
-  supplierRef  String?  // supplier document on a receipt, e.g. their DR number
+  supplierRef  String? // supplier document on a receipt, e.g. their DR number
   date         DateTime @default(now())
   userId       String?
   user         User?    @relation(fields: [userId], references: [id])
 }
 
 model IncomingOrder {
-  id         String   @id @default(cuid())
-  companyId  String
-  company    Company @relation(fields: [companyId], references: [id])
-  source     String   // PORTAL | MESSENGER | TEXT
-  customerId String
-  customer   Customer @relation(fields: [customerId], references: [id])
-  term       String   // COD | 30 | 60 | 90
-  status     String   @default("Pending") // Pending | Converted | Cancelled
-  notes      String?
-  orderNo    String?  // order inbox number, unique per company (see @@unique below)
-  orderDate  DateTime @default(now()) // when the transaction actually happened (backdatable); createdAt = when encoded
-  freightPerCarton Float @default(0) // ₱ per carton, charged to the customer
-  freightTotal     Float @default(0) // rate × cartons on CARTON lines, snapshotted at encode time
-  createdAt  DateTime @default(now())
+  id               String   @id @default(cuid())
+  companyId        String
+  company          Company  @relation(fields: [companyId], references: [id])
+  source           String // PORTAL | MESSENGER | TEXT
+  customerId       String
+  customer         Customer @relation(fields: [customerId], references: [id])
+  term             String // COD | 30 | 60 | 90
+  status           String   @default("Pending") // Pending | Converted | Cancelled
+  notes            String?
+  orderNo          String? // order inbox number, unique per company (see @@unique below)
+  orderDate        DateTime @default(now()) // when the transaction actually happened (backdatable); createdAt = when encoded
+  freightPerCarton Float    @default(0) // ₱ per carton, charged to the customer
+  freightTotal     Float    @default(0) // rate × cartons on CARTON lines, snapshotted at encode time
+  createdAt        DateTime @default(now())
 
   lines       IncomingOrderLine[]
   salesOrders SalesOrder[]
@@ -227,29 +232,29 @@ model IncomingOrderLine {
   order     IncomingOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
   productId String
   product   Product       @relation(fields: [productId], references: [id])
-  qty       Int    // in `unit`
-  unit      String @default("PCS") // PCS | CARTON
-  baseQty   Int    @default(0) // qty converted to PCS at entry time
-  unitPrice Float  // price per `unit`
+  qty       Int // in `unit`
+  unit      String        @default("PCS") // PCS | CARTON
+  baseQty   Int           @default(0) // qty converted to PCS at entry time
+  unitPrice Float // price per `unit`
 }
 
 model SalesOrder {
-  id              String    @id @default(cuid())
+  id              String         @id @default(cuid())
   companyId       String
-  company         Company  @relation(fields: [companyId], references: [id])
-  soNumber        String    // unique per company (@@unique below)
+  company         Company        @relation(fields: [companyId], references: [id])
+  soNumber        String // unique per company (@@unique below)
   customerId      String
-  customer        Customer  @relation(fields: [customerId], references: [id])
+  customer        Customer       @relation(fields: [customerId], references: [id])
   incomingOrderId String?
   incomingOrder   IncomingOrder? @relation(fields: [incomingOrderId], references: [id])
   term            String
-  status          String    @default("Draft") // Draft | Confirmed | Scheduled | Delivered | Invoiced | Closed | Cancelled
-  orderDate       DateTime  @default(now())
-  freightCharge   Float     @default(0) // total freight billed to the customer, carried from the incoming order
+  status          String         @default("Draft") // Draft | Confirmed | Scheduled | Delivered | Invoiced | Closed | Cancelled
+  orderDate       DateTime       @default(now())
+  freightCharge   Float          @default(0) // total freight billed to the customer, carried from the incoming order
   preparedById    String?
-  preparedBy      User?     @relation(fields: [preparedById], references: [id])
+  preparedBy      User?          @relation(fields: [preparedById], references: [id])
   voidReason      String?
-  createdAt       DateTime  @default(now())
+  createdAt       DateTime       @default(now())
 
   lines            SalesOrderLine[]
   schedule         DeliverySchedule?
@@ -264,10 +269,10 @@ model SalesOrderLine {
   salesOrder   SalesOrder @relation(fields: [salesOrderId], references: [id], onDelete: Cascade)
   productId    String
   product      Product    @relation(fields: [productId], references: [id])
-  qty          Int    // in `unit`
-  unit         String @default("PCS") // PCS | CARTON
-  baseQty      Int    @default(0) // qty converted to PCS at entry time
-  unitPrice    Float  // price per `unit`
+  qty          Int // in `unit`
+  unit         String     @default("PCS") // PCS | CARTON
+  baseQty      Int        @default(0) // qty converted to PCS at entry time
+  unitPrice    Float // price per `unit`
   discount     Float      @default(0)
   lineTotal    Float
 }
@@ -286,8 +291,8 @@ model DeliverySchedule {
 model DeliveryReceipt {
   id           String     @id @default(cuid())
   companyId    String
-  company      Company   @relation(fields: [companyId], references: [id])
-  drNumber     String     // unique per company (@@unique below)
+  company      Company    @relation(fields: [companyId], references: [id])
+  drNumber     String // unique per company (@@unique below)
   salesOrderId String
   salesOrder   SalesOrder @relation(fields: [salesOrderId], references: [id])
   status       String     @default("Draft") // Draft | Delivered | Invoiced | Void
@@ -310,30 +315,30 @@ model DRLine {
   deliveryReceipt   DeliveryReceipt @relation(fields: [deliveryReceiptId], references: [id], onDelete: Cascade)
   productId         String
   product           Product         @relation(fields: [productId], references: [id])
-  qty               Int    // in `unit`
-  unit              String @default("PCS") // PCS | CARTON
-  baseQty           Int    @default(0) // qty converted to PCS; stock is deducted by this
-  unitPrice         Float  // price per `unit`
-  unitCostAtSale    Float  @default(0) // weighted-average cost per PCS captured when delivered (0 = pre-feature row; COGS falls back to current product cost)
-  grossWeightKg     Float  @default(0) // TOTAL gross weight (kg) of this line captured when delivered — historical, unaffected by later packaging changes
+  qty               Int // in `unit`
+  unit              String          @default("PCS") // PCS | CARTON
+  baseQty           Int             @default(0) // qty converted to PCS; stock is deducted by this
+  unitPrice         Float // price per `unit`
+  unitCostAtSale    Float           @default(0) // weighted-average cost per PCS captured when delivered (0 = pre-feature row; COGS falls back to current product cost)
+  grossWeightKg     Float           @default(0) // TOTAL gross weight (kg) of this line captured when delivered — historical, unaffected by later packaging changes
 }
 
 model SalesReceipt {
   id                String          @id @default(cuid())
   companyId         String
-  company           Company        @relation(fields: [companyId], references: [id])
-  srNumber          String          // unique per company (@@unique below)
+  company           Company         @relation(fields: [companyId], references: [id])
+  srNumber          String // unique per company (@@unique below)
   deliveryReceiptId String          @unique
   deliveryReceipt   DeliveryReceipt @relation(fields: [deliveryReceiptId], references: [id])
   customerId        String
   customer          Customer        @relation(fields: [customerId], references: [id])
   amount            Float
-  freightCharge     Float    @default(0) // freight portion included in amount (shown as its own line on the invoice)
+  freightCharge     Float           @default(0) // freight portion included in amount (shown as its own line on the invoice)
   term              String
-  vatApplied        Boolean  @default(true) // false = VAT-exempt / non-VAT sale
-  invoiceDate       DateTime @default(now())
+  vatApplied        Boolean         @default(true) // false = VAT-exempt / non-VAT sale
+  invoiceDate       DateTime        @default(now())
   dueDate           DateTime
-  status            String   @default("Open") // Open | Partial | Paid | Void
+  status            String          @default("Open") // Open | Partial | Paid | Void
   voidReason        String?
 
   payments Payment[]
@@ -347,15 +352,15 @@ model Payment {
   salesReceipt   SalesReceipt @relation(fields: [salesReceiptId], references: [id])
   amount         Float
   date           DateTime     @default(now())
-  method         String       // Cash | Check | Bank Transfer | GCash
+  method         String // Cash | Check | Bank Transfer | GCash
   refNo          String?
 }
 
 model PurchaseOrder {
   id         String   @id @default(cuid())
   companyId  String
-  company    Company @relation(fields: [companyId], references: [id])
-  poNumber   String   // unique per company (@@unique below)
+  company    Company  @relation(fields: [companyId], references: [id])
+  poNumber   String // unique per company (@@unique below)
   supplierId String
   supplier   Supplier @relation(fields: [supplierId], references: [id])
   status     String   @default("Draft") // Draft | Sent | Partially Received | Received | Cancelled
@@ -373,23 +378,23 @@ model POLine {
   purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
   productId       String
   product         Product       @relation(fields: [productId], references: [id])
-  qty             Int    // in `unit`
-  unit            String @default("PCS") // PCS | CARTON
-  baseQty         Int    @default(0) // ordered qty converted to PCS
-  receivedQty     Int    @default(0) // in `unit`
-  unitCost        Float  // cost per `unit`
+  qty             Int // in `unit`
+  unit            String        @default("PCS") // PCS | CARTON
+  baseQty         Int           @default(0) // ordered qty converted to PCS
+  receivedQty     Int           @default(0) // in `unit`
+  unitCost        Float // cost per `unit`
 }
 
 model Expense {
   id        String   @id @default(cuid())
   companyId String
-  company   Company @relation(fields: [companyId], references: [id])
+  company   Company  @relation(fields: [companyId], references: [id])
   date      DateTime @default(now())
-  category String   // Fuel | Salaries | Utilities | Freight | Rent | Supplies | Others
-  amount   Float
-  notes    String?
-  userId   String?
-  user     User?    @relation(fields: [userId], references: [id])
+  category  String // Fuel | Salaries | Utilities | Freight | Rent | Supplies | Others
+  amount    Float
+  notes     String?
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
 }
 
 model Employee {
@@ -402,11 +407,11 @@ model Employee {
   status      String   @default("Active")
 
   // per-employee default amounts, used only to prefill payroll entry inputs
-  allowLiving Float @default(0)
-  allowGas    Float @default(0)
-  allowMotor  Float @default(0)
-  allowLoad   Float @default(0)
-  allowTravel Float @default(0)
+  allowLiving         Float @default(0)
+  allowGas            Float @default(0)
+  allowMotor          Float @default(0)
+  allowLoad           Float @default(0)
+  allowTravel         Float @default(0)
   dedSss              Float @default(0)
   dedHdmf             Float @default(0)
   dedPhic             Float @default(0)
@@ -418,15 +423,20 @@ model Employee {
   dedWithholdingTax   Float @default(0)
   dedOthers           Float @default(0)
 
+  /// only employees flagged here appear in the Salesperson picker, whatever their department
+  isSalesperson Boolean @default(false)
+
   payrollEntries PayrollEntry[]
   evaluations    Evaluation[]
+  customers      Customer[]
+  forecastLines  ForecastLine[]
 }
 
 model PayrollEntry {
   id         String   @id @default(cuid())
   employeeId String
   employee   Employee @relation(fields: [employeeId], references: [id])
-  cutoff     String   // e.g. "Aug 1-15, 2026"
+  cutoff     String // e.g. "Aug 1-15, 2026"
   basicPay   Float
 
   // itemized allowances
@@ -451,7 +461,7 @@ model PayrollEntry {
   allowances Float    @default(0) // total of all allowances
   grossPay   Float    @default(0) // basicPay + allowances
   deductions Float    @default(0) // total of all deductions
-  netPay     Float                // grossPay - deductions
+  netPay     Float // grossPay - deductions
   createdAt  DateTime @default(now())
 }
 
@@ -460,7 +470,7 @@ model Evaluation {
   employeeId  String
   employee    Employee @relation(fields: [employeeId], references: [id])
   period      String
-  scoresJson  String   // {"criteria": score 1-5}
+  scoresJson  String // {"criteria": score 1-5}
   remarks     String?
   evaluatorId String?
   evaluator   User?    @relation(fields: [evaluatorId], references: [id])
@@ -469,11 +479,11 @@ model Evaluation {
 
 model Notification {
   id        String    @id @default(cuid())
-  companyId String?   // company context; null = global (security alerts, account notices)
+  companyId String? // company context; null = global (security alerts, account notices)
   company   Company?  @relation(fields: [companyId], references: [id])
-  userId    String?   // targeted user, or...
+  userId    String? // targeted user, or...
   user      User?     @relation(fields: [userId], references: [id])
-  role      String?   // ...targeted role (any user with this role sees it)
+  role      String? // ...targeted role (any user with this role sees it)
   type      String
   message   String
   refLink   String?
@@ -489,56 +499,77 @@ model Forecast {
   company   Company? @relation(fields: [companyId], references: [id])
   title     String
   year      Int
-  area      String   // e.g. LUZVIMIN, Luzon, Visayas
+  area      String // e.g. LUZVIMIN, Luzon, Visayas
   createdAt DateTime @default(now())
 
   lines ForecastLine[]
 }
 
 model ForecastLine {
-  id         String   @id @default(cuid())
-  forecastId String
-  forecast   Forecast @relation(fields: [forecastId], references: [id], onDelete: Cascade)
-  productId  String   // forecast is per product, so the SRP and company are unambiguous
-  product    Product  @relation(fields: [productId], references: [id])
+  id            String    @id @default(cuid())
+  forecastId    String
+  forecast      Forecast  @relation(fields: [forecastId], references: [id], onDelete: Cascade)
+  productId     String // forecast is per product, so the SRP and company are unambiguous
+  product       Product   @relation(fields: [productId], references: [id])
+  customerId    String
+  customer      Customer  @relation(fields: [customerId], references: [id])
+  // SNAPSHOT, deliberately not read through the customer: reassigning an account later must
+  // never rewrite the salesperson on forecasts that were already planned.
+  salespersonId String?
+  salesperson   Employee? @relation(fields: [salespersonId], references: [id])
   // planning price for this row only. Null = follow the product's current active SRP;
   // a value here overrides it inside this forecast and never touches the product record.
-  unitPrice  Float?
-  m1  Int @default(0)
-  m2  Int @default(0)
-  m3  Int @default(0)
-  m4  Int @default(0)
-  m5  Int @default(0)
-  m6  Int @default(0)
-  m7  Int @default(0)
-  m8  Int @default(0)
-  m9  Int @default(0)
-  m10 Int @default(0)
-  m11 Int @default(0)
-  m12 Int @default(0)
+  unitPrice     Float?
+  m1            Int       @default(0)
+  m2            Int       @default(0)
+  m3            Int       @default(0)
+  m4            Int       @default(0)
+  m5            Int       @default(0)
+  m6            Int       @default(0)
+  m7            Int       @default(0)
+  m8            Int       @default(0)
+  m9            Int       @default(0)
+  m10           Int       @default(0)
+  m11           Int       @default(0)
+  m12           Int       @default(0)
 
-  @@unique([forecastId, productId])
+  @@unique([forecastId, customerId, productId])
+}
+
+/// Business audit trail for master-data changes (who reassigned an account, and when).
+/// Distinct from SecurityEvent, which is only for authentication and user-account events.
+model AuditLog {
+  id         String   @id @default(cuid())
+  entity     String // "Customer"
+  entityId   String
+  action     String // SALESPERSON_ASSIGNED | SALESPERSON_CHANGED | SALESPERSON_CLEARED
+  detail     String // human sentence, e.g. "Salesperson: (none) → Marites Uy"
+  actorName  String
+  actorEmail String
+  createdAt  DateTime @default(now())
+
+  @@index([entity, entityId, createdAt])
 }
 
 /// Company master (one row per company). Mapped onto the original CompanySetting table so the
 /// existing Teamagro row (details, logo, print matrix) is preserved unchanged. Never hard-code names.
 model Company {
-  id          String   @id @default(cuid())
-  companyName String   @default("")
-  address     String   @default("Philippines")
-  mobileNo    String   @default("")
-  telephoneNo String   @default("")
-  email       String   @default("")
-  tin         String   @default("000-000-000-000")
-  sssNo       String   @default("")
-  phicNo      String   @default("")
-  hdmfNo      String   @default("")
-  logoDataUrl String?  // 160x160 image stored inline (no persistent disk on the host)
+  id                  String   @id @default(cuid())
+  companyName         String   @default("")
+  address             String   @default("Philippines")
+  mobileNo            String   @default("")
+  telephoneNo         String   @default("")
+  email               String   @default("")
+  tin                 String   @default("000-000-000-000")
+  sssNo               String   @default("")
+  phicNo              String   @default("")
+  hdmfNo              String   @default("")
+  logoDataUrl         String? // 160x160 image stored inline (no persistent disk on the host)
   printVisibilityJson String? // {docType: {field: bool}} — which details print on which document
-  status      String   @default("Active") // Active | Inactive
-  isPrimary   Boolean  @default(false) // primary company owns employees/HR/payroll and the dealer portal
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  status              String   @default("Active") // Active | Inactive
+  isPrimary           Boolean  @default(false) // primary company owns employees/HR/payroll and the dealer portal
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 
   products         Product[]
   incomingOrders   IncomingOrder[]

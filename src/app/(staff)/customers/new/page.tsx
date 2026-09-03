@@ -1,9 +1,11 @@
 import { requirePerm } from "@/lib/auth";
 import { PageHeader } from "@/components/ui";
 import { createCustomer } from "../actions";
+import { getSalespeople } from "@/lib/salespeople";
 
 export default async function NewCustomerPage() {
   await requirePerm("customers");
+  const salespeople = await getSalespeople();
   return (
     <div className="max-w-2xl">
       <PageHeader title="New Customer" />
@@ -20,6 +22,18 @@ export default async function NewCustomerPage() {
           </div>
           <div><label className="label">Province</label><input name="province" className="input" /></div>
           <div><label className="label">Credit Limit (₱)</label><input name="creditLimit" type="number" step="0.01" className="input" /></div>
+          <div>
+            <label className="label">Assigned Salesperson</label>
+            <select name="salespersonId" className="input">
+              <option value="">— Unassigned —</option>
+              {salespeople.map((sp) => (
+                <option key={sp.id} value={sp.id}>{sp.name} · {sp.position}</option>
+              ))}
+            </select>
+            {!salespeople.length && (
+              <p className="mt-1 text-xs text-gray-500">No salespeople yet — tick &ldquo;Salesperson&rdquo; on an employee in HR.</p>
+            )}
+          </div>
           <div>
             <label className="label">Allowed Payment Terms</label>
             <div className="flex gap-4 pt-1.5">

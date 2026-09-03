@@ -22,6 +22,7 @@ export default async function ReportsHub() {
     { title: "Merchandise Inventory", desc: "Inventory valuation at cost — stock × unit cost per product", href: "/reports/merchandise-inventory", label: "Open Report" },
     { title: "Inventory Movement", desc: "Stock IN/OUT by date range + stock on hand", href: `/reports/inventory?from=${monthStart}&to=${today}` },
     { title: "Product Price List", desc: "Printable SRP list by category — for customers and sales staff", href: "/reports/price-list", label: "Open Report" },
+    { title: "Sales Forecast", desc: "Forecast value by salesperson, customer and product — with the full Salesperson → Customer → Product breakdown", href: "/reports/forecast", label: "Open Report" },
     { title: "Physical Count Sheet", desc: "Product masterlist with blank count columns for stocktaking", href: "/reports/count-sheet", label: "Open Sheet" },
     { title: "Delivery Performance", desc: "Deliveries per day vs 5/day target", href: `/reports/deliveries?from=${monthStart}&to=${today}` },
   ];

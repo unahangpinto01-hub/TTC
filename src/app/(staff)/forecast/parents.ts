@@ -35,3 +35,26 @@ export async function getForecastProducts(companyIds: string[]): Promise<Forecas
     srp: p.srp,
   }));
 }
+
+export type ForecastCustomer = {
+  id: string;
+  name: string;
+  /** the salesperson who owns the account TODAY — only used to stamp new lines */
+  salespersonId: string | null;
+  salesperson: string | null;
+};
+
+/** Customers a forecast may plan for, each carrying the salesperson who currently owns it. */
+export async function getForecastCustomers(): Promise<ForecastCustomer[]> {
+  const rows = await prisma.customer.findMany({
+    where: { status: "Active" },
+    select: { id: true, businessName: true, salespersonId: true, salesperson: { select: { name: true } } },
+    orderBy: { businessName: "asc" },
+  });
+  return rows.map((c) => ({
+    id: c.id,
+    name: c.businessName,
+    salespersonId: c.salespersonId,
+    salesperson: c.salesperson?.name ?? null,
+  }));
+}

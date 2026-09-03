@@ -4,8 +4,13 @@ import { requirePerm } from "@/lib/auth";
 import { peso, termLabel } from "@/lib/format";
 import { getPage, pageCount } from "@/lib/paginate";
 import { PageHeader, Pagination, StatusBadge } from "@/components/ui";
+import { getSalespeople } from "@/lib/salespeople";
 
-export default async function CustomersPage({ searchParams }: { searchParams: { q?: string; region?: string; page?: string } }) {
+export default async function CustomersPage({
+  searchParams,
+}: {
+  searchParams: { q?: string; region?: string; salesperson?: string; page?: string };
+}) {
   const user = await requirePerm("customers");
   const { page, skip, take } = getPage(searchParams);
   const q = searchParams.q?.trim() || "";
@@ -13,14 +18,25 @@ export default async function CustomersPage({ searchParams }: { searchParams: { 
   const where: any = {};
   if (q) where.OR = [{ businessName: { contains: q } }, { contactPerson: { contains: q } }, { province: { contains: q } }];
   if (region) where.region = region;
+  const salesperson = searchParams.salesperson || "";
+  if (salesperson === "none") where.salespersonId = null;
+  else if (salesperson) where.salespersonId = salesperson;
 
-  const [customers, total] = await Promise.all([
-    prisma.customer.findMany({ where, orderBy: { businessName: "asc" }, skip, take }),
+  const [customers, total, salespeople] = await Promise.all([
+    prisma.customer.findMany({
+      where,
+      orderBy: { businessName: "asc" },
+      skip,
+      take,
+      include: { salesperson: { select: { name: true } } },
+    }),
     prisma.customer.count({ where }),
+    getSalespeople(),
   ]);
   const params: Record<string, string> = {};
   if (q) params.q = q;
   if (region) params.region = region;
+  if (salesperson) params.salesperson = salesperson;
   const canEdit = user.perm === "READ_WRITE";
 
   return (
@@ -37,6 +53,13 @@ export default async function CustomersPage({ searchParams }: { searchParams: { 
           <option>Visayas</option>
           <option>Mindanao</option>
         </select>
+        <select name="salesperson" defaultValue={salesperson} className="input max-w-[200px]">
+          <option value="">All salespeople</option>
+          <option value="none">— Unassigned —</option>
+          {salespeople.map((sp) => (
+            <option key={sp.id} value={sp.id}>{sp.name}</option>
+          ))}
+        </select>
         <button className="btn-secondary" type="submit">Filter</button>
       </form>
       <div className="card overflow-x-auto p-0">
@@ -46,6 +69,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: { 
               <th className="table-th">Business Name</th>
               <th className="table-th">Contact</th>
               <th className="table-th">Region / Province</th>
+              <th className="table-th">Salesperson</th>
               <th className="table-th">Terms</th>
               <th className="table-th text-right">Credit Limit</th>
               <th className="table-th">Status</th>
@@ -60,6 +84,9 @@ export default async function CustomersPage({ searchParams }: { searchParams: { 
                 </td>
                 <td className="table-td text-sm">{c.contactPerson}<p className="text-xs text-gray-500">{c.mobile}</p></td>
                 <td className="table-td text-sm">{c.region} · {c.province}</td>
+                <td className="table-td text-sm">
+                  {c.salesperson ? c.salesperson.name : <span className="text-gray-300">Unassigned</span>}
+                </td>
                 <td className="table-td text-xs">{c.allowedTerms.split(",").map(termLabel).join(", ")}</td>
                 <td className="table-td text-right">{peso(c.creditLimit)}</td>
                 <td className="table-td"><StatusBadge status={c.status} /></td>
