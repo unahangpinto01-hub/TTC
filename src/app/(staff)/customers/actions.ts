@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requirePermWrite } from "@/lib/auth";
 import { parseUpload } from "@/lib/xlsx-helpers";
-import { logAudit } from "@/lib/salespeople";
+import { logAudit, SALESPERSON_WHERE } from "@/lib/salespeople";
 import { revalidatePath } from "next/cache";
 import type { ImportResult } from "../inventory/import/actions";
 
@@ -42,7 +42,7 @@ export async function setCustomerSalesperson(formData: FormData) {
   if (before.salespersonId === nextId) redirect(`/customers/${id}`);
 
   const next = nextId
-    ? await prisma.employee.findFirst({ where: { id: nextId, isSalesperson: true }, select: { id: true, name: true } })
+    ? await prisma.employee.findFirst({ where: { id: nextId, ...SALESPERSON_WHERE }, select: { id: true, name: true } })
     : null;
   if (nextId && !next) redirect(`/customers/${id}?error=salesperson`);
 

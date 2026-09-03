@@ -6,6 +6,7 @@ import { HrPrimaryOnlyNotice } from "@/app/(staff)/hr/primary-only";
 import { peso, fmtDate } from "@/lib/format";
 import { ALLOWANCE_FIELDS, DEDUCTION_FIELDS } from "@/lib/payroll";
 import { PageHeader, StatusBadge } from "@/components/ui";
+import { isSalesperson } from "@/lib/salespeople";
 import { createEmployee, updateEmployee } from "./actions";
 import { HrTabs } from "./hr-tabs";
 
@@ -40,10 +41,16 @@ export default async function EmployeesPage({ searchParams }: { searchParams: { 
             </div>
             <div>
               <label className="label">Salesperson</label>
-              <label className="flex items-center gap-2 pt-1.5 text-sm">
-                <input type="checkbox" name="isSalesperson" defaultChecked={editing.isSalesperson} className="h-4 w-4 accent-emerald-700" />
-                Can be assigned customers
-              </label>
+              {/sales/i.test(editing.department) ? (
+                <p className="pt-1.5 text-sm text-emerald-800">
+                  ✔ In the Sales department — already available for customers and forecasts.
+                </p>
+              ) : (
+                <label className="flex items-center gap-2 pt-1.5 text-sm">
+                  <input type="checkbox" name="isSalesperson" defaultChecked={editing.isSalesperson} className="h-4 w-4 accent-emerald-700" />
+                  Can be assigned customers
+                </label>
+              )}
             </div>
           </div>
           <div>
@@ -95,8 +102,10 @@ export default async function EmployeesPage({ searchParams }: { searchParams: { 
                     <td className="table-td text-sm">{e.position}</td>
                     <td className="table-td text-sm text-gray-600">{e.department}</td>
                     <td className="table-td text-sm">
-                      {e.isSalesperson ? (
-                        <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800">Salesperson</span>
+                      {isSalesperson(e) ? (
+                        <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800">
+                          Salesperson{!e.isSalesperson && <span className="font-normal opacity-70"> · via Sales</span>}
+                        </span>
                       ) : (
                         <span className="text-gray-300">—</span>
                       )}
@@ -124,6 +133,10 @@ export default async function EmployeesPage({ searchParams }: { searchParams: { 
             <input type="checkbox" name="isSalesperson" className="h-4 w-4 accent-emerald-700" />
             Salesperson &mdash; can be assigned customers
           </label>
+          <p className="text-xs text-gray-500">
+            Anyone in the <strong>Sales</strong> department is a salesperson automatically &mdash; only tick this for
+            someone outside Sales who still carries accounts.
+          </p>
           <p className="text-xs text-gray-500">Set default allowances and deductions after saving, via Edit.</p>
           <button className="btn-primary" type="submit">Add Employee</button>
         </form>

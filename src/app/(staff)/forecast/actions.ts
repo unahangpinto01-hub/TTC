@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requirePermWrite } from "@/lib/auth";
 import { allowedCompanyIds } from "@/lib/company";
+import { SALESPERSON_WHERE } from "@/lib/salespeople";
 
 export async function createForecast(formData: FormData) {
   await requirePermWrite("forecast");
@@ -67,7 +68,7 @@ export async function saveForecast(input: {
   });
   const customerById = new Map(customers.map((c) => [c.id, c]));
   const salespeople = await prisma.employee.findMany({
-    where: { isSalesperson: true },
+    where: SALESPERSON_WHERE,
     select: { id: true },
   });
   const validSalesperson = new Set(salespeople.map((s) => s.id));
