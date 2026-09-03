@@ -29,7 +29,8 @@ export async function deleteForecast(formData: FormData) {
 }
 
 export type ForecastRowInput = {
-  customerId: string;
+  /** null while the area forecast has not been split between customers */
+  customerId: string | null;
   productId: string;
   /** the salesperson this row is planned under — stamped once, then left alone */
   salespersonId: string | null;
@@ -61,7 +62,7 @@ export async function saveForecast(input: {
     products.filter((p) => permitted.includes(p.companyId)).map((p) => p.id)
   );
   const customers = await prisma.customer.findMany({
-    where: { id: { in: input.rows.map((r) => r.customerId).filter(Boolean) } },
+    where: { id: { in: input.rows.map((r) => r.customerId).filter((x): x is string => !!x) } },
     select: { id: true, salespersonId: true },
   });
   const customerById = new Map(customers.map((c) => [c.id, c]));
@@ -81,7 +82,7 @@ export async function saveForecast(input: {
   });
 
   const clean = input.rows
-    .filter((r) => allowedProducts.has(r.productId) && customerById.has(r.customerId))
+    .filter((r) => allowedProducts.has(r.productId) && (!r.customerId || customerById.has(r.customerId)))
     .map((r) => {
       // a blank or nonsensical price means "follow the product's SRP"
       const price = Number(r.unitPrice);
@@ -90,7 +91,9 @@ export async function saveForecast(input: {
       const stamped =
         r.salespersonId && validSalesperson.has(r.salespersonId)
           ? r.salespersonId
-          : customerById.get(r.customerId)!.salespersonId;
+          : r.customerId
+            ? customerById.get(r.customerId)!.salespersonId
+            : null;
       return {
         customerId: r.customerId,
         productId: r.productId,
@@ -101,12 +104,14 @@ export async function saveForecast(input: {
     });
 
   // only prune rows the user could see — another company's lines stay untouched
-  const keep = new Set(clean.map((r) => `${r.customerId}:${r.productId}`));
+  const keep = new Set(clean.map((r) => `${r.customerId ?? ""}:${r.productId}`));
   const existing = await prisma.forecastLine.findMany({
     where: { forecastId, product: { companyId: { in: permitted } } },
     select: { id: true, customerId: true, productId: true },
   });
-  const stale = existing.filter((l) => !keep.has(`${l.customerId}:${l.productId}`)).map((l) => l.id);
+  const stale = existing
+    .filter((l) => !keep.has(`${l.customerId ?? ""}:${l.productId}`))
+    .map((l) => l.id);
   if (stale.length) await prisma.forecastLine.deleteMany({ where: { id: { in: stale } } });
 
   for (const r of clean) {
@@ -115,24 +120,25 @@ export async function saveForecast(input: {
       m5: r.months[4], m6: r.months[5], m7: r.months[6], m8: r.months[7],
       m9: r.months[8], m10: r.months[9], m11: r.months[10], m12: r.months[11],
     };
-    await prisma.forecastLine.upsert({
-      where: {
-        forecastId_customerId_productId: {
-          forecastId,
-          customerId: r.customerId,
-          productId: r.productId,
+    const data = { salespersonId: r.salespersonId, unitPrice: r.unitPrice, ...months };
+    if (r.customerId) {
+      await prisma.forecastLine.upsert({
+        where: {
+          forecastId_customerId_productId: { forecastId, customerId: r.customerId, productId: r.productId },
         },
-      },
-      create: {
-        forecastId,
-        customerId: r.customerId,
-        productId: r.productId,
-        salespersonId: r.salespersonId,
-        unitPrice: r.unitPrice,
-        ...months,
-      },
-      update: { salespersonId: r.salespersonId, unitPrice: r.unitPrice, ...months },
-    });
+        create: { forecastId, customerId: r.customerId, productId: r.productId, ...data },
+        update: data,
+      });
+    } else {
+      // Postgres treats NULLs as distinct in a unique index, so the compound key cannot
+      // match a customer-less row — upsert here would insert a duplicate on every save.
+      const row = await prisma.forecastLine.findFirst({
+        where: { forecastId, customerId: null, productId: r.productId },
+        select: { id: true },
+      });
+      if (row) await prisma.forecastLine.update({ where: { id: row.id }, data });
+      else await prisma.forecastLine.create({ data: { forecastId, customerId: null, productId: r.productId, ...data } });
+    }
   }
   revalidatePath(`/forecast/${forecastId}`);
   return { ok: true };

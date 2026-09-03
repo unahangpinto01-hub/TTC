@@ -6,7 +6,7 @@ import { resolveReportScope } from "@/lib/report-scope";
 import { CompanyFilter, CompanyTag } from "@/components/company-filter";
 import { peso, fmtDateTime } from "@/lib/format";
 import { PrintButton, BackButton } from "@/components/print-button";
-import { getSalespeople, NO_SALESPERSON } from "@/lib/salespeople";
+import { getSalespeople, NO_SALESPERSON, NO_CUSTOMER } from "@/lib/salespeople";
 
 type SP = {
   company?: string;
@@ -53,7 +53,8 @@ export default async function ForecastReportPage({ searchParams }: { searchParam
   if (forecastId) where.forecastId = forecastId;
   if (searchParams.salesperson === "none") where.salespersonId = null;
   else if (searchParams.salesperson) where.salespersonId = searchParams.salesperson;
-  if (searchParams.customer) where.customerId = searchParams.customer;
+  if (searchParams.customer === "none") where.customerId = null;
+  else if (searchParams.customer) where.customerId = searchParams.customer;
 
   const lines = await prisma.forecastLine.findMany({
     where,
@@ -74,8 +75,8 @@ export default async function ForecastReportPage({ searchParams }: { searchParam
       return {
         spId: l.salespersonId ?? "none",
         spName: l.salesperson?.name ?? NO_SALESPERSON,
-        customerId: l.customerId,
-        customerName: l.customer.businessName,
+        customerId: l.customerId ?? "none",
+        customerName: l.customer?.businessName ?? NO_CUSTOMER,
         productId: l.productId,
         productName: l.product.name,
         sku: l.product.sku,
@@ -89,6 +90,7 @@ export default async function ForecastReportPage({ searchParams }: { searchParam
       (a, b) =>
         (a.spName === NO_SALESPERSON ? 1 : 0) - (b.spName === NO_SALESPERSON ? 1 : 0) ||
         a.spName.localeCompare(b.spName) ||
+        (a.customerName === NO_CUSTOMER ? 1 : 0) - (b.customerName === NO_CUSTOMER ? 1 : 0) ||
         a.customerName.localeCompare(b.customerName) ||
         a.productName.localeCompare(b.productName)
     );
@@ -182,6 +184,7 @@ export default async function ForecastReportPage({ searchParams }: { searchParam
           <label className="label">Customer</label>
           <select name="customer" defaultValue={searchParams.customer ?? ""} className="input">
             <option value="">All customers</option>
+            <option value="none">{NO_CUSTOMER}</option>
             {customers.map((c) => (
               <option key={c.id} value={c.id}>{c.businessName}</option>
             ))}

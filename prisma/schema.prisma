@@ -511,8 +511,9 @@ model ForecastLine {
   forecast      Forecast  @relation(fields: [forecastId], references: [id], onDelete: Cascade)
   productId     String // forecast is per product, so the SRP and company are unambiguous
   product       Product   @relation(fields: [productId], references: [id])
-  customerId    String
-  customer      Customer  @relation(fields: [customerId], references: [id])
+  // optional: an area forecast may be planned before it is split between customers
+  customerId    String?
+  customer      Customer? @relation(fields: [customerId], references: [id])
   // SNAPSHOT, deliberately not read through the customer: reassigning an account later must
   // never rewrite the salesperson on forecasts that were already planned.
   salespersonId String?

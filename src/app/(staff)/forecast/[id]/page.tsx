@@ -47,10 +47,10 @@ export default async function ForecastDetailPage({ params }: { params: { id: str
   const rows: GridRow[] = forecast.lines
     .filter((l) => companyIds.includes(l.product.companyId))
     .map((l) => {
-      const fallback = l.salesperson ? null : currentOwner.get(l.customerId) ?? null;
+      const fallback = l.salesperson || !l.customerId ? null : currentOwner.get(l.customerId) ?? null;
       return {
         customerId: l.customerId,
-        customer: l.customer.businessName,
+        customer: l.customer?.businessName ?? null,
         salespersonId: l.salespersonId ?? fallback?.salespersonId ?? null,
         salesperson: l.salesperson?.name ?? fallback?.salesperson ?? null,
         productId: l.productId,

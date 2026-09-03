@@ -8,8 +8,9 @@ import type { ForecastProduct, ForecastCustomer } from "../parents";
 const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
 
 export type GridRow = {
-  customerId: string;
-  customer: string;
+  /** null while an area forecast has not been split between customers yet */
+  customerId: string | null;
+  customer: string | null;
   /** the salesperson this row is planned under — a snapshot, not a live lookup */
   salespersonId: string | null;
   salesperson: string | null;
@@ -28,12 +29,13 @@ export type GridRow = {
 
 const ALL = "__all__";
 export const NO_SALESPERSON = "— Unassigned —";
+export const NO_CUSTOMER = "— No customer yet —";
 
 function fmtPeso(n: number) {
   return "₱" + n.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-const keyOf = (r: { customerId: string; productId: string }) => `${r.customerId}:${r.productId}`;
+const keyOf = (r: { customerId: string | null; productId: string }) => `${r.customerId ?? ""}:${r.productId}`;
 
 type CustomerGroup = { id: string; name: string; rows: GridRow[] };
 type SpGroup = { key: string; name: string; rows: GridRow[]; customers: CustomerGroup[] };
@@ -92,7 +94,9 @@ export function ForecastGrid({
       const sa = a.salesperson ?? "￿";
       const sb = b.salesperson ?? "￿";
       if (sa !== sb) return sa.localeCompare(sb);
-      if (a.customer !== b.customer) return a.customer.localeCompare(b.customer);
+      const ca2 = a.customer ?? "￿";
+      const cb2 = b.customer ?? "￿";
+      if (ca2 !== cb2) return ca2.localeCompare(cb2);
       const ra = companyRank[a.companyId] ?? 99;
       const rb = companyRank[b.companyId] ?? 99;
       if (ra !== rb) return ra - rb;
@@ -177,9 +181,10 @@ export function ForecastGrid({
         groups.push(g);
       }
       g.rows.push(r);
-      let c = g.customers.find((x) => x.id === r.customerId);
+      const cid = r.customerId ?? "none";
+      let c = g.customers.find((x) => x.id === cid);
       if (!c) {
-        c = { id: r.customerId, name: r.customer, rows: [] };
+        c = { id: cid, name: r.customer ?? NO_CUSTOMER, rows: [] };
         g.customers.push(c);
       }
       c.rows.push(r);

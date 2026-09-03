@@ -38,3 +38,6 @@ export async function getAuditTrail(entity: string, entityId: string, take = 20)
     take,
   });
 }
+
+/** Label for a forecast line planned before its area was split between customers. */
+export const NO_CUSTOMER = "— No customer yet —";
