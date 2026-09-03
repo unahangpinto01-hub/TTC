@@ -334,8 +334,9 @@ export default async function ForecastReportPage({ searchParams }: { searchParam
 
       <p className="mt-3 text-xs text-gray-500">
         The salesperson on each line is the one it was planned under, stored on the forecast itself — reassigning an account
-        later does not rewrite past forecasts. Forecast Value = quantity × unit price (the product&rsquo;s current SRP unless a
-        planning price was set on that line).
+        later does not rewrite past forecasts. A line shown as an <strong>area total</strong> is one combined figure covering
+        several accounts in that area, so it counts towards its salesperson but cannot be attributed to a single customer.
+        Forecast Value = quantity × unit price (the product&rsquo;s current SRP unless a planning price was set on that line).
       </p>
       <div className="no-print mt-4 flex gap-2">
         {VIEWS.map(([v, label]) => (

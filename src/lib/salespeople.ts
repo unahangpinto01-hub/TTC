@@ -51,5 +51,5 @@ export async function getAuditTrail(entity: string, entityId: string, take = 20)
   });
 }
 
-/** Label for a forecast line planned before its area was split between customers. */
-export const NO_CUSTOMER = "— No customer yet —";
+/** Label for a line with no single customer — an area total covering several accounts. */
+export const NO_CUSTOMER = "— Area total (all customers) —";

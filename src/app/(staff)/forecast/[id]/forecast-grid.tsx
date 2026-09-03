@@ -29,7 +29,7 @@ export type GridRow = {
 
 const ALL = "__all__";
 export const NO_SALESPERSON = "— Unassigned —";
-export const NO_CUSTOMER = "— No customer yet —";
+export const NO_CUSTOMER = "— Area total (all customers) —";
 
 function fmtPeso(n: number) {
   return "₱" + n.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -414,8 +414,10 @@ export function ForecastGrid({
         </table>
       </div>
       <p className="no-print mt-2 text-xs text-gray-500">
-        Rows are grouped Salesperson &rarr; Customer &rarr; Product. The salesperson on a line is stamped when the line is
-        created and never changes afterwards, so reassigning an account leaves past forecasts exactly as they were.
+        Rows are grouped Salesperson &rarr; Customer &rarr; Product. A line may instead be an <strong>area total</strong>
+        &mdash; one combined figure covering several accounts in that area &mdash; in which case it carries the salesperson
+        but no single customer. The salesperson on a line is stamped when the line is created and never changes afterwards,
+        so reassigning an account leaves past forecasts exactly as they were.
         Forecast Value = Forecast Quantity &times; Unit Price, which starts at the product&rsquo;s current active SRP; type a
         different figure to plan at that price without touching the product, the price list or the dealer catalog.
       </p>
