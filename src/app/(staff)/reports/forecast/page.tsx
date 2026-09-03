@@ -17,6 +17,8 @@ type SP = {
   view?: string;
   year?: string;
   period?: string;
+  from?: string;
+  to?: string;
 };
 
 const VIEWS = [
@@ -30,7 +32,9 @@ const MONTH_NAMES = [
   "July", "August", "September", "October", "November", "December",
 ];
 
-/** Every period the report can be cut by, as the 1-based months it covers. */
+const CUSTOM = "custom";
+
+/** Every preset period, as the 1-based months it covers. */
 const PERIODS: { value: string; label: string; group: string; months: number[] }[] = [
   { value: "annual", label: "Annual (Jan–Dec)", group: "Annual", months: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] },
   { value: "h1", label: "1st Semester (Jan–Jun)", group: "Semi-annual", months: [1, 2, 3, 4, 5, 6] },
@@ -67,15 +71,17 @@ const add = (t: Totals, r: Totals) => {
 /** Pieces shown the way the warehouse counts them: cartons, with the piece count beneath. */
 function Qty({ pcs, ppc }: { pcs: number; ppc: number | null }) {
   if (!pcs) return <span className="text-gray-300">—</span>;
+  // a pro-rated part-month yields a fraction of a piece; round it away for display only
+  const whole = Math.round(pcs);
   if (!ppc || ppc < 2) {
-    return <span>{pcs.toLocaleString()} <span className="text-[10px] text-gray-400">PCS</span></span>;
+    return <span>{whole.toLocaleString()} <span className="text-[10px] text-gray-400">PCS</span></span>;
   }
   const ctn = pcs / ppc;
   const shown = Number.isInteger(ctn) ? ctn.toLocaleString() : ctn.toFixed(1);
   return (
     <span>
       {shown} <span className="text-[10px] text-gray-400">CTN</span>
-      <span className="block text-[10px] text-gray-400">({pcs.toLocaleString()} pcs)</span>
+      <span className="block text-[10px] text-gray-400">({whole.toLocaleString()} pcs)</span>
     </span>
   );
 }
@@ -83,7 +89,7 @@ function Qty({ pcs, ppc }: { pcs: number; ppc: number | null }) {
 /** A group mixes pack sizes, so its quantity only makes sense in pieces. */
 function GroupQty({ pcs }: { pcs: number }) {
   return pcs ? (
-    <span>{pcs.toLocaleString()} <span className="text-[10px] opacity-60">pcs</span></span>
+    <span>{Math.round(pcs).toLocaleString()} <span className="text-[10px] opacity-60">pcs</span></span>
   ) : (
     <span className="opacity-40">—</span>
   );
@@ -106,10 +112,14 @@ function Variance({ t }: { t: Totals }) {
   );
 }
 
+const iso = (d: Date) => d.toISOString().slice(0, 10);
+const daysInMonth = (y: number, m: number) => new Date(Date.UTC(y, m, 0)).getUTCDate();
+
 export default async function ForecastReportPage({ searchParams }: { searchParams: SP }) {
   const user = await requirePerm("reports");
   const scope = await resolveReportScope(user, searchParams.company);
   const view = VIEWS.some(([v]) => v === searchParams.view) ? searchParams.view! : "breakdown";
+  const isCustom = searchParams.period === CUSTOM;
   const period = PERIODS.find((p) => p.value === searchParams.period) ?? PERIODS[0];
 
   const [forecasts, salespeople, customers] = await Promise.all([
@@ -131,8 +141,47 @@ export default async function ForecastReportPage({ searchParams }: { searchParam
   const wanted = forecastId ? forecasts.find((f) => f.id === forecastId)!.year : Number(searchParams.year);
   const year = years.includes(wanted) ? wanted : years[0] ?? new Date().getFullYear();
 
-  const from = new Date(Date.UTC(year, period.months[0] - 1, 1));
-  const to = new Date(Date.UTC(year, period.months[period.months.length - 1], 0, 23, 59, 59, 999));
+  const yearStart = new Date(Date.UTC(year, 0, 1));
+  const yearEnd = new Date(Date.UTC(year, 11, 31, 23, 59, 59, 999));
+
+  /** Parse a yyyy-mm-dd box; invalid or empty falls back to the year's edge. */
+  const parseDay = (raw: string | undefined, fallback: Date, endOfDay: boolean) => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec((raw ?? "").trim());
+    if (!m) return fallback;
+    const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], endOfDay ? 23 : 0, endOfDay ? 59 : 0, endOfDay ? 59 : 0, endOfDay ? 999 : 0));
+    return Number.isNaN(d.getTime()) ? fallback : d;
+  };
+
+  let from: Date;
+  let to: Date;
+  let monthWeight: Record<number, number> = {};
+
+  if (isCustom) {
+    // the report works one forecast year at a time, so the window is clamped to that year
+    let a = parseDay(searchParams.from, yearStart, false);
+    let b = parseDay(searchParams.to, yearEnd, true);
+    if (a > b) [a, b] = [b, a];
+    from = a < yearStart ? yearStart : a > yearEnd ? yearEnd : a;
+    to = b > yearEnd ? yearEnd : b < yearStart ? yearStart : b;
+    // pro-rate: a month counts by the share of its days that the window covers
+    for (let m = 1; m <= 12; m++) {
+      const mStart = new Date(Date.UTC(year, m - 1, 1));
+      const mEnd = new Date(Date.UTC(year, m, 0, 23, 59, 59, 999));
+      if (mEnd < from || mStart > to) continue;
+      // count whole calendar days inclusively; `to` is an end-of-day stamp, so compare
+      // day indices rather than raw milliseconds or the last day counts twice
+      const first = Math.max(from.getTime(), mStart.getTime());
+      const last = Math.min(to.getTime(), mEnd.getTime());
+      const dayIndex = (t: number) => Math.floor(t / 86400000);
+      const covered = dayIndex(last) - dayIndex(first) + 1;
+      monthWeight[m] = Math.min(1, Math.max(0, covered) / daysInMonth(year, m));
+    }
+  } else {
+    from = new Date(Date.UTC(year, period.months[0] - 1, 1));
+    to = new Date(Date.UTC(year, period.months[period.months.length - 1], 0, 23, 59, 59, 999));
+    for (const m of period.months) monthWeight[m] = 1;
+  }
+  const periodLabel = isCustom ? `${iso(from)} to ${iso(to)}` : `${period.label} ${year}`;
 
   const where: any = { product: { companyId: { in: scope.ids } }, forecast: { year } };
   if (forecastId) where.forecastId = forecastId;
@@ -185,7 +234,8 @@ export default async function ForecastReportPage({ searchParams }: { searchParam
   const all: Row[] = lines
     .filter((l) => !q || l.product.name.toLowerCase().includes(q) || l.product.sku.toLowerCase().includes(q))
     .map((l) => {
-      const fcPcs = period.months.reduce((s, m) => s + ((l as unknown as Record<string, number>)["m" + m] ?? 0), 0);
+      const line = l as unknown as Record<string, number>;
+      const fcPcs = Object.entries(monthWeight).reduce((s, [m, w]) => s + (line["m" + m] ?? 0) * w, 0);
       const price = l.unitPrice ?? l.product.srp;
       // a stamped line keeps its salesperson; one never stamped follows the account's owner
       const spId = l.salespersonId ?? l.customer?.salespersonId ?? "none";
@@ -285,7 +335,7 @@ export default async function ForecastReportPage({ searchParams }: { searchParam
           {scope.combined && " · Combined (All Companies)"}
         </p>
         <p className="text-xs text-gray-500">
-          {forecastId ? forecasts.find((f) => f.id === forecastId)!.title : "All forecasts"} · {period.label} {year} ·
+          {forecastId ? forecasts.find((f) => f.id === forecastId)!.title : "All forecasts"} · {periodLabel} ·
           generated {fmtDateTime(new Date())}
         </p>
       </div>
@@ -300,7 +350,7 @@ export default async function ForecastReportPage({ searchParams }: { searchParam
         </div>
         <div className="w-48">
           <label className="label">Period</label>
-          <select name="period" defaultValue={period.value} className="input">
+          <select name="period" defaultValue={isCustom ? CUSTOM : period.value} className="input">
             {["Annual", "Semi-annual", "Quarterly", "Monthly"].map((g) => (
               <optgroup key={g} label={g}>
                 {PERIODS.filter((p) => p.group === g).map((p) => (
@@ -308,7 +358,18 @@ export default async function ForecastReportPage({ searchParams }: { searchParam
                 ))}
               </optgroup>
             ))}
+            <optgroup label="Custom">
+              <option value={CUSTOM}>Custom date range…</option>
+            </optgroup>
           </select>
+        </div>
+        <div className="w-40">
+          <label className="label">From</label>
+          <input type="date" name="from" defaultValue={isCustom ? iso(from) : ""} min={iso(yearStart)} max={iso(yearEnd)} className="input" />
+        </div>
+        <div className="w-40">
+          <label className="label">To</label>
+          <input type="date" name="to" defaultValue={isCustom ? iso(to) : ""} min={iso(yearStart)} max={iso(yearEnd)} className="input" />
         </div>
         <div className="w-52">
           <label className="label">Forecast</label>
@@ -482,9 +543,16 @@ export default async function ForecastReportPage({ searchParams }: { searchParam
       )}
 
       <p className="mt-3 text-xs text-gray-500">
-        <strong>Sales</strong> are invoiced sales receipts dated inside {period.label} {year}, voided invoices excluded and
+        <strong>Sales</strong> are invoiced sales receipts dated inside {periodLabel}, voided invoices excluded and
         goods only — freight is left out because the forecast carries none. <strong>% Achieved</strong> = Sales Value ÷
         Forecast Value; <strong>Variance</strong> = Sales Value − Forecast Value, so a negative figure is a shortfall.
+        {isCustom && (
+          <>
+            {" "}A custom range is <strong>pro-rated</strong>: a month the range only partly covers contributes that share of
+            its forecast, so the forecast spans the same days as the sales. The range is held inside {year}, the forecast
+            year being reported.
+          </>
+        )}{" "}
         Quantities are cartons with the piece count beneath; group rows total in pieces because a group mixes pack sizes.
         A line shown as an <strong>area total</strong> is one combined figure covering several accounts, and is measured
         against the sales of every customer its salesperson owns, excluding any customer that forecasts that product
