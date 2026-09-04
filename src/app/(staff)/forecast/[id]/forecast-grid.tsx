@@ -136,6 +136,9 @@ export function ForecastGrid({
     // an area row is stamped with the salesperson picked above (if any); a customer row
     // is stamped from the account's current owner, then fixed for this forecast
     const areaSp = pickSp && pickSp !== "none" ? salespeople.find((s) => s.id === pickSp) ?? null : null;
+    const newSpId = isArea ? areaSp?.id ?? null : ((cd.salespersonId as string | null) ?? null);
+    // never let the display filter hide the row that was just added
+    if (spFilter !== ALL && spFilter !== (newSpId ?? "none")) setSpFilter(ALL);
     setRows((prev) => [
       ...prev,
       {
@@ -298,8 +301,10 @@ export function ForecastGrid({
             </div>
             <div className="min-w-[260px] flex-1">
               <label className="label">Product</label>
+              {/* keyed on the customer too: changing the customer clears the product box
+                  visibly, never leaving a product name showing while none is selected */}
               <SearchSelect
-                key={`prod-${pickKey}`}
+                key={`prod-${pickKey}-${pickCustomer?.id ?? ""}`}
                 entity="products"
                 params={view !== ALL ? { company: view } : undefined}
                 placeholder={pickCustomer ? "Type product name or SKU…" : "Pick a customer first"}
