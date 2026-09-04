@@ -198,33 +198,35 @@ export async function PrintDoc({
         // the ruled footer block: signatories boxed on the left, the customer's
         // acknowledgement in its own cell on the right, all kept on one sheet
         <div
-          className="mt-4 flex border-2 border-gray-800"
-          // fixed 1.75cm block: the type and spacing below are sized to fit it exactly,
-          // so each signatory row gets roughly 0.8cm
-          style={{ breakInside: "avoid", height: "1.75cm" }}
+          className="mt-5 flex border-2 border-gray-800 text-sm"
+          // fixed 1.75in block: two signatory rows of roughly 0.85in each, so there is
+          // real room to sign above every rule
+          style={{ breakInside: "avoid", height: "1.75in" }}
         >
           <div className="grid flex-1 grid-cols-2">
             {signatures.map((s) => (
-              <div key={s.label} className="flex flex-col justify-between px-2 py-[2px]">
-                <p className="text-[7px] font-bold uppercase leading-none tracking-wide text-gray-800">{s.label}:</p>
+              <div key={s.label} className="flex flex-col justify-between px-4 py-2">
+                <p className="text-xs font-bold uppercase tracking-wide text-gray-800">{s.label}:</p>
                 {/* the rule belongs to the name line itself, so the name prints on it and
-                    the gap above is what is left to sign in */}
-                <p className="border-b border-gray-800 text-center text-[7px] font-semibold leading-none text-gray-800">
+                    the whole gap above is signing room */}
+                <p className="border-b border-gray-800 text-center text-[11px] font-semibold text-gray-800">
                   {s.name || "\u00a0"}
                 </p>
               </div>
             ))}
           </div>
-          <div className="flex w-[38%] flex-col justify-between border-l-2 border-gray-800 px-2 py-[2px]">
-            <p className="text-[7px] font-bold leading-tight text-gray-800">{receivingBox.text}</p>
-            <div className="flex items-end gap-1">
-              <span className="text-[7px] font-bold leading-none text-gray-800">By:</span>
-              <span className="flex-1 border-b border-gray-800 leading-none">&nbsp;</span>
+          <div className="flex w-[38%] flex-col justify-between border-l-2 border-gray-800 px-4 py-2">
+            <p className="text-xs font-bold leading-snug text-gray-800">{receivingBox.text}</p>
+            <div>
+              <div className="flex items-end gap-1">
+                <span className="text-xs font-bold text-gray-800">By:</span>
+                <span className="flex-1 border-b border-gray-800">&nbsp;</span>
+              </div>
+              <p className="pl-6 text-center text-[10px] font-bold text-gray-800">{receivingBox.caption}</p>
             </div>
-            <p className="pl-4 text-center text-[6px] font-bold leading-none text-gray-800">{receivingBox.caption}</p>
             <div className="flex items-end gap-1">
-              <span className="text-[7px] font-bold leading-none text-gray-800">Date:</span>
-              <span className="flex-1 border-b border-gray-800 leading-none">&nbsp;</span>
+              <span className="text-xs font-bold text-gray-800">Date:</span>
+              <span className="flex-1 border-b border-gray-800">&nbsp;</span>
             </div>
           </div>
         </div>
