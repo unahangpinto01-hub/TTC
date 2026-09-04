@@ -289,19 +289,28 @@ model DeliverySchedule {
 }
 
 model DeliveryReceipt {
-  id           String     @id @default(cuid())
-  companyId    String
-  company      Company    @relation(fields: [companyId], references: [id])
-  drNumber     String // unique per company (@@unique below)
-  salesOrderId String
-  salesOrder   SalesOrder @relation(fields: [salesOrderId], references: [id])
-  status       String     @default("Draft") // Draft | Delivered | Invoiced | Void
-  date         DateTime   @default(now())
-  deliveredAt  DateTime?
-  preparedBy   String?
-  checkedBy    String?
-  approvedBy   String?
-  voidReason   String?
+  id            String     @id @default(cuid())
+  companyId     String
+  company       Company    @relation(fields: [companyId], references: [id])
+  drNumber      String // unique per company (@@unique below)
+  salesOrderId  String
+  salesOrder    SalesOrder @relation(fields: [salesOrderId], references: [id])
+  status        String     @default("Draft") // Draft | Delivered | Invoiced | Void
+  date          DateTime   @default(now())
+  deliveredAt   DateTime?
+  // legacy free text, kept so old receipts are not rewritten; the links below win when set
+  preparedBy    String?
+  checkedBy     String?
+  approvedBy    String?
+  // the signatories this receipt was raised under, copied from the company defaults and
+  // changeable by an authorised user (recorded in the audit trail)
+  preparedById  String?
+  preparedByEmp Employee?  @relation("DRPrepared", fields: [preparedById], references: [id])
+  checkedById   String?
+  checkedByEmp  Employee?  @relation("DRChecked", fields: [checkedById], references: [id])
+  approvedById  String?
+  approvedByEmp Employee?  @relation("DRApproved", fields: [approvedById], references: [id])
+  voidReason    String?
 
   lines        DRLine[]
   salesReceipt SalesReceipt?
@@ -434,6 +443,13 @@ model Employee {
   evaluations    Evaluation[]
   customers      Customer[]
   forecastLines  ForecastLine[]
+
+  drPrepared        DeliveryReceipt[] @relation("DRPrepared")
+  drChecked         DeliveryReceipt[] @relation("DRChecked")
+  drApproved        DeliveryReceipt[] @relation("DRApproved")
+  drDefaultPrepared Company[]         @relation("DRDefaultPrepared")
+  drDefaultChecked  Company[]         @relation("DRDefaultChecked")
+  drDefaultApproved Company[]         @relation("DRDefaultApproved")
 }
 
 model PayrollEntry {
@@ -559,22 +575,30 @@ model AuditLog {
 /// Company master (one row per company). Mapped onto the original CompanySetting table so the
 /// existing Teamagro row (details, logo, print matrix) is preserved unchanged. Never hard-code names.
 model Company {
-  id                  String   @id @default(cuid())
-  companyName         String   @default("")
-  address             String   @default("Philippines")
-  mobileNo            String   @default("")
-  telephoneNo         String   @default("")
-  email               String   @default("")
-  tin                 String   @default("000-000-000-000")
-  sssNo               String   @default("")
-  phicNo              String   @default("")
-  hdmfNo              String   @default("")
+  id                  String    @id @default(cuid())
+  companyName         String    @default("")
+  address             String    @default("Philippines")
+  mobileNo            String    @default("")
+  telephoneNo         String    @default("")
+  email               String    @default("")
+  tin                 String    @default("000-000-000-000")
+  sssNo               String    @default("")
+  phicNo              String    @default("")
+  hdmfNo              String    @default("")
   logoDataUrl         String? // 160x160 image stored inline (no persistent disk on the host)
   printVisibilityJson String? // {docType: {field: bool}} — which details print on which document
-  status              String   @default("Active") // Active | Inactive
-  isPrimary           Boolean  @default(false) // primary company owns employees/HR/payroll and the dealer portal
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  status              String    @default("Active") // Active | Inactive
+  isPrimary           Boolean   @default(false) // primary company owns employees/HR/payroll and the dealer portal
+  // who signs this company's delivery receipts by default — employee links, never names,
+  // so a rename in HR flows through and no signatory is hard-coded in a template
+  drPreparedById      String?
+  drPreparedBy        Employee? @relation("DRDefaultPrepared", fields: [drPreparedById], references: [id])
+  drCheckedById       String?
+  drCheckedBy         Employee? @relation("DRDefaultChecked", fields: [drCheckedById], references: [id])
+  drApprovedById      String?
+  drApprovedBy        Employee? @relation("DRDefaultApproved", fields: [drApprovedById], references: [id])
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
   products         Product[]
   incomingOrders   IncomingOrder[]

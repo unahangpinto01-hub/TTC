@@ -32,6 +32,16 @@ export async function updateCompany(formData: FormData) {
   const logo = String(formData.get("logoDataUrl") || "");
   const removeLogo = formData.get("removeLogo") === "1";
   const update: Record<string, string | null> = { ...data };
+
+  // default delivery-receipt signatories: stored as employee links, so nothing is hard-coded
+  // and a rename in HR flows through. Blank clears; an unknown or inactive id is rejected.
+  for (const field of ["drPreparedById", "drCheckedById", "drApprovedById"]) {
+    const raw = String(formData.get(field) || "");
+    if (!raw) { update[field] = null; continue; }
+    const emp = await prisma.employee.findFirst({ where: { id: raw, status: "Active" }, select: { id: true } });
+    if (!emp) redirect("/company?error=signatory");
+    update[field] = emp.id;
+  }
   if (removeLogo) {
     update.logoDataUrl = null;
   } else if (logo) {

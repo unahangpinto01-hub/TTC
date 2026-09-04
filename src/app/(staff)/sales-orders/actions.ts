@@ -130,9 +130,12 @@ export async function generateDR(formData: FormData) {
   const lineIds = formData.getAll("lineId").map(String);
   const drQtys = formData.getAll("drQty").map(Number);
 
-  const admins = await prisma.user.findMany({ where: { role: { in: ["ADMIN", "SUPER_ADMIN"] } } });
-  const checkedBy = admins.find((a) => a.role === "ADMIN")?.name ?? "";
-  const approvedBy = admins.find((a) => a.role === "SUPER_ADMIN")?.name ?? "";
+  // signatories come from this company's configured defaults, not from whoever happens to
+  // hold an admin role — set in Company Details and stored as employee links on the receipt
+  const defaults = await prisma.company.findUniqueOrThrow({
+    where: { id: so.companyId },
+    select: { drPreparedById: true, drCheckedById: true, drApprovedById: true },
+  });
 
   // delivery date from the form — backdated when encoding a past transaction (blank/future = now).
   // markDelivered dates the stock OUT entries on this when it's in the past.
@@ -146,9 +149,9 @@ export async function generateDR(formData: FormData) {
       salesOrderId: soId,
       status: "Draft",
       date: drDate,
-      preparedBy: user.name,
-      checkedBy,
-      approvedBy,
+      preparedById: defaults.drPreparedById,
+      checkedById: defaults.drCheckedById,
+      approvedById: defaults.drApprovedById,
       lines: {
         create: so.lines
           .map((l, i) => {

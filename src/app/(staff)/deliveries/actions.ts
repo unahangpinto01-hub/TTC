@@ -8,6 +8,7 @@ import { notifyRoles } from "@/lib/notify";
 import { lineGrossWeightKg, UnitError } from "@/lib/units";
 import { getActiveCompany } from "@/lib/company";
 import { recomputeStockChain } from "@/lib/stock";
+import { logAudit } from "@/lib/salespeople";
 
 export async function updateScheduleStatus(formData: FormData) {
   await requirePermWrite("schedule");
@@ -160,4 +161,75 @@ export async function saveDRBatches(formData: FormData) {
   revalidatePath(`/deliveries/${id}`);
   revalidatePath(`/deliveries/${id}/print`);
   redirect(`/deliveries/${id}?batch=ok`);
+}
+
+/**
+ * Reassign who prepared, checked or approved a delivery receipt.
+ *
+ * Signatories are an approval record, so this is Admin / Super Admin only and every change
+ * is written to the business audit trail. The receipt stores employee links, not names, so
+ * a rename in HR flows through to past receipts without rewriting them.
+ */
+export async function setDRSignatories(formData: FormData) {
+  const me = await requireStaffWrite(["SUPER_ADMIN", "ADMIN"]);
+  const company = await getActiveCompany(me);
+  const id = String(formData.get("id"));
+
+  const dr = await prisma.deliveryReceipt.findUnique({
+    where: { id },
+    select: {
+      id: true, companyId: true, status: true, drNumber: true,
+      preparedByEmp: { select: { id: true, name: true } },
+      checkedByEmp: { select: { id: true, name: true } },
+      approvedByEmp: { select: { id: true, name: true } },
+    },
+  });
+  if (!dr || dr.companyId !== company.id) redirect("/deliveries");
+  if (dr.status === "Void") redirect(`/deliveries/${id}?error=sig`);
+
+  const slots = [
+    ["preparedById", "Prepared by", dr.preparedByEmp],
+    ["checkedById", "Checked by", dr.checkedByEmp],
+    ["approvedById", "Approved by", dr.approvedByEmp],
+  ] as const;
+
+  const picked: Record<string, string | null> = {};
+  for (const [field] of slots) {
+    const raw = String(formData.get(field) || "");
+    if (!raw) { picked[field] = null; continue; }
+    // only an active employee may be assigned — never create or guess a record
+    const emp = await prisma.employee.findFirst({ where: { id: raw, status: "Active" }, select: { id: true } });
+    if (!emp) redirect(`/deliveries/${id}?error=sig`);
+    picked[field] = emp.id;
+  }
+
+  const changes: string[] = [];
+  for (const [field, label, before] of slots) {
+    if ((before?.id ?? null) === picked[field]) continue;
+    const after = picked[field]
+      ? (await prisma.employee.findUniqueOrThrow({ where: { id: picked[field]! }, select: { name: true } })).name
+      : "(none)";
+    changes.push(`${label}: ${before?.name ?? "(none)"} → ${after}`);
+  }
+  if (!changes.length) redirect(`/deliveries/${id}`);
+
+  await prisma.deliveryReceipt.update({
+    where: { id },
+    data: {
+      preparedById: picked.preparedById,
+      checkedById: picked.checkedById,
+      approvedById: picked.approvedById,
+    },
+  });
+  await logAudit({
+    entity: "DeliveryReceipt",
+    entityId: id,
+    action: "SIGNATORIES_CHANGED",
+    detail: `${dr.drNumber} — ${changes.join("; ")}`,
+    actorName: me.name,
+    actorEmail: me.email,
+  });
+  revalidatePath(`/deliveries/${id}`);
+  revalidatePath(`/deliveries/${id}/print`);
+  redirect(`/deliveries/${id}?sig=ok`);
 }

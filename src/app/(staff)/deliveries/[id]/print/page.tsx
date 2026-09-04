@@ -13,6 +13,9 @@ export default async function DRPrintPage({ params }: { params: { id: string } }
     include: {
       lines: { include: { product: true } },
       salesOrder: { include: { customer: true, schedule: true } },
+      preparedByEmp: { select: { name: true } },
+      checkedByEmp: { select: { name: true } },
+      approvedByEmp: { select: { name: true } },
     },
   });
   if (!dr) notFound();
@@ -52,12 +55,12 @@ export default async function DRPrintPage({ params }: { params: { id: string } }
         text: "Received the above goods in good order and condition.",
         caption: "Signature over printed name",
       }}
-      // the printed copy is signed by hand, so the name line stays blank and the label
-      // carries no job title — who signs is decided at the warehouse, not by the record
+      // names come from the employee links on this receipt, so a rename in HR flows through
+      // and nothing is hard-coded into the template
       signatures={[
-        { label: "Prepared by" },
-        { label: "Checked by" },
-        { label: "Approved by" },
+        { label: "Prepared by", name: dr.preparedByEmp?.name ?? dr.preparedBy ?? undefined },
+        { label: "Checked by", name: dr.checkedByEmp?.name ?? dr.checkedBy ?? undefined },
+        { label: "Approved by", name: dr.approvedByEmp?.name ?? dr.approvedBy ?? undefined },
       ]}
     />
   );

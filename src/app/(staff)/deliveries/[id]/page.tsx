@@ -5,10 +5,10 @@ import { requirePerm } from "@/lib/auth";
 import { fmtDate, peso, vatBreakdown } from "@/lib/format";
 import { qtyLabel, lineGrossWeightKg, kgLabel } from "@/lib/units";
 import { PageHeader, StatusBadge } from "@/components/ui";
-import { markDelivered, voidDR, saveDRBatches } from "../actions";
+import { markDelivered, voidDR, saveDRBatches, setDRSignatories } from "../actions";
 import { getActiveCompany } from "@/lib/company";
 
-export default async function DRDetailPage({ params, searchParams }: { params: { id: string }; searchParams: { error?: string; batch?: string } }) {
+export default async function DRDetailPage({ params, searchParams }: { params: { id: string }; searchParams: { error?: string; batch?: string; sig?: string } }) {
   const user = await requirePerm("deliveries");
   const company = await getActiveCompany(user);
   const dr = await prisma.deliveryReceipt.findUnique({
@@ -17,6 +17,9 @@ export default async function DRDetailPage({ params, searchParams }: { params: {
       lines: { include: { product: true } },
       salesOrder: { include: { customer: true, schedule: true } },
       salesReceipt: true,
+      preparedByEmp: { select: { id: true, name: true } },
+      checkedByEmp: { select: { id: true, name: true } },
+      approvedByEmp: { select: { id: true, name: true } },
     },
   });
   if (!dr || dr.companyId !== company.id) notFound(); // company isolation
@@ -29,6 +32,11 @@ export default async function DRDetailPage({ params, searchParams }: { params: {
   );
   // batch numbers are a printed reference only, so they stay editable until the DR is voided
   const canBatch = user.perm === "READ_WRITE" && dr.status !== "Void";
+  // reassigning a signatory is an approval change, so it is Super Admin / Admin only
+  const canSign = ["SUPER_ADMIN", "ADMIN"].includes(user.role) && user.perm === "READ_WRITE" && dr.status !== "Void";
+  const staff = canSign
+    ? await prisma.employee.findMany({ where: { status: "Active" }, select: { id: true, name: true, position: true }, orderBy: { name: "asc" } })
+    : [];
 
   return (
     <div className="max-w-4xl">
@@ -129,11 +137,52 @@ export default async function DRDetailPage({ params, searchParams }: { params: {
         )}
       </form>
 
-      <div className="mb-4 grid grid-cols-3 gap-3 text-center text-sm">
-        <div className="card py-3"><p className="text-xs text-gray-500">Prepared by (Admin Clerk)</p><p className="font-semibold">{dr.preparedBy || "—"}</p></div>
-        <div className="card py-3"><p className="text-xs text-gray-500">Checked by (Inventory Controller)</p><p className="font-semibold">{dr.checkedBy || "—"}</p></div>
-        <div className="card py-3"><p className="text-xs text-gray-500">Approved by (Supervisor)</p><p className="font-semibold">{dr.approvedBy || "—"}</p></div>
-      </div>
+      {searchParams.sig === "ok" && (
+        <p className="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+          ✔ Signatories updated and recorded in the audit trail.
+        </p>
+      )}
+      {searchParams.error === "sig" && (
+        <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+          <span className="font-semibold">⚠ Not saved.</span> Pick an active employee for each signatory.
+        </p>
+      )}
+
+      {canSign ? (
+        <form action={setDRSignatories} className="card mb-4">
+          <input type="hidden" name="id" value={dr.id} />
+          <div className="grid gap-3 sm:grid-cols-3">
+            {([
+              ["preparedById", "Prepared by", dr.preparedByEmp?.id],
+              ["checkedById", "Checked by", dr.checkedByEmp?.id],
+              ["approvedById", "Approved by", dr.approvedByEmp?.id],
+            ] as const).map(([field, label, current]) => (
+              <div key={field}>
+                <label className="label">{label}</label>
+                <select name={field} defaultValue={current ?? ""} className="input">
+                  <option value="">— none —</option>
+                  {staff.map((e) => (
+                    <option key={e.id} value={e.id}>{e.name} · {e.position}</option>
+                  ))}
+                </select>
+              </div>
+            ))}
+          </div>
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <button className="btn-secondary" type="submit">Save Signatories</button>
+            <p className="text-xs text-gray-500">
+              Defaults come from Company Details and are stored on this receipt as employee links, so a rename in HR
+              flows through. Changes are recorded in the audit trail.
+            </p>
+          </div>
+        </form>
+      ) : (
+        <div className="mb-4 grid grid-cols-3 gap-3 text-center text-sm">
+          <div className="card py-3"><p className="text-xs text-gray-500">Prepared by</p><p className="font-semibold">{dr.preparedByEmp?.name || dr.preparedBy || "—"}</p></div>
+          <div className="card py-3"><p className="text-xs text-gray-500">Checked by</p><p className="font-semibold">{dr.checkedByEmp?.name || dr.checkedBy || "—"}</p></div>
+          <div className="card py-3"><p className="text-xs text-gray-500">Approved by</p><p className="font-semibold">{dr.approvedByEmp?.name || dr.approvedBy || "—"}</p></div>
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-3">
         {dr.status === "Draft" && (

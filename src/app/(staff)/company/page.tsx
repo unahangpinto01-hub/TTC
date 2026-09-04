@@ -4,11 +4,18 @@ import { fmtDateTime } from "@/lib/format";
 import { PageHeader } from "@/components/ui";
 import { updateCompany } from "./actions";
 import { LogoField } from "./logo-field";
+import { prisma } from "@/lib/db";
 
 export default async function CompanyPage({ searchParams }: { searchParams: { saved?: string; error?: string } }) {
   const user = await requirePerm("company");
   const company = await getActiveCompany(user);
   const readOnly = user.perm !== "READ_WRITE";
+  // signatory pickers list the active employee master — never a hard-coded name
+  const staff = await prisma.employee.findMany({
+    where: { status: "Active" },
+    select: { id: true, name: true, position: true },
+    orderBy: { name: "asc" },
+  });
 
   const FIELDS: [string, string, string][] = [
     ["companyName", "Company Name", company.companyName],
@@ -110,6 +117,36 @@ export default async function CompanyPage({ searchParams }: { searchParams: { sa
         ) : (
           <LogoField currentLogo={company.logoDataUrl} />
         )}
+
+        <div>
+          <p className="mb-1 font-semibold">Delivery Receipt Signatories</p>
+          <p className="mb-3 text-xs text-gray-500">
+            Who a new delivery receipt is assigned to for {company.companyName}. Stored as employee links, so renaming
+            someone in HR updates every receipt that names them. An individual receipt can still be reassigned by an
+            admin, and that change is recorded in the audit trail.
+          </p>
+          <div className="grid gap-3 sm:grid-cols-3">
+            {([
+              ["drPreparedById", "Prepared by", company.drPreparedById],
+              ["drCheckedById", "Checked by", company.drCheckedById],
+              ["drApprovedById", "Approved by", company.drApprovedById],
+            ] as const).map(([field, label, current]) => (
+              <div key={field}>
+                <label className="label">{label}</label>
+                {readOnly ? (
+                  <p className="text-sm font-semibold">{staff.find((e) => e.id === current)?.name ?? "—"}</p>
+                ) : (
+                  <select name={field} defaultValue={current ?? ""} className="input">
+                    <option value="">— none —</option>
+                    {staff.map((e) => (
+                      <option key={e.id} value={e.id}>{e.name} · {e.position}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
 
         {!readOnly && <button className="btn-primary" type="submit">💾 Save Company Details</button>}
         <p className="text-xs text-gray-400">Last updated {fmtDateTime(company.updatedAt)}</p>
