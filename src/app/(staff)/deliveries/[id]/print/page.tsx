@@ -29,8 +29,8 @@ export default async function DRPrintPage({ params }: { params: { id: string } }
   );
   return (
     <>
-      {/* US Letter portrait, 12mm margins — overrides the app-wide A4 for this route only */}
-      <style>{`@page { size: 8.5in 11in portrait; margin: 12mm; }`}</style>
+      {/* US Letter portrait, slim 0.5in margins — overrides the app-wide A4 for this route only */}
+      <style>{`@page { size: 8.5in 11in portrait; margin: 0.5in; }`}</style>
       <FitOnePageLetter>
       <PrintDoc
         docType="DR"

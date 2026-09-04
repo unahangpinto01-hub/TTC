@@ -129,3 +129,15 @@
     max-width: none !important;
   }
 }
+
+/* the @page margin is the whole margin for a fitted document: drop the card's own padding
+   so the content starts exactly 0.5in from the paper edge rather than 0.5in + 40px */
+@media print {
+  .fit-page .print-page {
+    padding: 0 !important;
+    border-radius: 0 !important;
+  }
+}
+.print-sim .fit-page .print-page {
+  padding: 0 !important;
+}

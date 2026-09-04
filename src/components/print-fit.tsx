@@ -65,10 +65,11 @@ export function FitOnePageA3({ children }: { children: React.ReactNode }) {
   );
 }
 
-/** US Letter portrait, 8.5in x 11in with 12mm margins — the delivery receipt. A portrait
-    document already lays out to a fixed width, so this variant only scales the height. */
+/** US Letter portrait, 8.5in x 11in with slim 0.5in margins — the delivery receipt. A
+    portrait document already lays out to a fixed width, so this variant only scales the
+    height. 0.5in = 12.7mm, giving a 7.5in x 10in printable area. */
 export function FitOnePageLetter({ children }: { children: React.ReactNode }) {
-  const ref = useFitToPage(215.9, 279.4, 12);
+  const ref = useFitToPage(215.9, 279.4, 12.7);
   return (
     <div ref={ref} className="fit-page">
       {children}
