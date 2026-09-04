@@ -697,3 +697,145 @@ export async function getSalesJournal(
     invoiceCount: new Set(counted.map((r) => r.invoiceNo)).size,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Sales vs Forecast — actual sales normalized to forecast units before comparing
+// ---------------------------------------------------------------------------
+
+import { packSizeToMl, isForecastBasePack } from "./forecast-units";
+
+/** One pack size contributing to a row's actual sales (the drill-down detail). */
+export type VsPack = {
+  productId: string;
+  name: string;
+  packSize: string;
+  /** actual pieces sold, exactly as invoiced — never altered */
+  qty: number;
+  /** forecast PCS one piece counts as (1000ml=1, 500ml=0.5, ...); null = not convertible */
+  factor: number | null;
+  equivalent: number;
+};
+
+export type VsRow = {
+  productId: string;
+  sku: string;
+  name: string;
+  packSize: string;
+  category: string;
+  companyId: string;
+  /** forecast quantity for the compared months */
+  forecastQty: number;
+  /** actual sales converted to forecast-equivalent PCS */
+  equivalent: number;
+  packs: VsPack[];
+};
+
+/** Compare forecast quantities with actual invoiced sales, converting every sale
+    to the forecast's unit first. A sale of the exact forecasted product counts 1:1;
+    a liquid sold in another pack size converts by (pack ml ÷ 1,000) into the same
+    product line's 1,000-ml forecast row. Raw invoice quantities are never changed —
+    the conversion exists only inside this comparison. */
+export async function getSalesVsForecast(opts: {
+  year: number;
+  forecastIds: string[];
+  companyIds: string[];
+  /** customer provinces to count sales from; null = all customers */
+  provinces: string[] | null;
+  /** compare January through this month (1-12) */
+  throughMonth: number;
+}) {
+  const { year, forecastIds, companyIds, provinces, throughMonth } = opts;
+  const forecasts = await prisma.forecast.findMany({
+    where: { id: { in: forecastIds } },
+    include: { lines: { include: { product: true } } },
+  });
+
+  const rows = new Map<string, VsRow>();
+  // liquids: product line name -> the 1,000-ml forecast row other pack sizes convert into
+  const mlBaseByParent = new Map<string, string>();
+  for (const f of forecasts) {
+    for (const l of f.lines) {
+      const p = l.product;
+      if (!companyIds.includes(p.companyId)) continue;
+      const months = [l.m1, l.m2, l.m3, l.m4, l.m5, l.m6, l.m7, l.m8, l.m9, l.m10, l.m11, l.m12];
+      const qty = months.slice(0, throughMonth).reduce((a, b) => a + b, 0);
+      let row = rows.get(l.productId);
+      if (!row) {
+        row = {
+          productId: l.productId, sku: p.sku, name: p.name, packSize: p.packSize,
+          category: p.category, companyId: p.companyId, forecastQty: 0, equivalent: 0, packs: [],
+        };
+        rows.set(l.productId, row);
+      }
+      row.forecastQty += qty; // combined view may hold the same product from several areas
+      if (isForecastBasePack(p.packSize)) {
+        mlBaseByParent.set(p.parentItem?.trim() || p.name, l.productId);
+      }
+    }
+  }
+
+  const from = new Date(year, 0, 1);
+  const to = new Date(year, throughMonth, 0, 23, 59, 59, 999); // last day of the compared month
+  const srs = await prisma.salesReceipt.findMany({
+    where: {
+      companyId: { in: companyIds },
+      status: { not: "Void" },
+      invoiceDate: { gte: from, lte: to },
+      ...(provinces ? { customer: { province: { in: provinces } } } : {}),
+    },
+    include: { deliveryReceipt: { include: { lines: { include: { product: true } } } } },
+  });
+
+  // sales of products the forecast doesn't cover — shown separately, never guessed into a row
+  const unmatched = new Map<string, VsPack>();
+  for (const sr of srs) {
+    for (const l of sr.deliveryReceipt.lines) {
+      const qty = l.baseQty; // pieces, exactly as invoiced
+      if (!qty) continue;
+      const p = l.product;
+      let targetId: string | null = rows.has(p.id) ? p.id : null;
+      let factor = 1;
+      if (!targetId) {
+        const ml = packSizeToMl(p.packSize);
+        const baseId = ml !== null ? mlBaseByParent.get(p.parentItem?.trim() || p.name) : undefined;
+        if (ml !== null && baseId) {
+          targetId = baseId;
+          factor = ml / 1000;
+        }
+      }
+      if (targetId) {
+        const row = rows.get(targetId)!;
+        const eq = qty * factor;
+        row.equivalent = round2(row.equivalent + eq);
+        let pk = row.packs.find((x) => x.productId === p.id);
+        if (!pk) {
+          pk = { productId: p.id, name: p.name, packSize: p.packSize, qty: 0, factor, equivalent: 0 };
+          row.packs.push(pk);
+        }
+        pk.qty += qty;
+        pk.equivalent = round2(pk.equivalent + eq);
+      } else {
+        let pk = unmatched.get(p.id);
+        if (!pk) {
+          pk = { productId: p.id, name: p.name, packSize: p.packSize, qty: 0, factor: null, equivalent: 0 };
+          unmatched.set(p.id, pk);
+        }
+        pk.qty += qty;
+      }
+    }
+  }
+
+  const CATEGORY_ORDER = (
+    await prisma.productCategory.findMany({ orderBy: { sortOrder: "asc" }, select: { name: true } })
+  ).map((c) => c.name);
+  const sorted = [...rows.values()].sort(
+    (a, b) => CATEGORY_ORDER.indexOf(a.category) - CATEGORY_ORDER.indexOf(b.category) || a.name.localeCompare(b.name)
+  );
+  for (const r of sorted) r.packs.sort((a, b) => (b.factor ?? 0) - (a.factor ?? 0));
+
+  return {
+    rows: sorted,
+    unmatched: [...unmatched.values()].sort((a, b) => b.qty - a.qty),
+    invoiceCount: srs.length,
+  };
+}

@@ -34,6 +34,7 @@ export default async function ForecastListPage({ searchParams }: { searchParams:
   return (
     <div>
       <PageHeader title="Sales Forecast">
+        <Link href="/reports/sales-vs-forecast" className="btn-secondary">📊 Sales vs Forecast</Link>
         <Link href="/forecast/combined" className="btn-secondary">Σ Combined View (All Areas)</Link>
       </PageHeader>
       <form method="GET" className="mb-4 flex flex-wrap items-end gap-2">
