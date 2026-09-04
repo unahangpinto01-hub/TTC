@@ -60,7 +60,7 @@ export default async function SalesVsForecastPage({
         <Link href="/reports" className="inline-flex items-center gap-1 text-sm font-medium text-emerald-700 hover:underline">← Back to Reports</Link>
         <PrintButton />
       </div>
-      <PageHeader title="Sales vs Forecast" />
+      <PageHeader title="Sales vs Forecast by Area" />
       <p className="mb-3 hidden text-sm text-gray-600 print:block">
         {scopeLabel} · January – {MONTH_NAMES[month - 1]} {year} · generated {new Date().toLocaleDateString("en-PH", { timeZone: "Asia/Manila", dateStyle: "long" })}
       </p>

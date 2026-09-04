@@ -7,6 +7,7 @@ import { CompanyFilter } from "@/components/company-filter";
 import { peso, fmtDateTime } from "@/lib/format";
 import { PrintButton, BackButton } from "@/components/print-button";
 import { getSalespeople, NO_SALESPERSON, NO_CUSTOMER } from "@/lib/salespeople";
+import { packSizeToMl, isForecastBasePack } from "@/lib/forecast-units";
 
 type SP = {
   company?: string;
@@ -192,7 +193,7 @@ export default async function ForecastReportPage({ searchParams }: { searchParam
     prisma.forecastLine.findMany({
       where,
       include: {
-        product: { select: { id: true, sku: true, name: true, srp: true, companyId: true, piecesPerCarton: true } },
+        product: { select: { id: true, sku: true, name: true, srp: true, companyId: true, piecesPerCarton: true, packSize: true, parentItem: true } },
         customer: { select: { id: true, businessName: true, salespersonId: true, salesperson: { select: { name: true } } } },
         salesperson: { select: { id: true, name: true } },
       },
@@ -202,20 +203,43 @@ export default async function ForecastReportPage({ searchParams }: { searchParam
       where: { companyId: { in: scope.ids }, status: { not: "Void" }, invoiceDate: { gte: from, lte: to } },
       select: {
         customerId: true,
-        deliveryReceipt: { select: { lines: { select: { productId: true, baseQty: true, qty: true, unitPrice: true } } } },
+        deliveryReceipt: { select: { lines: { select: { productId: true, baseQty: true, qty: true, unitPrice: true, product: { select: { packSize: true, parentItem: true, name: true } } } } } },
       },
     }),
     prisma.customer.findMany({ where: { salespersonId: { not: null } }, select: { id: true, salespersonId: true } }),
   ]);
+
+  // Sales are matched in the forecast's unit. A sale of the exact forecasted product counts
+  // as-is; a liquid sold in another pack size (500ml, 250ml, 100ml, 1Gal) converts into the
+  // same product line's forecasted 1,000-ml row — 500ml = 0.5 equivalent PCS and so on —
+  // otherwise those sales would be invisible against the forecast. Values stay in pesos as
+  // invoiced; invoice and inventory quantities are never altered.
+  const forecastedProducts = new Set(lines.map((l) => l.productId));
+  const mlBaseByParent = new Map<string, string>();
+  for (const l of lines) {
+    if (isForecastBasePack(l.product.packSize)) {
+      mlBaseByParent.set(l.product.parentItem?.trim() || l.product.name, l.productId);
+    }
+  }
 
   // customer+product -> what was actually invoiced inside the period
   const soldKey = (c: string, p: string) => `${c}:${p}`;
   const sold = new Map<string, { pcs: number; value: number }>();
   for (const sr of srs) {
     for (const l of sr.deliveryReceipt.lines) {
-      const k = soldKey(sr.customerId, l.productId);
+      let productId = l.productId;
+      let pcs = l.baseQty;
+      if (!forecastedProducts.has(productId)) {
+        const ml = packSizeToMl(l.product.packSize);
+        const baseId = ml !== null ? mlBaseByParent.get(l.product.parentItem?.trim() || l.product.name) : undefined;
+        if (baseId) {
+          productId = baseId;
+          pcs = l.baseQty * (ml! / 1000);
+        }
+      }
+      const k = soldKey(sr.customerId, productId);
       const cur = sold.get(k) ?? { pcs: 0, value: 0 };
-      cur.pcs += l.baseQty;
+      cur.pcs += pcs;
       cur.value += l.qty * l.unitPrice;
       sold.set(k, cur);
     }
@@ -554,6 +578,9 @@ export default async function ForecastReportPage({ searchParams }: { searchParam
           </>
         )}{" "}
         Quantities are cartons with the piece count beneath; group rows total in pieces because a group mixes pack sizes.
+        Liquids are forecast on the 1,000-ml pack, so sales in other sizes are converted before comparing — 500ml counts
+        as 0.5, 250ml as 0.25, 100ml as 0.10 and 1Gal as 3.75 equivalent PCS, read from each product&rsquo;s pack size in
+        the Product Master. Sales values stay in pesos as invoiced, and invoice or inventory quantities are never changed.
         A line shown as an <strong>area total</strong> is one combined figure covering several accounts, and is measured
         against the sales of every customer its salesperson owns, excluding any customer that forecasts that product
         separately. The salesperson on each line is the one it was planned under, so reassigning an account later does not
