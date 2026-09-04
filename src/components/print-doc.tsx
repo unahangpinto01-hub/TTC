@@ -198,20 +198,22 @@ export async function PrintDoc({
             {signatures.map((s) => (
               <div key={s.label} className="px-4 pb-3 pt-2">
                 <p className="text-xs font-bold uppercase tracking-wide text-gray-800">{s.label}:</p>
-                {/* signing room, then the assigned name printed just above the rule */}
-                <p className="mt-7 text-center text-[11px] font-semibold text-gray-800">{s.name || "\u00a0"}</p>
-                <p className="border-b border-gray-800">&nbsp;</p>
+                {/* the rule belongs to the name line itself, so the name prints on it and
+                    the whole gap above is signing room */}
+                <p className="mt-9 border-b border-gray-800 text-center text-[11px] font-semibold text-gray-800">
+                  {s.name || "\u00a0"}
+                </p>
               </div>
             ))}
           </div>
-          <div className="w-[38%] border-l-2 border-gray-800 px-4 pb-3 pt-2">
+          <div className="flex w-[38%] flex-col border-l-2 border-gray-800 px-4 pb-3 pt-2">
             <p className="text-xs font-bold leading-snug text-gray-800">{receivingBox.text}</p>
             <div className="mt-8 flex items-end gap-1">
               <span className="text-xs font-bold text-gray-800">By:</span>
               <span className="flex-1 border-b border-gray-800">&nbsp;</span>
             </div>
             <p className="pl-6 text-center text-[10px] font-bold text-gray-800">{receivingBox.caption}</p>
-            <div className="mt-4 flex items-end gap-1">
+            <div className="mt-auto flex items-end gap-1 pt-6">
               <span className="text-xs font-bold text-gray-800">Date:</span>
               <span className="flex-1 border-b border-gray-800">&nbsp;</span>
             </div>
