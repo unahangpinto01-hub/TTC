@@ -4,6 +4,7 @@ import { requirePerm } from "@/lib/auth";
 import { fmtDate, termLabel } from "@/lib/format";
 import { lineGrossWeightKg, kgLabel } from "@/lib/units";
 import { PrintDoc } from "@/components/print-doc";
+import { FitOnePageLetter } from "@/components/print-fit";
 import { getActiveCompany } from "@/lib/company";
 
 export default async function DRPrintPage({ params }: { params: { id: string } }) {
@@ -27,41 +28,47 @@ export default async function DRPrintPage({ params }: { params: { id: string } }
     0
   );
   return (
-    <PrintDoc
-      docType="DR"
-      title="Delivery Receipt"
-      docNumber={dr.drNumber}
-      date={dr.date}
-      meta={[
-        ["Customer", dr.salesOrder.customer.businessName],
-        ["Address", dr.salesOrder.customer.address ?? `${dr.salesOrder.customer.province}`],
-        ["Sales Order", dr.salesOrder.soNumber],
-        ["Payment Term", termLabel(dr.salesOrder.term)],
-        ["Delivery Date", dr.salesOrder.schedule ? fmtDate(dr.salesOrder.schedule.date) : fmtDate(dr.date)],
-        ["Truck / Driver", `${dr.salesOrder.schedule?.truck ?? "—"} / ${dr.salesOrder.schedule?.driver ?? "—"}`],
-        ...(totalKg > 0 ? ([["Total Gross Weight", kgLabel(totalKg)]] as [string, string][]) : []),
-      ]}
-      lines={dr.lines.map((l) => ({
-        name: l.product.name,
-        qty: l.qty,
-        unitPrice: l.unitPrice,
-        unit: l.unit,
-        baseQty: l.baseQty,
-        batchNo: l.batchNo,
-      }))}
-      showPrices={false}
-      showBatch
-      receivingBox={{
-        text: "Received the above goods in good order and condition.",
-        caption: "Signature over printed name",
-      }}
-      // names come from the employee links on this receipt, so a rename in HR flows through
-      // and nothing is hard-coded into the template
-      signatures={[
-        { label: "Prepared by", name: dr.preparedByEmp?.name ?? dr.preparedBy ?? undefined },
-        { label: "Checked by", name: dr.checkedByEmp?.name ?? dr.checkedBy ?? undefined },
-        { label: "Approved by", name: dr.approvedByEmp?.name ?? dr.approvedBy ?? undefined },
-      ]}
-    />
+    <>
+      {/* US Letter portrait, 12mm margins — overrides the app-wide A4 for this route only */}
+      <style>{`@page { size: 8.5in 11in portrait; margin: 12mm; }`}</style>
+      <FitOnePageLetter>
+      <PrintDoc
+        docType="DR"
+        title="Delivery Receipt"
+        docNumber={dr.drNumber}
+        date={dr.date}
+        meta={[
+          ["Customer", dr.salesOrder.customer.businessName],
+          ["Address", dr.salesOrder.customer.address ?? `${dr.salesOrder.customer.province}`],
+          ["Sales Order", dr.salesOrder.soNumber],
+          ["Payment Term", termLabel(dr.salesOrder.term)],
+          ["Delivery Date", dr.salesOrder.schedule ? fmtDate(dr.salesOrder.schedule.date) : fmtDate(dr.date)],
+          ["Truck / Driver", `${dr.salesOrder.schedule?.truck ?? "—"} / ${dr.salesOrder.schedule?.driver ?? "—"}`],
+          ...(totalKg > 0 ? ([["Total Gross Weight", kgLabel(totalKg)]] as [string, string][]) : []),
+        ]}
+        lines={dr.lines.map((l) => ({
+          name: l.product.name,
+          qty: l.qty,
+          unitPrice: l.unitPrice,
+          unit: l.unit,
+          baseQty: l.baseQty,
+          batchNo: l.batchNo,
+        }))}
+        showPrices={false}
+        showBatch
+        receivingBox={{
+          text: "Received the above goods in good order and condition.",
+          caption: "Signature over printed name",
+        }}
+        // names come from the employee links on this receipt, so a rename in HR flows through
+        // and nothing is hard-coded into the template
+        signatures={[
+          { label: "Prepared by", name: dr.preparedByEmp?.name ?? dr.preparedBy ?? undefined },
+          { label: "Checked by", name: dr.checkedByEmp?.name ?? dr.checkedBy ?? undefined },
+          { label: "Approved by", name: dr.approvedByEmp?.name ?? dr.approvedBy ?? undefined },
+        ]}
+      />
+      </FitOnePageLetter>
+    </>
   );
 }

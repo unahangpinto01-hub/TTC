@@ -99,3 +99,33 @@
     page-break-inside: avoid;
   }
 }
+
+/* Portrait documents (delivery receipt) scaled onto one Letter sheet. Unlike the forecast
+   these already lay out to a fixed width, so only the zoom applies — no max-content. */
+.print-sim .fit-page .card {
+  overflow: visible !important;
+}
+@media print {
+  .fit-page {
+    zoom: var(--fit-scale, 1);
+  }
+  /* the whole document is scaled onto one sheet, so nothing inside needs to break */
+  .fit-page tr {
+    break-inside: auto;
+  }
+}
+
+/* measure and print a portrait document at the sheet's printable width, so the scale is
+   computed against the real print layout rather than whatever the window happens to be */
+.print-sim .fit-page,
+.print-sim .fit-page .print-page {
+  width: var(--fit-page-w, auto) !important;
+  max-width: none !important;
+}
+@media print {
+  .fit-page,
+  .fit-page .print-page {
+    width: var(--fit-page-w, auto);
+    max-width: none !important;
+  }
+}
