@@ -209,6 +209,10 @@ export async function PrintDoc({
               <span className="flex-1 border-b border-gray-800">&nbsp;</span>
             </div>
             <p className="pl-6 text-center text-[10px] font-bold text-gray-800">{receivingBox.caption}</p>
+            <div className="mt-4 flex items-end gap-1">
+              <span className="text-xs font-bold text-gray-800">Date:</span>
+              <span className="flex-1 border-b border-gray-800">&nbsp;</span>
+            </div>
           </div>
         </div>
       ) : (

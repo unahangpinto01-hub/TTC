@@ -48,13 +48,6 @@ export default async function DRPrintPage({ params }: { params: { id: string } }
       }))}
       showPrices={false}
       showBatch
-      terms={{
-        heading: "Terms and Conditions:",
-        items: [
-          "Goods are subject to our inspection upon arrival and also subject to our final acceptance.",
-          "Goods delivered not in accordance with our specifications will be returned and cannot be replaced unless instructed to do so.",
-        ],
-      }}
       receivingBox={{
         text: "Received the above goods in good order and condition.",
         caption: "Signature over printed name",
