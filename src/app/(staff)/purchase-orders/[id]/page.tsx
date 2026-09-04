@@ -5,7 +5,7 @@ import { requirePerm } from "@/lib/auth";
 import { fmtDate, peso } from "@/lib/format";
 import { qtyLabel } from "@/lib/units";
 import { PageHeader, StatusBadge } from "@/components/ui";
-import { markPOSent, receivePO, cancelPO } from "../actions";
+import { markPOSent, cancelPO } from "../actions";
 import { getActiveCompany } from "@/lib/company";
 
 export default async function PODetailPage({ params, searchParams }: { params: { id: string }; searchParams: { error?: string } }) {
@@ -13,7 +13,11 @@ export default async function PODetailPage({ params, searchParams }: { params: {
   const company = await getActiveCompany(user);
   const po = await prisma.purchaseOrder.findUnique({
     where: { id: params.id },
-    include: { supplier: true, lines: { include: { product: true } } },
+    include: {
+      supplier: true,
+      lines: { include: { product: true } },
+      goodsReceipts: { include: { lines: true }, orderBy: { receivedDate: "desc" } },
+    },
   });
   if (!po || po.companyId !== company.id) notFound(); // company isolation
   const canEdit = user.perm === "READ_WRITE";
@@ -57,21 +61,23 @@ export default async function PODetailPage({ params, searchParams }: { params: {
         <div className="card py-3"><p className="text-xs text-gray-500">Lines</p><p className="text-sm font-semibold">{po.lines.length}</p></div>
       </div>
 
-      <form action={receivePO}>
-        <input type="hidden" name="poId" value={po.id} />
-        <div className="card overflow-x-auto p-0">
-          <table className="w-full min-w-[640px]">
-            <thead className="border-b border-gray-200 bg-gray-50">
-              <tr>
-                <th className="table-th">Product</th>
-                <th className="table-th text-right">Ordered</th>
-                <th className="table-th text-right">Received</th>
-                <th className="table-th text-right">Unit Cost</th>
-                {receivable && <th className="table-th text-right">Receive Now</th>}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {po.lines.map((l) => (
+      {/* Receiving now runs through the Receive Inventory module: a goods received note is
+          drafted, inspected and only then posted to stock. This table just shows progress. */}
+      <div className="card overflow-x-auto p-0">
+        <table className="w-full min-w-[640px]">
+          <thead className="border-b border-gray-200 bg-gray-50">
+            <tr>
+              <th className="table-th">Product</th>
+              <th className="table-th text-right">Ordered</th>
+              <th className="table-th text-right">Received</th>
+              <th className="table-th text-right">Remaining</th>
+              <th className="table-th text-right">Unit Cost</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {po.lines.map((l) => {
+              const remaining = Math.max(0, l.qty - l.receivedQty);
+              return (
                 <tr key={l.id}>
                   <td className="table-td">
                     <span className="font-mono text-xs text-gray-500">{l.product.sku}</span>{" "}
@@ -82,50 +88,65 @@ export default async function PODetailPage({ params, searchParams }: { params: {
                     {l.unit === "CARTON" && <p className="text-xs font-normal text-gray-400">= {l.baseQty.toLocaleString()} PCS</p>}
                   </td>
                   <td className="table-td text-right">{qtyLabel(l.receivedQty, l.unit)}</td>
+                  <td className={`table-td text-right ${remaining > 0 ? "font-semibold" : "text-gray-300"}`}>
+                    {remaining ? qtyLabel(remaining, l.unit) : "—"}
+                  </td>
                   <td className="table-td text-right">
                     {peso(l.unitCost)}
                     <span className="text-xs text-gray-400"> / {l.unit === "CARTON" ? "CTN" : "PC"}</span>
                   </td>
-                  {receivable && (
-                    <td className="table-td text-right">
-                      <input type="hidden" name="lineId" value={l.id} />
-                      <div className="flex items-center justify-end gap-1">
-                        <input name="recvQty" type="number" min={0} max={l.qty - l.receivedQty} defaultValue={l.qty - l.receivedQty} className="input w-24 text-right" />
-                        <span className="text-xs text-gray-500">{l.unit === "CARTON" ? "CTN" : "PCS"}</span>
-                      </div>
-                    </td>
-                  )}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {receivable && (
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <Link href={`/receiving/new?po=${po.id}`} className="btn-primary">📦 Receive Against This PO</Link>
+          <p className="text-xs text-gray-500">
+            Opens a goods received note. Stock is added only when that receipt is posted, so a delivery can be checked
+            first and damaged goods recorded without stocking them.
+          </p>
         </div>
-        {receivable && (
-          <div className="mt-3 flex flex-wrap items-end gap-3">
-            <div>
-              <label className="label">Date Received</label>
-              <input
-                name="receivedDate"
-                type="date"
-                defaultValue={new Date().toISOString().slice(0, 10)}
-                max={new Date().toISOString().slice(0, 10)}
-                className="input"
-                title="When the stocks were physically received — the stock card uses this date"
-              />
-            </div>
-            <div>
-              <label className="label">Reference No.</label>
-              <input
-                name="supplierRef"
-                className="input"
-                placeholder="Supplier DR no."
-                title="The supplier document for this receipt — their delivery receipt or invoice number"
-              />
-            </div>
-            <button className="btn-primary" type="submit">Receive Items (adds stock IN)</button>
+      )}
+
+      {po.goodsReceipts.length > 0 && (
+        <div className="mt-4">
+          <h2 className="mb-2 font-semibold">Receiving History</h2>
+          <div className="card overflow-x-auto p-0">
+            <table className="w-full min-w-[560px]">
+              <thead className="border-b border-gray-200 bg-gray-50">
+                <tr>
+                  <th className="table-th">GRN #</th>
+                  <th className="table-th">Date</th>
+                  <th className="table-th">Supplier DR</th>
+                  <th className="table-th text-right">Accepted</th>
+                  <th className="table-th text-right">Rejected</th>
+                  <th className="table-th">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {po.goodsReceipts.map((g) => (
+                  <tr key={g.id} className={g.status === "Void" ? "opacity-50" : ""}>
+                    <td className="table-td">
+                      <Link href={`/receiving/${g.id}`} className="font-mono text-xs font-semibold text-emerald-700 hover:underline">
+                        {g.grnNumber}
+                      </Link>
+                    </td>
+                    <td className="table-td text-sm">{fmtDate(g.receivedDate)}</td>
+                    <td className="table-td text-xs text-gray-600">{g.deliveryRefNo || "—"}</td>
+                    <td className="table-td text-right">{g.lines.reduce((s, l) => s + l.acceptedQty, 0).toLocaleString()}</td>
+                    <td className="table-td text-right text-red-600">{g.lines.reduce((s, l) => s + l.rejectedQty, 0) || "—"}</td>
+                    <td className="table-td"><StatusBadge status={g.status} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-        )}
-      </form>
+        </div>
+      )}
 
       {cancellable && (
         <form action={cancelPO} className="mt-4 flex flex-wrap items-center justify-end gap-2">

@@ -31,6 +31,7 @@ const NAV: { section: string; items: Item[] }[] = [
     items: [
       { href: "/inventory", label: "Products", fn: "inventory" },
       { href: "/purchase-orders", label: "Purchase Orders", fn: "purchaseOrders" },
+      { href: "/receiving", label: "Receive Inventory", fn: "purchaseOrders" },
       { href: "/suppliers", label: "Suppliers", fn: "suppliers" },
     ],
   },

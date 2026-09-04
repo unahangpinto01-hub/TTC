@@ -35,6 +35,8 @@ model User {
   recoveryCodes  RecoveryCode[]
   trustedDevices TrustedDevice[]
   securityEvents SecurityEvent[]
+  grnCreated     GoodsReceipt[]  @relation("GRNCreated")
+  grnPosted      GoodsReceipt[]  @relation("GRNPosted")
 }
 
 /// Server-side sessions: the cookie holds a random token; only its SHA-256 hash is stored.
@@ -179,6 +181,7 @@ model Product {
   salesOrderLines    SalesOrderLine[]
   drLines            DRLine[]
   poLines            POLine[]
+  grnLines           GRNLine[]
   forecastLines      ForecastLine[]
 
   @@unique([companyId, sku])
@@ -380,9 +383,67 @@ model PurchaseOrder {
   voidReason String?
   date       DateTime @default(now())
 
-  lines POLine[]
+  lines         POLine[]
+  goodsReceipts GoodsReceipt[]
 
   @@unique([companyId, poNumber])
+}
+
+/// Goods Received Note. Receiving is a DOCUMENT: nothing reaches inventory until it is
+/// Posted, so a receipt can be drafted, inspected and corrected first. One purchase order
+/// may have several, which is how partial deliveries are handled.
+model GoodsReceipt {
+  id                String        @id @default(cuid())
+  companyId         String
+  company           Company       @relation(fields: [companyId], references: [id])
+  grnNumber         String // unique per company (@@unique below)
+  purchaseOrderId   String
+  purchaseOrder     PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
+  // Draft | Pending Inspection | Received | Posted | Rejected | Void
+  status            String        @default("Draft")
+  receivedDate      DateTime      @default(now())
+  warehouse         String? // where the goods landed — a label, stock itself is not per-location
+  deliveryRefNo     String? // the supplier's own DR number, used to catch a duplicate delivery
+  supplierInvoiceNo String?
+  remarks           String?
+  // override trail: set when the receipt exceeded the PO's remaining qty or changed a cost
+  overrideReason    String?
+  postedAt          DateTime?
+  postedById        String?
+  postedBy          User?         @relation("GRNPosted", fields: [postedById], references: [id])
+  createdById       String?
+  createdBy         User?         @relation("GRNCreated", fields: [createdById], references: [id])
+  voidReason        String?
+  createdAt         DateTime      @default(now())
+
+  lines GRNLine[]
+
+  @@unique([companyId, grnNumber])
+  @@index([purchaseOrderId])
+}
+
+model GRNLine {
+  id              String       @id @default(cuid())
+  goodsReceiptId  String
+  goodsReceipt    GoodsReceipt @relation(fields: [goodsReceiptId], references: [id], onDelete: Cascade)
+  poLineId        String
+  poLine          POLine       @relation(fields: [poLineId], references: [id])
+  productId       String
+  product         Product      @relation(fields: [productId], references: [id])
+  // quantities are in the PO line's unit; the *BaseQty fields are the same in PCS
+  qty             Int // delivered
+  unit            String       @default("PCS")
+  baseQty         Int
+  acceptedQty     Int          @default(0)
+  acceptedBaseQty Int          @default(0)
+  rejectedQty     Int          @default(0) // damaged or refused — never added to stock
+  rejectReason    String?
+  unitCost        Float // ACTUAL cost on this delivery, per unit
+  poUnitCost      Float // what the PO said, kept so a difference is visible forever
+  batchNo         String?
+  expDate         DateTime?
+
+  @@index([goodsReceiptId])
 }
 
 model POLine {
@@ -394,8 +455,10 @@ model POLine {
   qty             Int // in `unit`
   unit            String        @default("PCS") // PCS | CARTON
   baseQty         Int           @default(0) // ordered qty converted to PCS
-  receivedQty     Int           @default(0) // in `unit`
+  receivedQty     Int           @default(0) // ACCEPTED qty in `unit` — rejected goods stay outstanding
   unitCost        Float // cost per `unit`
+
+  grnLines GRNLine[]
 }
 
 model Expense {
@@ -606,6 +669,7 @@ model Company {
   deliveryReceipts DeliveryReceipt[]
   salesReceipts    SalesReceipt[]
   purchaseOrders   PurchaseOrder[]
+  goodsReceipts    GoodsReceipt[]
   expenses         Expense[]
   forecasts        Forecast[]
   notifications    Notification[]
