@@ -40,10 +40,12 @@ export default async function DRPrintPage({ params }: { params: { id: string } }
       ]}
       lines={dr.lines.map((l) => ({ name: l.product.name, qty: l.qty, unitPrice: l.unitPrice, unit: l.unit, baseQty: l.baseQty }))}
       showPrices={false}
+      // the printed copy is signed by hand, so the name line stays blank and the label
+      // carries no job title — who signs is decided at the warehouse, not by the record
       signatures={[
-        { label: "Prepared by (Admin Clerk)", name: dr.preparedBy ?? undefined },
-        { label: "Checked by (Inventory Controller)", name: dr.checkedBy ?? undefined },
-        { label: "Approved by (Supervisor)", name: dr.approvedBy ?? undefined },
+        { label: "Prepared by" },
+        { label: "Checked by" },
+        { label: "Approved by" },
       ]}
       footnote="Received the above goods in good order and condition. Customer signature over printed name on delivery copy."
     />
