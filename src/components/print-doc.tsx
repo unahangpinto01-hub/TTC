@@ -198,9 +198,9 @@ export async function PrintDoc({
             {signatures.map((s) => (
               <div key={s.label} className="px-4 pb-3 pt-2">
                 <p className="text-xs font-bold uppercase tracking-wide text-gray-800">{s.label}:</p>
-                {/* room to sign above the rule, with the assigned name printed under it */}
-                <p className="mt-8 border-b border-gray-800">&nbsp;</p>
-                <p className="text-center text-[11px] font-semibold text-gray-800">{s.name || "\u00a0"}</p>
+                {/* signing room, then the assigned name printed just above the rule */}
+                <p className="mt-7 text-center text-[11px] font-semibold text-gray-800">{s.name || "\u00a0"}</p>
+                <p className="border-b border-gray-800">&nbsp;</p>
               </div>
             ))}
           </div>
