@@ -2,7 +2,7 @@ import { peso, fmtDate, vatBreakdown } from "@/lib/format";
 import { getActiveCompany, getDocVisibility, type DocTypeKey } from "@/lib/company";
 import { PrintButton, BackButton } from "./print-button";
 
-type Line = { name: string; qty: number; unitPrice: number; unit?: string; baseQty?: number };
+type Line = { name: string; qty: number; unitPrice: number; unit?: string; baseQty?: number; batchNo?: string | null };
 
 const unitTag = (unit?: string) => (unit === "CARTON" ? " CTN" : unit === "PCS" ? " PCS" : "");
 
@@ -15,6 +15,9 @@ export async function PrintDoc({
   extraCharges = [],
   signatures,
   footnote,
+  terms,
+  receivedBy = false,
+  showBatch = false,
   showPrices = true,
   vatApplied = true,
   showVat = true,
@@ -29,6 +32,12 @@ export async function PrintDoc({
   extraCharges?: { label: string; amount: number }[];
   signatures: { label: string; name?: string }[];
   footnote?: string;
+  /** printed under the table, above the signatures — e.g. the delivery receipt's conditions */
+  terms?: { heading: string; items: string[] };
+  /** adds blank "Received By" and "Date" lines for the customer to complete by hand */
+  receivedBy?: boolean;
+  /** shows the Batch No. column after Qty (delivery receipts) */
+  showBatch?: boolean;
   /** false = goods-only document (e.g. Delivery Receipt): hides unit prices, amounts, and totals */
   showPrices?: boolean;
   /** false = VAT-exempt / non-VAT sale: totals show a VAT-exempt line instead of the 12% breakdown */
@@ -103,7 +112,8 @@ export async function PrintDoc({
           <tr className="border-b-2 border-gray-300 text-left">
             <th className="py-2">#</th>
             <th className="py-2">Item Description</th>
-            <th className={`py-2 text-right ${showPrices ? "" : "pr-16"}`}>Qty</th>
+            <th className={`py-2 text-right ${showPrices || showBatch ? "" : "pr-16"}`}>Qty</th>
+            {showBatch && <th className="py-2 pl-6 text-left">Batch No.</th>}
             {showPrices && <th className="py-2 text-right">Unit Price</th>}
             {showPrices && <th className="py-2 text-right">Amount</th>}
           </tr>
@@ -113,10 +123,15 @@ export async function PrintDoc({
             <tr key={i} className="border-b border-gray-100">
               <td className="py-1.5 text-gray-400">{i + 1}</td>
               <td className="py-1.5">{l.name}</td>
-              <td className={`py-1.5 text-right ${showPrices ? "" : "pr-16"}`}>
+              <td className={`py-1.5 text-right ${showPrices || showBatch ? "" : "pr-16"}`}>
                 {l.qty}{unitTag(l.unit)}
                 {l.unit === "CARTON" && l.baseQty != null && <span className="text-xs text-gray-500"> ({l.baseQty} pcs)</span>}
               </td>
+              {showBatch && (
+                <td className="py-1.5 pl-6 text-left font-mono text-xs">
+                  {l.batchNo?.trim() ? l.batchNo : <span className="text-gray-300">—</span>}
+                </td>
+              )}
               {showPrices && <td className="py-1.5 text-right">{peso(l.unitPrice)}</td>}
               {showPrices && <td className="py-1.5 text-right">{peso(l.qty * l.unitPrice)}</td>}
             </tr>
@@ -148,20 +163,49 @@ export async function PrintDoc({
           <tfoot>
             <tr className="border-t-2 border-gray-300 font-bold">
               <td colSpan={2} className="py-2 text-right">TOTAL QTY{totalCartons > 0 ? " CTN (PCS)" : " (PCS)"}</td>
-              <td className="py-2 pr-16 text-right">
+              <td className={`py-2 text-right ${showBatch ? "" : "pr-16"}`}>
                 {totalCartons > 0 ? `${totalCartons.toLocaleString()} CTN (${totalPieces.toLocaleString()} PCS)` : totalPieces.toLocaleString()}
                 {loosePieces > 0 && totalCartons > 0 && (
                   <span className="block text-xs font-normal text-gray-500">incl. {loosePieces.toLocaleString()} loose PCS</span>
                 )}
               </td>
+              {showBatch && <td />}
             </tr>
           </tfoot>
         )}
       </table>
 
-      {footnote && <p className="mb-8 text-xs text-gray-500">{footnote}</p>}
+      {footnote && <p className="mb-6 text-xs text-gray-500">{footnote}</p>}
 
-      <div className={`mt-12 grid gap-8 ${signatures.length === 3 ? "grid-cols-3" : "grid-cols-2"}`}>
+      {/* conditions and the customer's acknowledgement stay with the table on the same sheet */}
+      {(terms || receivedBy) && (
+        <div className="mb-8" style={{ breakInside: "avoid" }}>
+          {terms && (
+            <div className="mb-6">
+              <p className="mb-1 text-xs font-bold uppercase tracking-wide text-gray-700">{terms.heading}</p>
+              <ol className="list-decimal space-y-0.5 pl-5 text-xs text-gray-600">
+                {terms.items.map((t, i) => (
+                  <li key={i}>{t}</li>
+                ))}
+              </ol>
+            </div>
+          )}
+          {receivedBy && (
+            <div className="flex flex-wrap items-end gap-x-12 gap-y-4 text-sm">
+              <div className="flex items-end gap-2">
+                <span className="whitespace-nowrap text-gray-700">Received By:</span>
+                <span className="inline-block w-72 border-b border-gray-400">&nbsp;</span>
+              </div>
+              <div className="flex items-end gap-2">
+                <span className="whitespace-nowrap text-gray-700">Date:</span>
+                <span className="inline-block w-44 border-b border-gray-400">&nbsp;</span>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className={`mt-10 grid gap-8 ${signatures.length === 3 ? "grid-cols-3" : "grid-cols-2"}`} style={{ breakInside: "avoid" }}>
         {signatures.map((s) => (
           <div key={s.label} className="text-center">
             <p className="mb-10 text-sm font-medium text-gray-700">{s.name || " "}</p>

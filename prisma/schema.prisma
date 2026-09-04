@@ -319,6 +319,10 @@ model DRLine {
   unit              String          @default("PCS") // PCS | CARTON
   baseQty           Int             @default(0) // qty converted to PCS; stock is deducted by this
   unitPrice         Float // price per `unit`
+  // batch/lot reference typed by the warehouse when picking, printed on the delivery
+  // receipt. Free text (one or several batches) and a SNAPSHOT: editing the product's
+  // batch number later must never rewrite what a signed delivery receipt said.
+  batchNo           String?
   unitCostAtSale    Float           @default(0) // weighted-average cost per PCS captured when delivered (0 = pre-feature row; COGS falls back to current product cost)
   grossWeightKg     Float           @default(0) // TOTAL gross weight (kg) of this line captured when delivered — historical, unaffected by later packaging changes
 }

@@ -38,8 +38,24 @@ export default async function DRPrintPage({ params }: { params: { id: string } }
         ["Truck / Driver", `${dr.salesOrder.schedule?.truck ?? "—"} / ${dr.salesOrder.schedule?.driver ?? "—"}`],
         ...(totalKg > 0 ? ([["Total Gross Weight", kgLabel(totalKg)]] as [string, string][]) : []),
       ]}
-      lines={dr.lines.map((l) => ({ name: l.product.name, qty: l.qty, unitPrice: l.unitPrice, unit: l.unit, baseQty: l.baseQty }))}
+      lines={dr.lines.map((l) => ({
+        name: l.product.name,
+        qty: l.qty,
+        unitPrice: l.unitPrice,
+        unit: l.unit,
+        baseQty: l.baseQty,
+        batchNo: l.batchNo,
+      }))}
       showPrices={false}
+      showBatch
+      terms={{
+        heading: "Terms and Conditions:",
+        items: [
+          "Goods are subject to our inspection upon arrival and also subject to our final acceptance.",
+          "Goods delivered not in accordance with our specifications will be returned and cannot be replaced unless instructed to do so.",
+        ],
+      }}
+      receivedBy
       // the printed copy is signed by hand, so the name line stays blank and the label
       // carries no job title — who signs is decided at the warehouse, not by the record
       signatures={[

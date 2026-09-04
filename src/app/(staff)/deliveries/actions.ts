@@ -130,3 +130,34 @@ export async function voidDR(formData: FormData) {
   revalidatePath(`/deliveries/${drId}`);
   redirect(`/deliveries/${drId}`);
 }
+
+/**
+ * Save the batch/lot references typed against a delivery's lines.
+ *
+ * Batch numbers are a printed reference, not a figure: they touch no totals, no stock and
+ * no accounting, so they stay editable on an invoiced receipt too — a batch is often only
+ * known after picking, and past receipts get reprinted. A voided receipt is left alone.
+ */
+export async function saveDRBatches(formData: FormData) {
+  const user = await requirePermWrite("deliveries");
+  const company = await getActiveCompany(user);
+  const id = String(formData.get("id"));
+
+  const dr = await prisma.deliveryReceipt.findUnique({
+    where: { id },
+    select: { id: true, companyId: true, status: true, lines: { select: { id: true } } },
+  });
+  if (!dr || dr.companyId !== company.id) redirect("/deliveries");
+  if (dr.status === "Void") redirect(`/deliveries/${id}?error=void`);
+
+  for (const line of dr.lines) {
+    const raw = String(formData.get(`batch_${line.id}`) ?? "").trim().replace(/\s+/g, " ");
+    await prisma.dRLine.update({
+      where: { id: line.id },
+      data: { batchNo: raw ? raw.slice(0, 120) : null },
+    });
+  }
+  revalidatePath(`/deliveries/${id}`);
+  revalidatePath(`/deliveries/${id}/print`);
+  redirect(`/deliveries/${id}?batch=ok`);
+}

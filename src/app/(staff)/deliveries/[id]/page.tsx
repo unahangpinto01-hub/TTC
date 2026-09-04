@@ -5,10 +5,10 @@ import { requirePerm } from "@/lib/auth";
 import { fmtDate, peso, vatBreakdown } from "@/lib/format";
 import { qtyLabel, lineGrossWeightKg, kgLabel } from "@/lib/units";
 import { PageHeader, StatusBadge } from "@/components/ui";
-import { markDelivered, voidDR } from "../actions";
+import { markDelivered, voidDR, saveDRBatches } from "../actions";
 import { getActiveCompany } from "@/lib/company";
 
-export default async function DRDetailPage({ params, searchParams }: { params: { id: string }; searchParams: { error?: string } }) {
+export default async function DRDetailPage({ params, searchParams }: { params: { id: string }; searchParams: { error?: string; batch?: string } }) {
   const user = await requirePerm("deliveries");
   const company = await getActiveCompany(user);
   const dr = await prisma.deliveryReceipt.findUnique({
@@ -27,6 +27,8 @@ export default async function DRDetailPage({ params, searchParams }: { params: {
     (s, l) => s + (dr.status === "Draft" ? lineGrossWeightKg(l.baseQty, l.product) ?? 0 : l.grossWeightKg),
     0
   );
+  // batch numbers are a printed reference only, so they stay editable until the DR is voided
+  const canBatch = user.perm === "READ_WRITE" && dr.status !== "Void";
 
   return (
     <div className="max-w-4xl">
@@ -62,12 +64,20 @@ export default async function DRDetailPage({ params, searchParams }: { params: {
         </div>
       </div>
 
-      <div className="card mb-4 overflow-x-auto p-0">
-        <table className="w-full min-w-[560px]">
+      {searchParams.batch === "ok" && (
+        <p className="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+          ✔ Batch numbers saved. They appear on the printed delivery receipt.
+        </p>
+      )}
+
+      <form action={saveDRBatches} className="card mb-4 overflow-x-auto p-0">
+        <input type="hidden" name="id" value={dr.id} />
+        <table className="w-full min-w-[680px]">
           <thead className="border-b border-gray-200 bg-gray-50">
             <tr>
               <th className="table-th">Product</th>
               <th className="table-th text-right">Qty</th>
+              <th className="table-th">Batch No.</th>
               <th className="table-th text-right">Unit Price</th>
               <th className="table-th text-right">Amount</th>
             </tr>
@@ -80,6 +90,19 @@ export default async function DRDetailPage({ params, searchParams }: { params: {
                   {qtyLabel(l.qty, l.unit)}
                   {l.unit === "CARTON" && <p className="text-xs font-normal text-gray-400">= {l.baseQty.toLocaleString()} PCS</p>}
                 </td>
+                <td className="table-td">
+                  {canBatch ? (
+                    <input
+                      name={`batch_${l.id}`}
+                      defaultValue={l.batchNo ?? ""}
+                      maxLength={120}
+                      placeholder={l.product.batchNo ?? "type batch no."}
+                      className="input w-44 py-1 font-mono text-xs"
+                    />
+                  ) : (
+                    <span className="font-mono text-xs">{l.batchNo || <span className="text-gray-300">—</span>}</span>
+                  )}
+                </td>
                 <td className="table-td text-right">
                   {peso(l.unitPrice)}
                   <span className="text-xs text-gray-400"> / {l.unit === "CARTON" ? "CTN" : "PC"}</span>
@@ -89,12 +112,22 @@ export default async function DRDetailPage({ params, searchParams }: { params: {
             ))}
           </tbody>
           <tfoot className="border-t border-gray-200 bg-gray-50 text-sm">
-            <tr><td colSpan={2} className="px-3 py-1 text-right text-gray-500">VAT-exclusive</td><td colSpan={2} className="px-3 py-1 text-right">{peso(net)}</td></tr>
-            <tr><td colSpan={2} className="px-3 py-1 text-right text-gray-500">VAT 12%</td><td colSpan={2} className="px-3 py-1 text-right">{peso(vat)}</td></tr>
-            <tr className="font-bold"><td colSpan={2} className="px-3 py-2 text-right">TOTAL</td><td colSpan={2} className="px-3 py-2 text-right">{peso(total)}</td></tr>
+            <tr><td colSpan={3} className="px-3 py-1 text-right text-gray-500">VAT-exclusive</td><td colSpan={2} className="px-3 py-1 text-right">{peso(net)}</td></tr>
+            <tr><td colSpan={3} className="px-3 py-1 text-right text-gray-500">VAT 12%</td><td colSpan={2} className="px-3 py-1 text-right">{peso(vat)}</td></tr>
+            <tr className="font-bold"><td colSpan={3} className="px-3 py-2 text-right">TOTAL</td><td colSpan={2} className="px-3 py-2 text-right">{peso(total)}</td></tr>
           </tfoot>
         </table>
-      </div>
+        {canBatch && (
+          <div className="flex flex-wrap items-center gap-3 border-t border-gray-200 px-3 py-2">
+            <button className="btn-secondary" type="submit">Save Batch Numbers</button>
+            <p className="text-xs text-gray-500">
+              Typed by the warehouse when picking and printed on the delivery receipt. Enter several separated by commas
+              if a line was picked from more than one batch. Saved onto this receipt, so editing the product later never
+              changes what a signed copy said.
+            </p>
+          </div>
+        )}
+      </form>
 
       <div className="mb-4 grid grid-cols-3 gap-3 text-center text-sm">
         <div className="card py-3"><p className="text-xs text-gray-500">Prepared by (Admin Clerk)</p><p className="font-semibold">{dr.preparedBy || "—"}</p></div>
