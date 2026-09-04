@@ -58,6 +58,7 @@ export default async function GRNDetailPage({
       </Link>
       <PageHeader title={`Receiving ${grn.grnNumber}`}>
         <StatusBadge status={grn.status} />
+        <Link href={`/receiving/${grn.id}/print`} className="btn-secondary">🖨 Print GRN</Link>
       </PageHeader>
 
       {searchParams.error && ERRORS[searchParams.error] && (

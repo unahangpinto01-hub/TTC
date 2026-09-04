@@ -5,6 +5,7 @@ import { getSalesReport, getExpenseReport, getPnl, getArAging, getMovements, get
 import { cartonBreakdown } from "@/lib/units";
 import { getActiveCompany, allowedCompanies } from "@/lib/company";
 import { scopeIds } from "@/lib/report-scope";
+import { getReceivingReport, getPOReceivingStatus, getSupplierReceivingHistory } from "@/lib/receiving-reports";
 import { prisma } from "@/lib/db";
 
 export async function GET(req: NextRequest, { params }: { params: { report: string } }) {
@@ -290,6 +291,104 @@ export async function GET(req: NextRequest, { params }: { params: { report: stri
         ["TOTAL", "", ...(scope.combined ? [""] : []), "", r.totals.qty, r.totals.revenue, r.totals.cogs, r.totals.margin],
       ];
       return sheetResponse(rows, "Products", `product-report-${tag}.xlsx`);
+    }
+    case "receiving": {
+      const rep = await getReceivingReport(range, scope.ids, {
+        supplierId: sp.supplier || undefined,
+        status: sp.status || undefined,
+        q: sp.q || undefined,
+      });
+      const rows: (string | number)[][] = [
+        ["RECEIVING REPORT", tag, scope.label],
+        [],
+        ["Date", "GRN No.", ...(scope.combined ? ["Company"] : []), "Supplier", "PO No.", "Supplier DR", "Supplier Invoice", "Warehouse", "Received", "Rejected", "Accepted", "Accepted Value", "Cost Variance", "Status"],
+        ...rep.rows.map((x) => [
+          x.grn.receivedDate.toISOString().slice(0, 10),
+          x.grn.grnNumber,
+          ...(scope.combined ? [x.grn.company.companyName] : []),
+          x.grn.purchaseOrder.supplier.name,
+          x.grn.purchaseOrder.poNumber,
+          x.grn.deliveryRefNo ?? "",
+          x.grn.supplierInvoiceNo ?? "",
+          x.grn.warehouse ?? "",
+          x.received,
+          x.rejected,
+          x.accepted,
+          x.value,
+          x.costVariance,
+          x.grn.status,
+        ]),
+        [],
+        ["TOTAL", "", ...(scope.combined ? [""] : []), "", "", "", "", "", rep.totals.received, rep.totals.rejected, rep.totals.accepted, rep.totals.value, rep.totals.costVariance, ""],
+        [],
+        ["LINE DETAIL"],
+        ["GRN No.", "SKU", "Product", "Pack Size", "Received", "Rejected", "Accepted", "Unit Cost", "PO Unit Cost", "Total", "Batch", "Expiry"],
+        ...rep.rows.flatMap((x) =>
+          x.grn.lines.map((l) => [
+            x.grn.grnNumber,
+            l.product.sku,
+            l.product.name,
+            l.product.packSize,
+            l.qty,
+            l.rejectedQty,
+            l.acceptedQty,
+            l.unitCost,
+            l.poUnitCost,
+            l.acceptedQty * l.unitCost,
+            l.batchNo ?? "",
+            l.expDate ? l.expDate.toISOString().slice(0, 10) : "",
+          ])
+        ),
+      ];
+      return sheetResponse(rows, "Receiving", `receiving-report-${tag}.xlsx`);
+    }
+    case "po-receiving": {
+      const outstandingOnly = sp.outstanding === "1";
+      const rep = await getPOReceivingStatus(scope.ids, { outstandingOnly, supplierId: sp.supplier || undefined });
+      const rows: (string | number)[][] = [
+        [outstandingOnly ? "PARTIAL RECEIVING REPORT" : "PURCHASE ORDER RECEIVING STATUS", tag, scope.label],
+        [],
+        ["PO No.", "Date", ...(scope.combined ? ["Company"] : []), "Supplier", "Ordered", "Received", "Remaining", "% Received", "Receipts", "Ordered Value", "Received Value", "Status"],
+        ...rep.rows.map((x) => [
+          x.po.poNumber,
+          x.po.date.toISOString().slice(0, 10),
+          ...(scope.combined ? [x.po.company.companyName] : []),
+          x.po.supplier.name,
+          x.ordered,
+          x.received,
+          x.remaining,
+          Number(x.pct.toFixed(1)),
+          x.receipts,
+          x.orderedValue,
+          x.receivedValue,
+          x.po.status,
+        ]),
+        [],
+        ["TOTAL", "", ...(scope.combined ? [""] : []), "", rep.totals.ordered, rep.totals.received, rep.totals.remaining, "", "", rep.totals.orderedValue, rep.totals.receivedValue, ""],
+      ];
+      return sheetResponse(rows, "PO Receiving", `po-receiving-status-${tag}.xlsx`);
+    }
+    case "supplier-receiving": {
+      const rep = await getSupplierReceivingHistory(range, scope.ids);
+      const rows: (string | number)[][] = [
+        ["SUPPLIER RECEIVING HISTORY", tag, scope.label],
+        [],
+        ["Supplier", "Receipts", "Received", "Rejected", "Reject Rate %", "Accepted", "Accepted Value", "Cost Variance", "Last Delivery"],
+        ...rep.rows.map((x) => [
+          x.name,
+          x.receipts,
+          x.received,
+          x.rejected,
+          Number(x.rejectRate.toFixed(1)),
+          x.accepted,
+          x.value,
+          x.costVariance,
+          x.last ? x.last.toISOString().slice(0, 10) : "",
+        ]),
+        [],
+        ["TOTAL", rep.totals.receipts, rep.totals.received, rep.totals.rejected, "", rep.totals.accepted, rep.totals.value, rep.totals.costVariance, ""],
+      ];
+      return sheetResponse(rows, "Supplier Receiving", `supplier-receiving-${tag}.xlsx`);
     }
     case "sales-journal": {
       const j = await getSalesJournal(range, scope.ids, {

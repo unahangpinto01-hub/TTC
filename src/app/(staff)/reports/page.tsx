@@ -23,6 +23,10 @@ export default async function ReportsHub() {
     { title: "Inventory Movement", desc: "Stock IN/OUT by date range + stock on hand", href: `/reports/inventory?from=${monthStart}&to=${today}` },
     { title: "Product Price List", desc: "Printable SRP list by category — for customers and sales staff", href: "/reports/price-list", label: "Open Report" },
     { title: "Sales Forecast vs Sales", desc: "Forecast against invoiced sales by salesperson, customer and product — quantity, value, % achieved and variance, monthly to annual", href: "/reports/forecast", label: "Open Report" },
+    { title: "Receiving Report", desc: "Every goods received note in the period — received, rejected, accepted, value and cost variance", href: `/reports/receiving?from=${monthStart}&to=${today}`, alt: `/reports/receiving?from=${yearStart}&to=${today}` },
+    { title: "PO Receiving Status", desc: "Ordered against received for every purchase order, with what is still outstanding", href: "/reports/po-receiving", label: "Open Report" },
+    { title: "Partial Receiving Report", desc: "Only the purchase orders with quantities still to come", href: "/reports/po-receiving?outstanding=1", label: "Open Report" },
+    { title: "Supplier Receiving History", desc: "What each supplier delivered, their reject rate and any cost variance", href: `/reports/supplier-receiving?from=${monthStart}&to=${today}`, alt: `/reports/supplier-receiving?from=${yearStart}&to=${today}` },
     { title: "Physical Count Sheet", desc: "Product masterlist with blank count columns for stocktaking", href: "/reports/count-sheet", label: "Open Sheet" },
     { title: "Delivery Performance", desc: "Deliveries per day vs 5/day target", href: `/reports/deliveries?from=${monthStart}&to=${today}` },
   ];
