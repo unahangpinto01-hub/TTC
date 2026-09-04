@@ -5,6 +5,7 @@ import { getActiveCompany } from "@/lib/company";
 import { fmtDate, peso, termLabel } from "@/lib/format";
 import { getPage, pageCount } from "@/lib/paginate";
 import { PageHeader, Pagination, StatusBadge } from "@/components/ui";
+import { LiveSearch } from "@/components/live-search";
 
 const STATUSES = ["Draft", "Confirmed", "Scheduled", "Delivered", "Invoiced", "Closed", "Cancelled"];
 
@@ -36,7 +37,7 @@ export default async function SalesOrdersPage({ searchParams }: { searchParams: 
     <div>
       <PageHeader title="Sales Orders" />
       <form method="GET" className="mb-4 flex flex-wrap gap-2">
-        <input name="q" defaultValue={q} placeholder="Search SO # or customer…" className="input max-w-xs" />
+        <LiveSearch placeholder="Search SO # or customer…" />
         <select name="status" defaultValue={status} className="input max-w-[150px]">
           <option value="">All statuses</option>
           {STATUSES.map((s) => <option key={s}>{s}</option>)}

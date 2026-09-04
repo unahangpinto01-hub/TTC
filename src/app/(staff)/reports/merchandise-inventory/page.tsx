@@ -8,6 +8,7 @@ import { PrintButton, BackButton } from "@/components/print-button";
 import { getCategoryNames } from "@/lib/categories";
 import { ctnValue } from "@/lib/units";
 import { CtnEquiv } from "@/components/qty";
+import { LiveSearch } from "@/components/live-search";
 
 export default async function MerchandiseInventoryPage({
   searchParams,
@@ -81,7 +82,7 @@ export default async function MerchandiseInventoryPage({
             </div>
             <div>
               <label className="label">Search Product</label>
-              <input name="q" defaultValue={q} placeholder="Name, SKU, pack…" className="input max-w-[190px]" />
+              <LiveSearch placeholder="Name, SKU, pack…" className="w-[190px]" />
             </div>
             <label className="mb-2 flex items-center gap-1.5 text-sm text-gray-600">
               <input type="checkbox" name="zero" value="1" defaultChecked={showZero} />

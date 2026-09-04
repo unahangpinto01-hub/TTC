@@ -7,6 +7,7 @@ import { peso, fmtDateTime } from "@/lib/format";
 import { getCategoryNames } from "@/lib/categories";
 import { PrintButton, BackButton } from "@/components/print-button";
 import { PriceListTable } from "./price-list-table";
+import { LiveSearch } from "@/components/live-search";
 
 type SP = {
   company?: string;
@@ -89,7 +90,7 @@ export default async function PriceListPage({ searchParams }: { searchParams: SP
             </div>
             <div>
               <label className="label">Search Product</label>
-              <input name="q" defaultValue={q} placeholder="Name, SKU, size…" className="input max-w-[180px]" />
+              <LiveSearch placeholder="Name, SKU, size…" className="w-[180px]" />
             </div>
             <div>
               <label className="label">Sort by</label>

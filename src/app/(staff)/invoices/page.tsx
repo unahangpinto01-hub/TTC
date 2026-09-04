@@ -5,6 +5,7 @@ import { getActiveCompany } from "@/lib/company";
 import { fmtDate, peso, termLabel } from "@/lib/format";
 import { getPage, pageCount } from "@/lib/paginate";
 import { PageHeader, Pagination, StatusBadge } from "@/components/ui";
+import { LiveSearch } from "@/components/live-search";
 
 const MONTHS = [
   "January", "February", "March", "April", "May", "June",
@@ -78,7 +79,7 @@ export default async function InvoicesPage({
       <form method="GET" className="mb-4 flex flex-wrap items-end gap-2">
         <div>
           <label className="label">Search</label>
-          <input name="q" defaultValue={q} placeholder="SR # or customer…" className="input max-w-xs" />
+          <LiveSearch placeholder="SR # or customer…" />
         </div>
         <div>
           <label className="label">Year</label>

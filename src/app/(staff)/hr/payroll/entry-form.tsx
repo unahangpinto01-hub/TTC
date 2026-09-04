@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { ALLOWANCE_FIELDS, DEDUCTION_FIELDS } from "@/lib/payroll";
 import { createPayrollEntry, updatePayrollEntry } from "../actions";
+import { SearchSelect } from "@/components/search-select";
 
 export type EmployeeComp = {
   id: string;
@@ -87,9 +88,15 @@ export function PayrollEntryForm({
           {editing ? (
             <input className="input bg-gray-100" value={editEntry!.employeeName} disabled />
           ) : (
-            <select name="employeeId" className="input" onChange={(e) => onEmployeeChange(e.target.value)}>
-              {employees.map((e) => <option key={e.id} value={e.id}>{e.name} — {e.position}</option>)}
-            </select>
+            /* local list: the page already loads compensation for prefill, and pay data stays off the shared search API */
+            <SearchSelect
+              options={employees.map((e) => ({ id: e.id, label: e.name, sub: e.position }))}
+              name="employeeId"
+              required
+              placeholder="Type employee name…"
+              defaultValue={employees[0] ? { id: employees[0].id, label: employees[0].name, sub: employees[0].position } : null}
+              onSelect={(h) => onEmployeeChange(h?.id ?? "")}
+            />
           )}
         </div>
         <div>

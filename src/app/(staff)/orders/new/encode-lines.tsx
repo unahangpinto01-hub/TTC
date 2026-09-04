@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { SearchSelect, type SearchHit } from "@/components/search-select";
 
 type P = {
   id: string;
@@ -26,13 +27,27 @@ function stockHint(p: P): string {
   return `${p.stockQty.toLocaleString()} PCS = ${ctn.toLocaleString()} CTN${loose ? ` + ${loose} PCS` : ""}`;
 }
 
-export function EncodeLines({ products }: { products: P[] }) {
-  const [rows, setRows] = useState<{ key: number; productId: string; unit: string }[]>([
-    { key: 0, productId: "", unit: "PCS" },
-    { key: 1, productId: "", unit: "PCS" },
-    { key: 2, productId: "", unit: "PCS" },
+/** A product picked from the search endpoint, rebuilt into the shape the line math uses. */
+function fromHit(h: SearchHit): P {
+  const d = h.data ?? {};
+  return {
+    id: h.id,
+    sku: String(d.sku ?? ""),
+    name: h.label,
+    dealerPrice: Number(d.dealerPrice ?? 0),
+    cartonDealerPrice: d.cartonDealerPrice == null ? null : Number(d.cartonDealerPrice),
+    piecesPerCarton: d.piecesPerCarton == null ? null : Number(d.piecesPerCarton),
+    stockQty: Number(d.stockQty ?? 0),
+  };
+}
+
+export function EncodeLines({ companyId }: { companyId: string }) {
+  const [rows, setRows] = useState<{ key: number; product: P | null; unit: string }[]>([
+    { key: 0, product: null, unit: "PCS" },
+    { key: 1, product: null, unit: "PCS" },
+    { key: 2, product: null, unit: "PCS" },
   ]);
-  const setRow = (key: number, patch: Partial<{ productId: string; unit: string }>) =>
+  const setRow = (key: number, patch: Partial<{ product: P | null; unit: string }>) =>
     setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...patch } : r)));
 
   return (
@@ -40,26 +55,21 @@ export function EncodeLines({ products }: { products: P[] }) {
       <label className="label">Order Lines</label>
       <div className="space-y-2">
         {rows.map((r) => {
-          const p = products.find((x) => x.id === r.productId);
+          const p = r.product;
           const hasCarton = !!p && !!p.piecesPerCarton && p.piecesPerCarton > 0;
           const unit = hasCarton ? r.unit : "PCS";
           const price = p ? (unit === "CARTON" ? cartonPrice(p)! : p.dealerPrice) : null;
           return (
             <div key={r.key}>
               <div className="flex gap-2">
-                <select
+                <SearchSelect
+                  entity="products"
                   name="productId"
-                  className="input flex-1"
-                  value={r.productId}
-                  onChange={(e) => setRow(r.key, { productId: e.target.value, unit: "PCS" })}
-                >
-                  <option value="">— select product —</option>
-                  {products.map((x) => (
-                    <option key={x.id} value={x.id}>
-                      {x.sku} · {x.name}
-                    </option>
-                  ))}
-                </select>
+                  params={{ company: companyId, active: "1" }}
+                  placeholder="Type product name or SKU…"
+                  className="flex-1"
+                  onSelect={(h) => setRow(r.key, { product: h ? fromHit(h) : null, unit: "PCS" })}
+                />
                 <input name="qty" type="number" min={0} placeholder="Qty" className="input w-24" />
                 {/* never disabled — a disabled select would drop its value from FormData and misalign the line arrays */}
                 <select name="unit" className="input w-28" value={unit} onChange={(e) => setRow(r.key, { unit: e.target.value })}>
@@ -80,7 +90,7 @@ export function EncodeLines({ products }: { products: P[] }) {
       <button
         type="button"
         className="btn-secondary mt-2"
-        onClick={() => setRows((rs) => [...rs, { key: (rs[rs.length - 1]?.key ?? 0) + 1, productId: "", unit: "PCS" }])}
+        onClick={() => setRows((rs) => [...rs, { key: (rs[rs.length - 1]?.key ?? 0) + 1, product: null, unit: "PCS" }])}
       >
         + Add line
       </button>

@@ -6,6 +6,7 @@ import { fmtDate } from "@/lib/format";
 import { PageHeader } from "@/components/ui";
 import { createEvaluation } from "../actions";
 import { HrTabs } from "../hr-tabs";
+import { SearchSelect } from "@/components/search-select";
 
 const CRITERIA = ["punctuality", "quality", "teamwork", "initiative"];
 
@@ -13,10 +14,7 @@ export default async function EvaluationsPage() {
   await requirePerm("hr");
   const activeCompany = await getActiveCompany();
   if (!activeCompany.isPrimary) return <HrPrimaryOnlyNotice primaryName={(await getPrimaryCompany()).companyName} />;
-  const [evals, employees] = await Promise.all([
-    prisma.evaluation.findMany({ orderBy: { createdAt: "desc" }, include: { employee: true, evaluator: true } }),
-    prisma.employee.findMany({ where: { status: "Active" }, orderBy: { name: "asc" } }),
-  ]);
+  const evals = await prisma.evaluation.findMany({ orderBy: { createdAt: "desc" }, include: { employee: true, evaluator: true } });
 
   return (
     <div>
@@ -57,9 +55,7 @@ export default async function EvaluationsPage() {
           <h2 className="font-semibold">New Evaluation</h2>
           <div>
             <label className="label">Employee</label>
-            <select name="employeeId" className="input">
-              {employees.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
-            </select>
+            <SearchSelect entity="employees" name="employeeId" required placeholder="Type employee name…" />
           </div>
           <div><label className="label">Period</label><input name="period" required className="input" placeholder="H2 2026" /></div>
           {CRITERIA.map((c) => (

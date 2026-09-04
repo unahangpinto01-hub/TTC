@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { requirePerm } from "@/lib/auth";
 import { resolveReportScope } from "@/lib/report-scope";
 import { CompanyFilter, CompanyTag } from "@/components/company-filter";
+import { SearchSelect } from "@/components/search-select";
 import { peso, fmtDate, fmtDateTime } from "@/lib/format";
 import { getPOReceivingStatus } from "@/lib/receiving-reports";
 import { PrintButton, BackButton } from "@/components/print-button";
@@ -46,10 +47,16 @@ export default async function POReceivingStatusPage({
         <CompanyFilter scope={scope} />
         <div className="w-56">
           <label className="label">Supplier</label>
-          <select name="supplier" defaultValue={searchParams.supplier ?? ""} className="input">
-            <option value="">All suppliers</option>
-            {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-          </select>
+          <SearchSelect
+            entity="suppliers"
+            name="supplier"
+            placeholder="All suppliers"
+            submitOnSelect
+            defaultValue={(() => {
+              const cur = suppliers.find((s) => s.id === searchParams.supplier);
+              return cur ? { id: cur.id, label: cur.name } : null;
+            })()}
+          />
         </div>
         <div className="w-56">
           <label className="label">Show</label>

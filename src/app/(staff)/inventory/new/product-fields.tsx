@@ -4,6 +4,8 @@ import { useState } from "react";
 import { ParentItemField } from "../parent-item-field";
 
 type Category = { name: string; prefix: string };
+import { SearchSelect } from "@/components/search-select";
+
 type Supplier = { id: string; name: string };
 
 const NEW = "__new__";
@@ -122,10 +124,11 @@ export function ProductFields({
       )}
       <div>
         <label className="label">Supplier</label>
-        <select name="supplierId" className="input">
-          <option value="">—</option>
-          {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-        </select>
+        <SearchSelect
+          options={suppliers.map((s) => ({ id: s.id, label: s.name }))}
+          name="supplierId"
+          placeholder="Type supplier name — blank = none"
+        />
       </div>
     </>
   );

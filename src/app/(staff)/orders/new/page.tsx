@@ -1,21 +1,13 @@
-import { prisma } from "@/lib/db";
 import { requirePerm } from "@/lib/auth";
 import { PageHeader } from "@/components/ui";
 import { encodeOrder } from "../actions";
 import { EncodeLines } from "./encode-lines";
 import { getActiveCompany } from "@/lib/company";
+import { SearchSelect } from "@/components/search-select";
 
 export default async function EncodeOrderPage({ searchParams }: { searchParams: { error?: string } }) {
   const user = await requirePerm("orders");
   const company = await getActiveCompany(user);
-  const [customers, products] = await Promise.all([
-    prisma.customer.findMany({ where: { status: "Active" }, orderBy: { businessName: "asc" } }),
-    prisma.product.findMany({
-      where: { companyId: company.id, status: "Active" },
-      orderBy: { name: "asc" },
-      select: { id: true, sku: true, name: true, dealerPrice: true, cartonDealerPrice: true, piecesPerCarton: true, stockQty: true },
-    }),
-  ]);
   return (
     <div className="max-w-3xl">
       <PageHeader title="Encode Order (Messenger / Text)" />
@@ -31,11 +23,7 @@ export default async function EncodeOrderPage({ searchParams }: { searchParams: 
         <div className="grid gap-4 sm:grid-cols-3">
           <div className="sm:col-span-2">
             <label className="label">Customer</label>
-            <select name="customerId" required className="input">
-              {customers.map((c) => (
-                <option key={c.id} value={c.id}>{c.businessName} ({c.region})</option>
-              ))}
-            </select>
+            <SearchSelect entity="customers" name="customerId" required placeholder="Type customer name…" />
           </div>
           <div>
             <label className="label">Source</label>
@@ -74,7 +62,7 @@ export default async function EncodeOrderPage({ searchParams }: { searchParams: 
             <input name="notes" className="input" placeholder="e.g. screenshot from FB dated Aug 14" />
           </div>
         </div>
-        <EncodeLines products={products} />
+        <EncodeLines companyId={company.id} />
         <button className="btn-primary" type="submit">Save Incoming Order</button>
       </form>
     </div>

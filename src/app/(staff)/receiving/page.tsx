@@ -5,6 +5,7 @@ import { getActiveCompany } from "@/lib/company";
 import { peso, fmtDate } from "@/lib/format";
 import { ctnValue, lineCartonSize } from "@/lib/units";
 import { PageHeader, StatusBadge } from "@/components/ui";
+import { LiveSearch } from "@/components/live-search";
 
 const STATUSES = ["Draft", "Pending Inspection", "Received", "Posted", "Rejected", "Void"];
 
@@ -57,7 +58,7 @@ export default async function ReceivingListPage({
       </PageHeader>
 
       <form method="GET" className="mb-4 flex flex-wrap gap-2">
-        <input name="q" defaultValue={q ?? ""} placeholder="GRN, PO, supplier, DR or invoice no…" className="input max-w-xs" />
+        <LiveSearch placeholder="GRN, PO, supplier, DR or invoice no…" />
         <select name="status" defaultValue={searchParams.status ?? ""} className="input max-w-[190px]">
           <option value="">All statuses</option>
           {STATUSES.map((s) => <option key={s}>{s}</option>)}

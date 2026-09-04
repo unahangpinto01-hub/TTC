@@ -5,6 +5,7 @@ import { fmtDate } from "@/lib/format";
 import { PageHeader } from "@/components/ui";
 import { createUser, setUserAccess } from "./actions";
 import { UserNotice } from "./notice";
+import { SearchSelect } from "@/components/search-select";
 
 const ACCESS_OPTIONS = [
   ["NONE", "No Access"],
@@ -25,10 +26,7 @@ function AccessBadge({ access }: { access: string }) {
 
 export default async function UsersPage({ searchParams }: { searchParams: Record<string, string | string[] | undefined> }) {
   const me = await requirePerm("users");
-  const [users, customers] = await Promise.all([
-    prisma.user.findMany({ orderBy: { createdAt: "asc" }, include: { customer: true } }),
-    prisma.customer.findMany({ where: { status: "Active" }, orderBy: { businessName: "asc" } }),
-  ]);
+  const users = await prisma.user.findMany({ orderBy: { createdAt: "asc" }, include: { customer: true } });
 
   return (
     <div>
@@ -118,10 +116,7 @@ export default async function UsersPage({ searchParams }: { searchParams: Record
           </div>
           <div>
             <label className="label">Dealer account (for DEALER role)</label>
-            <select name="customerId" className="input">
-              <option value="">—</option>
-              {customers.map((c) => <option key={c.id} value={c.id}>{c.businessName}</option>)}
-            </select>
+            <SearchSelect entity="customers" name="customerId" placeholder="Type customer name…" />
           </div>
           <button className="btn-primary" type="submit">Create User</button>
         </form>

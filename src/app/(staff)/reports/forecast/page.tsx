@@ -8,6 +8,7 @@ import { peso, fmtDateTime } from "@/lib/format";
 import { PrintButton, BackButton } from "@/components/print-button";
 import { getSalespeople, NO_SALESPERSON, NO_CUSTOMER } from "@/lib/salespeople";
 import { packSizeToMl, isForecastBasePack } from "@/lib/forecast-units";
+import { SearchSelect } from "@/components/search-select";
 
 type SP = {
   company?: string;
@@ -123,17 +124,16 @@ export default async function ForecastReportPage({ searchParams }: { searchParam
   const isCustom = searchParams.period === CUSTOM;
   const period = PERIODS.find((p) => p.value === searchParams.period) ?? PERIODS[0];
 
-  const [forecasts, salespeople, customers] = await Promise.all([
+  const [forecasts, salespeople, pickedCustomer] = await Promise.all([
     prisma.forecast.findMany({
       orderBy: [{ year: "desc" }, { createdAt: "desc" }],
       select: { id: true, title: true, year: true, area: true },
     }),
     getSalespeople(),
-    prisma.customer.findMany({
-      where: { status: "Active" },
-      select: { id: true, businessName: true },
-      orderBy: { businessName: "asc" },
-    }),
+    // only the chosen customer is loaded — the filter box searches the rest on demand
+    searchParams.customer && searchParams.customer !== "none"
+      ? prisma.customer.findUnique({ where: { id: searchParams.customer }, select: { id: true, businessName: true } })
+      : null,
   ]);
   const forecastId = forecasts.some((f) => f.id === searchParams.forecast) ? searchParams.forecast! : "";
 
@@ -406,19 +406,38 @@ export default async function ForecastReportPage({ searchParams }: { searchParam
         </div>
         <div className="w-44">
           <label className="label">Salesperson</label>
-          <select name="salesperson" defaultValue={searchParams.salesperson ?? ""} className="input">
-            <option value="">All salespeople</option>
-            <option value="none">{NO_SALESPERSON}</option>
-            {salespeople.map((sp) => <option key={sp.id} value={sp.id}>{sp.name}</option>)}
-          </select>
+          <SearchSelect
+            options={salespeople.map((s) => ({ id: s.id, label: s.name, sub: s.position }))}
+            pinned={[{ id: "none", label: NO_SALESPERSON }]}
+            name="salesperson"
+            placeholder="All salespeople"
+            submitOnSelect
+            defaultValue={
+              searchParams.salesperson === "none"
+                ? { id: "none", label: NO_SALESPERSON }
+                : (() => {
+                    const cur = salespeople.find((s) => s.id === searchParams.salesperson);
+                    return cur ? { id: cur.id, label: cur.name } : null;
+                  })()
+            }
+          />
         </div>
         <div className="w-48">
           <label className="label">Customer</label>
-          <select name="customer" defaultValue={searchParams.customer ?? ""} className="input">
-            <option value="">All customers</option>
-            <option value="none">{NO_CUSTOMER}</option>
-            {customers.map((c) => <option key={c.id} value={c.id}>{c.businessName}</option>)}
-          </select>
+          <SearchSelect
+            entity="customers"
+            pinned={[{ id: "none", label: NO_CUSTOMER }]}
+            name="customer"
+            placeholder="All customers"
+            submitOnSelect
+            defaultValue={
+              searchParams.customer === "none"
+                ? { id: "none", label: NO_CUSTOMER }
+                : pickedCustomer
+                  ? { id: pickedCustomer.id, label: pickedCustomer.businessName }
+                  : null
+            }
+          />
         </div>
         <div className="w-40">
           <label className="label">Product</label>

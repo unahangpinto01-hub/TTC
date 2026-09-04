@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useFormStatus } from "react-dom";
 import { updateProduct } from "../actions";
 import { ParentItemField } from "../parent-item-field";
+import { SearchSelect } from "@/components/search-select";
 
 type ProductFields = {
   id: string;
@@ -128,10 +129,15 @@ export function ProductEditForm({
         )}
         <div>
           <label className="label">Supplier</label>
-          <select name="supplierId" defaultValue={product.supplierId ?? ""} className="input">
-            <option value="">—</option>
-            {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-          </select>
+          <SearchSelect
+            options={suppliers.map((s) => ({ id: s.id, label: s.name }))}
+            name="supplierId"
+            placeholder="Type supplier name — blank = none"
+            defaultValue={(() => {
+              const cur = suppliers.find((s) => s.id === product.supplierId);
+              return cur ? { id: cur.id, label: cur.name } : null;
+            })()}
+          />
         </div>
       </div>
       <div className="flex gap-2">

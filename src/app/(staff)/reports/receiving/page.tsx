@@ -7,6 +7,8 @@ import { peso, fmtDate, fmtDateTime } from "@/lib/format";
 import { parseRange } from "@/lib/reports";
 import { getReceivingReport } from "@/lib/receiving-reports";
 import { PrintButton, BackButton } from "@/components/print-button";
+import { SearchSelect } from "@/components/search-select";
+import { LiveSearch } from "@/components/live-search";
 
 const STATUSES = ["Draft", "Pending Inspection", "Received", "Posted", "Rejected", "Void"];
 
@@ -54,10 +56,16 @@ export default async function ReceivingReportPage({
         <div className="w-40"><label className="label">To</label><input type="date" name="to" defaultValue={range.to.toISOString().slice(0, 10)} className="input" /></div>
         <div className="w-52">
           <label className="label">Supplier</label>
-          <select name="supplier" defaultValue={searchParams.supplier ?? ""} className="input">
-            <option value="">All suppliers</option>
-            {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-          </select>
+          <SearchSelect
+            entity="suppliers"
+            name="supplier"
+            placeholder="All suppliers"
+            submitOnSelect
+            defaultValue={(() => {
+              const cur = suppliers.find((s) => s.id === searchParams.supplier);
+              return cur ? { id: cur.id, label: cur.name } : null;
+            })()}
+          />
         </div>
         <div className="w-44">
           <label className="label">Status</label>
@@ -66,7 +74,7 @@ export default async function ReceivingReportPage({
             {STATUSES.map((s) => <option key={s}>{s}</option>)}
           </select>
         </div>
-        <div className="w-44"><label className="label">Search</label><input name="q" defaultValue={searchParams.q ?? ""} placeholder="GRN, PO, DR no." className="input" /></div>
+        <div className="w-44"><label className="label">Search</label><LiveSearch placeholder="GRN, PO, DR no." className="w-44" /></div>
         <button className="btn-primary" type="submit">Apply</button>
       </form>
 

@@ -8,6 +8,8 @@ import { peso, fmtDate } from "@/lib/format";
 import { PageHeader, StatusBadge } from "@/components/ui";
 import { PrintButton } from "@/components/print-button";
 import { CompanyFilter, CompanyTag } from "@/components/company-filter";
+import { SearchSelect } from "@/components/search-select";
+import { LiveSearch } from "@/components/live-search";
 
 type SP = {
   from?: string; to?: string; company?: string;
@@ -24,17 +26,21 @@ export default async function SalesJournalPage({ searchParams }: { searchParams:
   const txStatus = ["Posted", "Void"].includes(searchParams.tx || "") ? searchParams.tx! : "";
   const q = searchParams.q?.trim() || "";
 
-  const [customers, products, staff] = await Promise.all([
-    prisma.customer.findMany({ orderBy: { businessName: "asc" }, select: { id: true, businessName: true } }),
-    prisma.product.findMany({
-      where: { companyId: { in: scope.ids } },
-      orderBy: { name: "asc" },
-      select: { id: true, name: true, sku: true },
-    }),
+  // only the chosen records are loaded — the filter boxes search the rest on demand
+  const [pickedCustomer, pickedProduct, staff] = await Promise.all([
+    searchParams.customer
+      ? prisma.customer.findUnique({ where: { id: searchParams.customer }, select: { id: true, businessName: true } })
+      : null,
+    searchParams.product
+      ? prisma.product.findFirst({
+          where: { id: searchParams.product, companyId: { in: scope.ids } },
+          select: { id: true, name: true, sku: true },
+        })
+      : null,
     prisma.user.findMany({ where: { role: { not: "DEALER" } }, orderBy: { name: "asc" }, select: { name: true } }),
   ]);
-  const customerId = customers.some((c) => c.id === searchParams.customer) ? searchParams.customer! : "";
-  const productId = products.some((p) => p.id === searchParams.product) ? searchParams.product! : "";
+  const customerId = pickedCustomer?.id ?? "";
+  const productId = pickedProduct?.id ?? "";
   const salesperson = staff.some((s) => s.name === searchParams.salesperson) ? searchParams.salesperson! : "";
 
   const j = await getSalesJournal(range, scope.ids, {
@@ -65,19 +71,26 @@ export default async function SalesJournalPage({ searchParams }: { searchParams:
         <CompanyFilter scope={scope} />
         <div><label className="label">From</label><input type="date" name="from" defaultValue={fromStr} className="input" /></div>
         <div><label className="label">To</label><input type="date" name="to" defaultValue={toStr} className="input" /></div>
-        <div>
+        <div className="w-[190px]">
           <label className="label">Customer</label>
-          <select name="customer" defaultValue={customerId} className="input max-w-[190px]">
-            <option value="">All customers</option>
-            {customers.map((c) => <option key={c.id} value={c.id}>{c.businessName}</option>)}
-          </select>
+          <SearchSelect
+            entity="customers"
+            name="customer"
+            placeholder="All customers"
+            submitOnSelect
+            defaultValue={pickedCustomer ? { id: pickedCustomer.id, label: pickedCustomer.businessName } : null}
+          />
         </div>
-        <div>
+        <div className="w-[200px]">
           <label className="label">Product</label>
-          <select name="product" defaultValue={productId} className="input max-w-[200px]">
-            <option value="">All products</option>
-            {products.map((p) => <option key={p.id} value={p.id}>{p.sku} · {p.name}</option>)}
-          </select>
+          <SearchSelect
+            entity="products"
+            name="product"
+            params={scope.combined ? undefined : { company: scope.value }}
+            placeholder="All products"
+            submitOnSelect
+            defaultValue={pickedProduct ? { id: pickedProduct.id, label: pickedProduct.name, sub: pickedProduct.sku } : null}
+          />
         </div>
         <div>
           <label className="label">Salesperson</label>
@@ -96,7 +109,7 @@ export default async function SalesJournalPage({ searchParams }: { searchParams:
         </div>
         <div>
           <label className="label">Search</label>
-          <input name="q" defaultValue={q} placeholder="Invoice # or customer…" className="input max-w-[190px]" />
+          <LiveSearch placeholder="Invoice # or customer…" className="w-[190px]" />
         </div>
         <button className="btn-secondary" type="submit">Apply</button>
       </form>

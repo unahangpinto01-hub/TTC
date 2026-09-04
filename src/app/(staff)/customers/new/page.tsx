@@ -2,6 +2,7 @@ import { requirePerm } from "@/lib/auth";
 import { PageHeader } from "@/components/ui";
 import { createCustomer } from "../actions";
 import { getSalespeople } from "@/lib/salespeople";
+import { SearchSelect } from "@/components/search-select";
 
 export default async function NewCustomerPage() {
   await requirePerm("customers");
@@ -24,12 +25,7 @@ export default async function NewCustomerPage() {
           <div><label className="label">Credit Limit (₱)</label><input name="creditLimit" type="number" step="0.01" className="input" /></div>
           <div>
             <label className="label">Assigned Salesperson</label>
-            <select name="salespersonId" className="input">
-              <option value="">— Unassigned —</option>
-              {salespeople.map((sp) => (
-                <option key={sp.id} value={sp.id}>{sp.name} · {sp.position}</option>
-              ))}
-            </select>
+            <SearchSelect entity="salespeople" name="salespersonId" placeholder="Type a name — blank = unassigned" />
             {!salespeople.length && (
               <p className="mt-1 text-xs text-gray-500">No salespeople yet — tick &ldquo;Salesperson&rdquo; on an employee in HR.</p>
             )}

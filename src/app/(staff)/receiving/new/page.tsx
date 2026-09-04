@@ -7,6 +7,7 @@ import { qtyLabel, lineCartonSize, conversionNote } from "@/lib/units";
 import { CtnEquiv } from "@/components/qty";
 import { PageHeader } from "@/components/ui";
 import { createGRN } from "../actions";
+import { SearchSelect } from "@/components/search-select";
 
 export default async function NewReceivingPage({
   searchParams,
@@ -16,12 +17,16 @@ export default async function NewReceivingPage({
   const user = await requirePermWrite("purchaseOrders");
   const company = await getActiveCompany(user);
 
-  const openPOs = await prisma.purchaseOrder.findMany({
+  // only the chosen PO is loaded in full — the picker searches the rest on demand
+  const openCount = await prisma.purchaseOrder.count({
     where: { companyId: company.id, status: { in: ["Sent", "Partially Received"] } },
-    orderBy: { date: "desc" },
-    include: { supplier: { select: { name: true } }, lines: { include: { product: true } } },
   });
-  const selected = openPOs.find((p) => p.id === searchParams.po) ?? null;
+  const selected = searchParams.po
+    ? await prisma.purchaseOrder.findFirst({
+        where: { id: searchParams.po, companyId: company.id, status: { in: ["Sent", "Partially Received"] } },
+        include: { supplier: { select: { name: true } }, lines: { include: { product: true } } },
+      })
+    : null;
   const today = new Date().toISOString().slice(0, 10);
 
   return (
@@ -41,19 +46,19 @@ export default async function NewReceivingPage({
       <form method="GET" className="card mb-4 flex flex-wrap items-end gap-2">
         <div className="min-w-[320px] flex-1">
           <label className="label">Purchase Order</label>
-          <select name="po" defaultValue={selected?.id ?? ""} className="input">
-            <option value="">— select an open purchase order —</option>
-            {openPOs.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.poNumber} · {p.supplier.name} · {p.status}
-              </option>
-            ))}
-          </select>
+          <SearchSelect
+            entity="purchase-orders"
+            name="po"
+            params={{ open: "1" }}
+            placeholder="Type a PO number…"
+            defaultValue={selected ? { id: selected.id, label: selected.poNumber, sub: selected.supplier.name } : null}
+            submitOnSelect
+          />
         </div>
         <button className="btn-secondary" type="submit">Load</button>
       </form>
 
-      {!openPOs.length && (
+      {!openCount && (
         <div className="card p-8 text-center text-sm text-gray-500">
           No purchase order is open for receiving. A PO must be sent before goods can be received against it.
         </div>

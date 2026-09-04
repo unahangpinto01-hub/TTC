@@ -5,6 +5,7 @@ import { peso, termLabel } from "@/lib/format";
 import { getPage, pageCount } from "@/lib/paginate";
 import { PageHeader, Pagination, StatusBadge } from "@/components/ui";
 import { getSalespeople } from "@/lib/salespeople";
+import { LiveSearch } from "@/components/live-search";
 
 export default async function CustomersPage({
   searchParams,
@@ -46,7 +47,7 @@ export default async function CustomersPage({
         <Link href="/customers/new" className="btn-primary">+ New Customer</Link>
       </PageHeader>
       <form method="GET" className="mb-4 flex flex-wrap gap-2">
-        <input name="q" defaultValue={q} placeholder="Search name, contact, province…" className="input max-w-xs" />
+        <LiveSearch placeholder="Search name, contact, province…" />
         <select name="region" defaultValue={region} className="input max-w-[150px]">
           <option value="">All regions</option>
           <option>Luzon</option>

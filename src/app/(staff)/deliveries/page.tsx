@@ -5,6 +5,7 @@ import { getActiveCompany } from "@/lib/company";
 import { fmtDate, peso } from "@/lib/format";
 import { getPage, pageCount } from "@/lib/paginate";
 import { PageHeader, Pagination, StatusBadge } from "@/components/ui";
+import { LiveSearch } from "@/components/live-search";
 
 export default async function DRListPage({ searchParams }: { searchParams: { q?: string; status?: string; page?: string } }) {
   const user = await requirePerm("deliveries");
@@ -34,7 +35,7 @@ export default async function DRListPage({ searchParams }: { searchParams: { q?:
     <div>
       <PageHeader title="Delivery Receipts" />
       <form method="GET" className="mb-4 flex flex-wrap gap-2">
-        <input name="q" defaultValue={q} placeholder="Search DR # or customer…" className="input max-w-xs" />
+        <LiveSearch placeholder="Search DR # or customer…" />
         <select name="status" defaultValue={status} className="input max-w-[150px]">
           <option value="">All statuses</option>
           <option>Draft</option>

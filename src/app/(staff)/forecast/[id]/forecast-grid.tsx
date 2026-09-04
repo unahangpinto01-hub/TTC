@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { saveForecast } from "../actions";
-import type { ForecastProduct, ForecastCustomer } from "../parents";
+import { SearchSelect, type SearchHit } from "@/components/search-select";
 
 const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
 
@@ -46,8 +46,6 @@ export function ForecastGrid({
   initialYear,
   initialArea,
   initialRows,
-  products,
-  customers,
   salespeople,
   companies,
   readOnly,
@@ -58,8 +56,6 @@ export function ForecastGrid({
   initialYear: number;
   initialArea: string;
   initialRows: GridRow[];
-  products: ForecastProduct[];
-  customers: ForecastCustomer[];
   salespeople: { id: string; name: string; position: string }[];
   /** companies the viewer may see, in display order */
   companies: { id: string; name: string }[];
@@ -74,8 +70,10 @@ export function ForecastGrid({
   const [view, setView] = useState(ALL);
   const [spFilter, setSpFilter] = useState(ALL);
   const [pickSp, setPickSp] = useState("");
-  const [pickCustomer, setPickCustomer] = useState("");
-  const [pickProduct, setPickProduct] = useState("");
+  const [pickCustomer, setPickCustomer] = useState<SearchHit | null>(null);
+  const [pickProduct, setPickProduct] = useState<SearchHit | null>(null);
+  // bumping this remounts the pickers, clearing their text after a row is added
+  const [pickKey, setPickKey] = useState(0);
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<string | null>(null);
 
@@ -107,16 +105,6 @@ export function ForecastGrid({
     });
   }, [rows, view, spFilter, companyRank, categoryOrder]);
 
-  // picking a salesperson narrows the customer list to the accounts they own
-  const customersForPick = pickSp
-    ? customers.filter((c) => (pickSp === "none" ? !c.salespersonId : c.salespersonId === pickSp))
-    : customers;
-  const productsForPick = products.filter(
-    (p) =>
-      (view === ALL || p.companyId === view) &&
-      !rows.some((r) => r.customerId === pickCustomer && r.productId === p.id)
-  );
-  const pickedCustomer = customers.find((c) => c.id === pickCustomer) ?? null;
 
   const setCell = (key: string, mi: number, value: string) => {
     const v = Math.max(0, Math.floor(Number(value) || 0));
@@ -134,30 +122,33 @@ export function ForecastGrid({
   };
 
   const addRow = () => {
-    const p = products.find((x) => x.id === pickProduct);
-    const c = customers.find((x) => x.id === pickCustomer);
-    if (!p || !c) return;
+    const c = pickCustomer;
+    const p = pickProduct;
+    if (!c || !p) return;
     if (rows.some((r) => r.customerId === c.id && r.productId === p.id)) return;
+    const d = p.data ?? {};
+    const cd = c.data ?? {};
     setRows((prev) => [
       ...prev,
       {
         customerId: c.id,
-        customer: c.name,
+        customer: c.label,
         // stamped from the account's current owner, then fixed for this forecast
-        salespersonId: c.salespersonId,
-        salesperson: c.salesperson,
+        salespersonId: (cd.salespersonId as string | null) ?? null,
+        salesperson: (cd.salesperson as string | null) ?? null,
         productId: p.id,
-        sku: p.sku,
-        name: p.name,
-        category: p.category,
-        companyId: p.companyId,
-        company: p.company,
-        srp: p.srp,
+        sku: String(d.sku ?? ""),
+        name: p.label,
+        category: String(d.category ?? ""),
+        companyId: String(d.companyId ?? ""),
+        company: String(d.company ?? ""),
+        srp: Number(d.srp ?? 0),
         price: null,
         months: Array(12).fill(0),
       },
     ]);
-    setPickProduct("");
+    setPickProduct(null);
+    setPickKey((k) => k + 1);
   };
 
   const removeRow = (key: string) => setRows((prev) => prev.filter((r) => keyOf(r) !== key));
@@ -270,8 +261,9 @@ export function ForecastGrid({
                 value={pickSp}
                 onChange={(e) => {
                   setPickSp(e.target.value);
-                  setPickCustomer("");
-                  setPickProduct("");
+                  setPickCustomer(null);
+                  setPickProduct(null);
+                  setPickKey((k) => k + 1);
                 }}
                 className="input"
               >
@@ -284,59 +276,42 @@ export function ForecastGrid({
             </div>
             <div className="w-60">
               <label className="label">Customer</label>
-              <select
-                value={pickCustomer}
-                onChange={(e) => {
-                  setPickCustomer(e.target.value);
-                  setPickProduct("");
+              <SearchSelect
+                key={`cust-${pickSp}-${pickKey}`}
+                entity="customers"
+                params={pickSp ? { salesperson: pickSp } : undefined}
+                placeholder="Type customer name…"
+                defaultValue={pickCustomer}
+                onSelect={(h) => {
+                  setPickCustomer(h);
+                  setPickProduct(null);
                 }}
-                className="input"
-              >
-                <option value="">&mdash; select a customer &mdash;</option>
-                {customersForPick.map((c) => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
+              />
             </div>
             <div className="min-w-[260px] flex-1">
               <label className="label">Product</label>
-              <select
-                value={pickProduct}
-                onChange={(e) => setPickProduct(e.target.value)}
-                disabled={!pickCustomer}
-                className="input"
-              >
-                <option value="">&mdash; select a product &mdash;</option>
-                {companies.map((c) => {
-                  const opts = productsForPick.filter((p) => p.companyId === c.id);
-                  if (!opts.length) return null;
-                  return (
-                    <optgroup key={c.id} label={c.name}>
-                      {opts.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.name} &middot; {p.category} &middot; SRP{" "}
-                          {p.srp.toLocaleString("en-PH", { minimumFractionDigits: 2 })}
-                        </option>
-                      ))}
-                    </optgroup>
-                  );
-                })}
-              </select>
+              <SearchSelect
+                key={`prod-${pickKey}`}
+                entity="products"
+                params={view !== ALL ? { company: view } : undefined}
+                placeholder={pickCustomer ? "Type product name or SKU…" : "Pick a customer first"}
+                onSelect={setPickProduct}
+              />
             </div>
             <button onClick={addRow} disabled={!pickCustomer || !pickProduct} className="btn-secondary" type="button">
               + Add Row
             </button>
           </div>
           <p className="text-xs text-gray-500">
-            {pickedCustomer ? (
+            {pickCustomer ? (
               <>
                 <span className="font-semibold text-emerald-800">
-                  Salesperson: {pickedCustomer.salesperson ?? NO_SALESPERSON} &rarr; Customer: {pickedCustomer.name}
+                  Salesperson: {(pickCustomer.data?.salesperson as string | null) ?? NO_SALESPERSON} &rarr; Customer: {pickCustomer.label}
                 </span>
                 {" — the row is stamped with this salesperson and keeps it even if the account is reassigned later."}
               </>
             ) : (
-              <>Pick a salesperson to narrow the customer list, or choose a customer directly. {rows.length} line(s) in this forecast.</>
+              <>Pick a salesperson to narrow the customer search, or type a customer name directly. {rows.length} line(s) in this forecast.</>
             )}
           </p>
         </div>

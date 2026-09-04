@@ -6,6 +6,7 @@ import { peso, fmtDate, fmtDateTime, termLabel, daysUntil } from "@/lib/format";
 import { PageHeader, StatusBadge } from "@/components/ui";
 import { updateCustomer, setCustomerSalesperson } from "../actions";
 import { getSalespeople, getAuditTrail } from "@/lib/salespeople";
+import { SearchSelect } from "@/components/search-select";
 import { getActiveCompany, allowedCompanies } from "@/lib/company";
 
 const MONTHS = [
@@ -192,12 +193,12 @@ export default async function CustomerDetailPage({
           <input type="hidden" name="id" value={customer.id} />
           <div className="min-w-[260px] flex-1">
             <label className="label">Assigned Salesperson</label>
-            <select name="salespersonId" defaultValue={customer.salespersonId ?? ""} className="input">
-              <option value="">— Unassigned —</option>
-              {salespeople.map((sp) => (
-                <option key={sp.id} value={sp.id}>{sp.name} · {sp.position}</option>
-              ))}
-            </select>
+            <SearchSelect
+              entity="salespeople"
+              name="salespersonId"
+              placeholder="Type a name — blank = unassigned"
+              defaultValue={customer.salesperson ? { id: customer.salesperson.id, label: customer.salesperson.name } : null}
+            />
             <p className="mt-1 text-xs text-gray-500">
               {salespeople.length
                 ? "One salesperson may hold many customers. Changes are recorded in the audit trail below, and forecasts already planned keep the salesperson they were planned under."
