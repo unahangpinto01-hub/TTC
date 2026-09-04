@@ -28,6 +28,8 @@ export type GridRow = {
 };
 
 const ALL = "__all__";
+/** sentinel id for adding a row with no customer — an area total covering all accounts */
+const AREA_TOTAL = "__area__";
 export const NO_SALESPERSON = "— Unassigned —";
 export const NO_CUSTOMER = "— Area total (all customers) —";
 
@@ -125,17 +127,22 @@ export function ForecastGrid({
     const c = pickCustomer;
     const p = pickProduct;
     if (!c || !p) return;
-    if (rows.some((r) => r.customerId === c.id && r.productId === p.id)) return;
+    // "Area total" adds the product with no customer — one combined figure for the area
+    const isArea = c.id === AREA_TOTAL;
+    const cid = isArea ? null : c.id;
+    if (rows.some((r) => r.customerId === cid && r.productId === p.id)) return;
     const d = p.data ?? {};
     const cd = c.data ?? {};
+    // an area row is stamped with the salesperson picked above (if any); a customer row
+    // is stamped from the account's current owner, then fixed for this forecast
+    const areaSp = pickSp && pickSp !== "none" ? salespeople.find((s) => s.id === pickSp) ?? null : null;
     setRows((prev) => [
       ...prev,
       {
-        customerId: c.id,
-        customer: c.label,
-        // stamped from the account's current owner, then fixed for this forecast
-        salespersonId: (cd.salespersonId as string | null) ?? null,
-        salesperson: (cd.salesperson as string | null) ?? null,
+        customerId: cid,
+        customer: isArea ? null : c.label,
+        salespersonId: isArea ? areaSp?.id ?? null : (cd.salespersonId as string | null) ?? null,
+        salesperson: isArea ? areaSp?.name ?? null : (cd.salesperson as string | null) ?? null,
         productId: p.id,
         sku: String(d.sku ?? ""),
         name: p.label,
@@ -279,6 +286,7 @@ export function ForecastGrid({
               <SearchSelect
                 key={`cust-${pickSp}-${pickKey}`}
                 entity="customers"
+                pinned={[{ id: AREA_TOTAL, label: NO_CUSTOMER }]}
                 params={pickSp ? { salesperson: pickSp } : undefined}
                 placeholder="Type customer name…"
                 defaultValue={pickCustomer}
@@ -303,7 +311,16 @@ export function ForecastGrid({
             </button>
           </div>
           <p className="text-xs text-gray-500">
-            {pickCustomer ? (
+            {pickCustomer?.id === AREA_TOTAL ? (
+              <>
+                <span className="font-semibold text-emerald-800">Area total — no single customer.</span>
+                {" The row covers the whole area"}
+                {pickSp && pickSp !== "none"
+                  ? ` under ${salespeople.find((s) => s.id === pickSp)?.name ?? "the picked salesperson"}`
+                  : ""}
+                {"; its sales are measured across every account, like the imported area forecasts."}
+              </>
+            ) : pickCustomer ? (
               <>
                 <span className="font-semibold text-emerald-800">
                   Salesperson: {(pickCustomer.data?.salesperson as string | null) ?? NO_SALESPERSON} &rarr; Customer: {pickCustomer.label}
