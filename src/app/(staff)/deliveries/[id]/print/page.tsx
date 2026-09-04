@@ -56,6 +56,7 @@ export default async function DRPrintPage({ params }: { params: { id: string } }
         }))}
         showPrices={false}
         showBatch
+        ruledTable
         receivingBox={{
           text: "Received the above goods in good order and condition.",
           caption: "Signature over printed name",

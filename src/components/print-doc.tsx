@@ -17,6 +17,7 @@ export async function PrintDoc({
   footnote,
   terms,
   receivingBox,
+  ruledTable = false,
   showBatch = false,
   showPrices = true,
   vatApplied = true,
@@ -37,6 +38,9 @@ export async function PrintDoc({
   /** replaces the plain signature row with the ruled box used on the delivery receipt:
       the signatories on the left, the customer's acknowledgement boxed on the right */
   receivingBox?: { text: string; caption: string };
+  /** rules the item table like a paper form: the header, the rows and the total each
+      boxed, matching the ruled signature block (delivery receipts) */
+  ruledTable?: boolean;
   /** shows the Batch No. column after Qty (delivery receipts) */
   showBatch?: boolean;
   /** false = goods-only document (e.g. Delivery Receipt): hides unit prices, amounts, and totals */
@@ -108,28 +112,28 @@ export async function PrintDoc({
         ))}
       </dl>
 
-      <table className="mb-6 w-full text-sm">
+      <table className={`mb-6 w-full text-sm ${ruledTable ? "border-2 border-gray-800" : ""}`}>
         <thead>
-          <tr className="border-b-2 border-gray-300 text-left">
-            <th className="py-2">#</th>
-            <th className="py-2">Item Description</th>
-            <th className={`py-2 text-right ${showPrices || showBatch ? "" : "pr-16"}`}>Qty</th>
-            {showBatch && <th className="py-2 pl-6 text-left">Batch No.</th>}
+          <tr className={ruledTable ? "border-b-2 border-gray-800 text-left" : "border-b-2 border-gray-300 text-left"}>
+            <th className={ruledTable ? "px-2 py-2" : "py-2"}>#</th>
+            <th className={ruledTable ? "px-2 py-2" : "py-2"}>Item Description</th>
+            <th className={`py-2 text-right ${ruledTable ? "px-2" : ""} ${showPrices || showBatch ? "" : "pr-16"}`}>Qty</th>
+            {showBatch && <th className={`py-2 text-left ${ruledTable ? "px-2" : "pl-6"}`}>Batch No.</th>}
             {showPrices && <th className="py-2 text-right">Unit Price</th>}
             {showPrices && <th className="py-2 text-right">Amount</th>}
           </tr>
         </thead>
         <tbody>
           {lines.map((l, i) => (
-            <tr key={i} className="border-b border-gray-100">
-              <td className="py-1.5 text-gray-400">{i + 1}</td>
-              <td className="py-1.5">{l.name}</td>
-              <td className={`py-1.5 text-right ${showPrices || showBatch ? "" : "pr-16"}`}>
+            <tr key={i} className={ruledTable ? "border-b border-gray-300" : "border-b border-gray-100"}>
+              <td className={`py-1.5 text-gray-400 ${ruledTable ? "px-2" : ""}`}>{i + 1}</td>
+              <td className={`py-1.5 ${ruledTable ? "px-2" : ""}`}>{l.name}</td>
+              <td className={`py-1.5 text-right ${ruledTable ? "px-2" : ""} ${showPrices || showBatch ? "" : "pr-16"}`}>
                 {l.qty}{unitTag(l.unit)}
                 {l.unit === "CARTON" && l.baseQty != null && <span className="text-xs text-gray-500"> ({l.baseQty} pcs)</span>}
               </td>
               {showBatch && (
-                <td className="py-1.5 pl-6 text-left font-mono text-xs">
+                <td className={`py-1.5 text-left font-mono text-xs ${ruledTable ? "px-2" : "pl-6"}`}>
                   {l.batchNo?.trim() ? l.batchNo : <span className="text-gray-300">—</span>}
                 </td>
               )}
@@ -162,9 +166,9 @@ export async function PrintDoc({
           </tfoot>
         ) : (
           <tfoot>
-            <tr className="border-t-2 border-gray-300 font-bold">
-              <td colSpan={2} className="py-2 text-right">TOTAL QTY{totalCartons > 0 ? " CTN (PCS)" : " (PCS)"}</td>
-              <td className={`py-2 text-right ${showBatch ? "" : "pr-16"}`}>
+            <tr className={ruledTable ? "border-t-2 border-gray-800 font-bold" : "border-t-2 border-gray-300 font-bold"}>
+              <td colSpan={2} className={`py-2 text-right ${ruledTable ? "px-2" : ""}`}>TOTAL QTY{totalCartons > 0 ? " CTN (PCS)" : " (PCS)"}</td>
+              <td className={`py-2 text-right ${ruledTable ? "px-2" : ""} ${showBatch ? "" : "pr-16"}`}>
                 {totalCartons > 0 ? `${totalCartons.toLocaleString()} CTN (${totalPieces.toLocaleString()} PCS)` : totalPieces.toLocaleString()}
                 {loosePieces > 0 && totalCartons > 0 && (
                   <span className="block text-xs font-normal text-gray-500">incl. {loosePieces.toLocaleString()} loose PCS</span>
