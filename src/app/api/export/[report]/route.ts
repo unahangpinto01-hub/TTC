@@ -42,6 +42,8 @@ export async function GET(req: NextRequest, { params }: { params: { report: stri
         ["Region", "Amount"],
         ...r.byRegion.map((x) => [x.region, x.amount]),
         [],
+        ["GOODS", "", "", r.goods],
+        ["FREIGHT (billed to customers)", "", "", r.freight],
         ["TOTAL", "", "", r.total],
       ];
       return sheetResponse(rows, "Sales", `sales-report-${tag}.xlsx`);

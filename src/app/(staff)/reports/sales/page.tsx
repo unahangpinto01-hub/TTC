@@ -50,7 +50,11 @@ export default async function SalesReportPage({
       <p className="mb-4 text-sm text-gray-600">
         <span className="font-semibold">{scope.label}</span> · {fmtDate(range.from)} – {fmtDate(range.to)}
         {province ? ` · Province: ${province}` : ""} · Total invoiced sales:{" "}
-        <span className="text-lg font-bold text-emerald-800">{peso(r.total)}</span> · {r.invoices.length} invoice(s)
+        <span className="text-lg font-bold text-emerald-800">{peso(r.total)}</span>
+        {r.freight > 0 && (
+          <span className="text-gray-500"> (Goods {peso(r.goods)} + Freight {peso(r.freight)})</span>
+        )}{" "}
+        · {r.invoices.length} invoice(s)
       </p>
 
       {/* combined view: each company's own total, then the grand total */}

@@ -46,9 +46,11 @@ export async function getSalesReport({ from, to }: Range, companyIds: string[], 
   // per-company subtotals, so a combined report shows each company and a grand total
   const byCompany = new Map<string, { name: string; count: number; amount: number }>();
   let total = 0;
+  let freight = 0; // billed to the customer, inside the invoice amounts — split out for display
 
   for (const sr of srs) {
     total += sr.amount;
+    freight += sr.freightCharge;
     const c = byCustomer.get(sr.customerId) ?? { name: sr.customer.businessName, region: sr.customer.region, count: 0, amount: 0 };
     c.count++;
     c.amount = round2(c.amount + sr.amount);
@@ -75,6 +77,8 @@ export async function getSalesReport({ from, to }: Range, companyIds: string[], 
   return {
     invoices: srs,
     total: round2(total),
+    freight: round2(freight),
+    goods: round2(total - freight),
     byCustomer: [...byCustomer.values()].sort((a, b) => b.amount - a.amount),
     byProduct: [...byProduct.values()].sort((a, b) => b.amount - a.amount),
     byRegion: [...byRegion.entries()].map(([region, amount]) => ({ region, amount })).sort((a, b) => b.amount - a.amount),
