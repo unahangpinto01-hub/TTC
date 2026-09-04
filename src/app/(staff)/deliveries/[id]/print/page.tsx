@@ -55,7 +55,10 @@ export default async function DRPrintPage({ params }: { params: { id: string } }
           "Goods delivered not in accordance with our specifications will be returned and cannot be replaced unless instructed to do so.",
         ],
       }}
-      receivedBy
+      receivingBox={{
+        text: "Received the above goods in good order and condition.",
+        caption: "Signature over printed name",
+      }}
       // the printed copy is signed by hand, so the name line stays blank and the label
       // carries no job title — who signs is decided at the warehouse, not by the record
       signatures={[
@@ -63,7 +66,6 @@ export default async function DRPrintPage({ params }: { params: { id: string } }
         { label: "Checked by" },
         { label: "Approved by" },
       ]}
-      footnote="Received the above goods in good order and condition. Customer signature over printed name on delivery copy."
     />
   );
 }

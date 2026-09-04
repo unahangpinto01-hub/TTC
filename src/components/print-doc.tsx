@@ -16,7 +16,7 @@ export async function PrintDoc({
   signatures,
   footnote,
   terms,
-  receivedBy = false,
+  receivingBox,
   showBatch = false,
   showPrices = true,
   vatApplied = true,
@@ -34,8 +34,9 @@ export async function PrintDoc({
   footnote?: string;
   /** printed under the table, above the signatures — e.g. the delivery receipt's conditions */
   terms?: { heading: string; items: string[] };
-  /** adds blank "Received By" and "Date" lines for the customer to complete by hand */
-  receivedBy?: boolean;
+  /** replaces the plain signature row with the ruled box used on the delivery receipt:
+      the signatories on the left, the customer's acknowledgement boxed on the right */
+  receivingBox?: { text: string; caption: string };
   /** shows the Batch No. column after Qty (delivery receipts) */
   showBatch?: boolean;
   /** false = goods-only document (e.g. Delivery Receipt): hides unit prices, amounts, and totals */
@@ -177,44 +178,51 @@ export async function PrintDoc({
 
       {footnote && <p className="mb-6 text-xs text-gray-500">{footnote}</p>}
 
-      {/* conditions and the customer's acknowledgement stay with the table on the same sheet */}
-      {(terms || receivedBy) && (
-        <div className="mb-8" style={{ breakInside: "avoid" }}>
-          {terms && (
-            <div className="mb-6">
-              <p className="mb-1 text-xs font-bold uppercase tracking-wide text-gray-700">{terms.heading}</p>
-              <ol className="list-decimal space-y-0.5 pl-5 text-xs text-gray-600">
-                {terms.items.map((t, i) => (
-                  <li key={i}>{t}</li>
-                ))}
-              </ol>
-            </div>
-          )}
-          {receivedBy && (
-            <div className="flex flex-wrap items-end gap-x-12 gap-y-4 text-sm">
-              <div className="flex items-end gap-2">
-                <span className="whitespace-nowrap text-gray-700">Received By:</span>
-                <span className="inline-block w-72 border-b border-gray-400">&nbsp;</span>
-              </div>
-              <div className="flex items-end gap-2">
-                <span className="whitespace-nowrap text-gray-700">Date:</span>
-                <span className="inline-block w-44 border-b border-gray-400">&nbsp;</span>
-              </div>
-            </div>
-          )}
+      {/* conditions stay with the table on the same sheet */}
+      {terms && (
+        <div className="mb-6" style={{ breakInside: "avoid" }}>
+          <p className="mb-1 text-xs font-bold uppercase tracking-wide text-gray-700">{terms.heading}</p>
+          <ol className="list-decimal space-y-0.5 pl-5 text-xs text-gray-600">
+            {terms.items.map((t, i) => (
+              <li key={i}>{t}</li>
+            ))}
+          </ol>
         </div>
       )}
 
-      <div className={`mt-10 grid gap-8 ${signatures.length === 3 ? "grid-cols-3" : "grid-cols-2"}`} style={{ breakInside: "avoid" }}>
-        {signatures.map((s) => (
-          <div key={s.label} className="text-center">
-            <p className="mb-10 text-sm font-medium text-gray-700">{s.name || " "}</p>
-            <div className="border-t border-gray-400 pt-1">
-              <p className="text-xs text-gray-500">{s.label}</p>
-            </div>
+      {receivingBox ? (
+        // the ruled footer block: signatories boxed on the left, the customer's
+        // acknowledgement in its own cell on the right, all kept on one sheet
+        <div className="mt-6 flex border-2 border-gray-800 text-sm" style={{ breakInside: "avoid" }}>
+          <div className="grid flex-1 grid-cols-2">
+            {signatures.map((s) => (
+              <div key={s.label} className="px-4 pb-3 pt-2">
+                <p className="text-xs font-bold uppercase tracking-wide text-gray-800">{s.label}:</p>
+                <p className="mt-8 border-b border-gray-800">&nbsp;</p>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
+          <div className="w-[38%] border-l-2 border-gray-800 px-4 pb-3 pt-2">
+            <p className="text-xs font-bold leading-snug text-gray-800">{receivingBox.text}</p>
+            <div className="mt-8 flex items-end gap-1">
+              <span className="text-xs font-bold text-gray-800">By:</span>
+              <span className="flex-1 border-b border-gray-800">&nbsp;</span>
+            </div>
+            <p className="pl-6 text-center text-[10px] font-bold text-gray-800">{receivingBox.caption}</p>
+          </div>
+        </div>
+      ) : (
+        <div className={`mt-10 grid gap-8 ${signatures.length === 3 ? "grid-cols-3" : "grid-cols-2"}`} style={{ breakInside: "avoid" }}>
+          {signatures.map((s) => (
+            <div key={s.label} className="text-center">
+              <p className="mb-10 text-sm font-medium text-gray-700">{s.name || " "}</p>
+              <div className="border-t border-gray-400 pt-1">
+                <p className="text-xs text-gray-500">{s.label}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
