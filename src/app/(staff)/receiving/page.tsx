@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { requirePerm } from "@/lib/auth";
 import { getActiveCompany } from "@/lib/company";
 import { peso, fmtDate } from "@/lib/format";
+import { ctnValue, lineCartonSize } from "@/lib/units";
 import { PageHeader, StatusBadge } from "@/components/ui";
 
 const STATUSES = ["Draft", "Pending Inspection", "Received", "Posted", "Rejected", "Void"];
@@ -36,7 +37,7 @@ export default async function ReceivingListPage({
       take: 100,
       include: {
         purchaseOrder: { include: { supplier: { select: { name: true } } } },
-        lines: true,
+        lines: { include: { product: { select: { piecesPerCarton: true } } } },
       },
     }),
     // a receipt can only be raised against a purchase order that is still open
@@ -73,7 +74,7 @@ export default async function ReceivingListPage({
               <th className="table-th">Supplier</th>
               <th className="table-th">Purchase Order</th>
               <th className="table-th">Supplier DR / Invoice</th>
-              <th className="table-th text-right">Accepted</th>
+              <th className="table-th text-right">Accepted (PCS / CTN)</th>
               <th className="table-th text-right">Rejected</th>
               <th className="table-th text-right">Value</th>
               <th className="table-th">Status</th>
@@ -81,7 +82,11 @@ export default async function ReceivingListPage({
           </thead>
           <tbody className="divide-y divide-gray-100">
             {receipts.map((g) => {
+              // acceptedQty is in each line's entered unit, so a mixed receipt would add
+              // cartons to pieces — PCS and CTN are the figures that actually compare
               const accepted = g.lines.reduce((s, l) => s + l.acceptedQty, 0);
+              const acceptedPcs = g.lines.reduce((s, l) => s + l.acceptedBaseQty, 0);
+              const acceptedCtn = g.lines.reduce((s, l) => s + (ctnValue(l.acceptedBaseQty, lineCartonSize(l, l.product)) ?? 0), 0);
               const rejected = g.lines.reduce((s, l) => s + l.rejectedQty, 0);
               const value = g.lines.reduce((s, l) => s + l.acceptedQty * l.unitCost, 0);
               return (
@@ -102,7 +107,12 @@ export default async function ReceivingListPage({
                     {g.deliveryRefNo || "—"}
                     {g.supplierInvoiceNo && <p className="text-gray-400">Inv {g.supplierInvoiceNo}</p>}
                   </td>
-                  <td className="table-td text-right">{accepted.toLocaleString()}</td>
+                  <td className="table-td text-right">
+                    {acceptedPcs.toLocaleString()}
+                    <span className="block text-xs font-normal text-gray-500">
+                      {acceptedCtn.toLocaleString("en-PH", { maximumFractionDigits: 2 })} CTN
+                    </span>
+                  </td>
                   <td className={`table-td text-right ${rejected > 0 ? "font-semibold text-red-600" : "text-gray-300"}`}>
                     {rejected || "—"}
                   </td>

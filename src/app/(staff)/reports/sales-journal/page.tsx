@@ -1,3 +1,4 @@
+import { NoConversion } from "@/components/qty";
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { requirePerm } from "@/lib/auth";
@@ -117,6 +118,8 @@ export default async function SalesJournalPage({ searchParams }: { searchParams:
               <th className="table-th">Reference</th>
               <th className="table-th">Product</th>
               <th className="table-th text-right">Qty</th>
+              <th className="table-th text-right">PCS</th>
+              <th className="table-th text-right">CTN</th>
               <th className="table-th text-right">Unit Price</th>
               <th className="table-th text-right">Gross Sales</th>
               <th className="table-th text-right">Freight</th>
@@ -138,6 +141,12 @@ export default async function SalesJournalPage({ searchParams }: { searchParams:
                 <td className="table-td font-mono text-xs text-gray-500">{r.reference}</td>
                 <td className={`table-td text-sm ${r.productId ? "" : "italic text-gray-500"}`}>{r.product}</td>
                 <td className="table-td whitespace-nowrap text-right text-sm">{r.qty || "—"}</td>
+                <td className="table-td whitespace-nowrap text-right text-sm text-gray-600">
+                  {r.productId ? r.qtyPcs.toLocaleString() : "—"}
+                </td>
+                <td className="table-td whitespace-nowrap text-right text-sm text-gray-600">
+                  {!r.productId ? "—" : r.qtyCtn === null ? <NoConversion /> : r.qtyCtn.toLocaleString("en-PH", { maximumFractionDigits: 2 })}
+                </td>
                 <td className="table-td text-right text-sm">{r.unitPrice != null ? peso(r.unitPrice) : "—"}</td>
                 <td className="table-td text-right">{peso(r.gross)}</td>
                 <td className="table-td text-right text-gray-600">{r.freight ? peso(r.freight) : "—"}</td>

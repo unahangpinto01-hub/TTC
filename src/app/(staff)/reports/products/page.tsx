@@ -6,6 +6,7 @@ import { peso, fmtDate } from "@/lib/format";
 import { PageHeader } from "@/components/ui";
 import { PrintButton } from "@/components/print-button";
 import { CompanyFilter, CompanyTag } from "@/components/company-filter";
+import { NoConversion } from "@/components/qty";
 
 export default async function ProductReportPage({
   searchParams,
@@ -54,7 +55,7 @@ export default async function ProductReportPage({
       </p>
 
       <div className="card overflow-x-auto p-0">
-        <table className="w-full min-w-[880px]">
+        <table className="w-full min-w-[1000px]">
           <thead className="border-b border-gray-200 bg-gray-50">
             <tr>
               <th className="table-th">SKU</th>
@@ -62,6 +63,7 @@ export default async function ProductReportPage({
               {scope.combined && <th className="table-th">Company</th>}
               <th className="table-th">Category</th>
               <th className="table-th text-right">Qty Sold (PCS)</th>
+              <th className="table-th text-right">Equivalent (CTN)</th>
               <th className="table-th text-right">Revenue</th>
               <th className="table-th text-right">COGS</th>
               <th className="table-th text-right">Margin</th>
@@ -75,19 +77,27 @@ export default async function ProductReportPage({
                 {scope.combined && <td className="table-td"><CompanyTag name={x.company} /></td>}
                 <td className="table-td text-sm text-gray-600">{x.category}</td>
                 <td className="table-td text-right">{x.qty.toLocaleString()}</td>
+                <td className="table-td text-right text-sm">
+                  {x.noConversion ? (
+                    <NoConversion />
+                  ) : (
+                    `${x.ctn.toLocaleString("en-PH", { maximumFractionDigits: 2 })} CTN`
+                  )}
+                </td>
                 <td className="table-td text-right">{peso(x.revenue)}</td>
                 <td className="table-td text-right text-gray-600">{peso(x.cogs)}</td>
                 <td className={`table-td text-right font-semibold ${x.margin < 0 ? "text-red-600" : "text-emerald-700"}`}>{peso(x.margin)}</td>
               </tr>
             ))}
             {!r.rows.length && (
-              <tr><td colSpan={scope.combined ? 8 : 7} className="p-8 text-center text-sm text-gray-500">No products sold in this range.</td></tr>
+              <tr><td colSpan={scope.combined ? 9 : 8} className="p-8 text-center text-sm text-gray-500">No products sold in this range.</td></tr>
             )}
           </tbody>
           <tfoot className="border-t border-gray-200 bg-gray-50 font-bold">
             <tr>
               <td className="table-td" colSpan={scope.combined ? 4 : 3}>{scope.combined ? "COMBINED GRAND TOTAL" : "TOTAL"}</td>
               <td className="table-td text-right">{r.totals.qty.toLocaleString()}</td>
+              <td className="table-td text-right">{r.totals.ctn.toLocaleString("en-PH", { maximumFractionDigits: 2 })} CTN</td>
               <td className="table-td text-right text-emerald-800">{peso(r.totals.revenue)}</td>
               <td className="table-td text-right text-gray-600">{peso(r.totals.cogs)}</td>
               <td className="table-td text-right text-emerald-700">{peso(r.totals.margin)}</td>

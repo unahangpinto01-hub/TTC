@@ -3,7 +3,8 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requirePerm } from "@/lib/auth";
 import { fmtDate, fmtDateTime, peso, termLabel } from "@/lib/format";
-import { qtyLabel } from "@/lib/units";
+import { lineCartonSize, displayCartonSize } from "@/lib/units";
+import { CtnEquiv, LineQty } from "@/components/qty";
 import { PageHeader, StatusBadge } from "@/components/ui";
 import { convertToSO, cancelIncoming } from "../actions";
 import { getActiveCompany } from "@/lib/company";
@@ -55,8 +56,7 @@ export default async function IncomingOrderPage({ params }: { params: { id: stri
               <tr key={l.id}>
                 <td className="table-td font-medium">{l.product.name}</td>
                 <td className="table-td text-right">
-                  {qtyLabel(l.qty, l.unit)}
-                  {l.unit === "CARTON" && <p className="text-xs font-normal text-gray-400">= {l.baseQty.toLocaleString()} PCS</p>}
+                  <LineQty qty={l.qty} unit={l.unit} basePcs={l.baseQty} ppc={lineCartonSize(l, l.product)} />
                 </td>
                 <td className="table-td text-right">
                   {peso(l.unitPrice)}

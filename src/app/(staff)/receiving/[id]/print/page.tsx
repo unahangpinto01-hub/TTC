@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db";
 import { requirePerm } from "@/lib/auth";
 import { getActiveCompany } from "@/lib/company";
 import { peso, fmtDate, fmtDateTime } from "@/lib/format";
-import { qtyLabel } from "@/lib/units";
+import { qtyLabel, lineCartonSize, ctnLabel, ctnValue } from "@/lib/units";
 import { PrintButton, BackButton } from "@/components/print-button";
 import { FitOnePageLetter } from "@/components/print-fit";
 
@@ -24,6 +24,8 @@ export default async function GRNPrintPage({ params }: { params: { id: string } 
   const accepted = grn.lines.reduce((s, l) => s + l.acceptedQty, 0);
   const rejected = grn.lines.reduce((s, l) => s + l.rejectedQty, 0);
   const value = grn.lines.reduce((s, l) => s + l.acceptedQty * l.unitCost, 0);
+  const acceptedPcs = grn.lines.reduce((s, l) => s + l.acceptedBaseQty, 0);
+  const acceptedCtn = grn.lines.reduce((s, l) => s + (ctnValue(l.acceptedBaseQty, lineCartonSize(l, l.product)) ?? 0), 0);
 
   const meta: [string, string][] = [
     ["Supplier", grn.purchaseOrder.supplier.name],
@@ -103,7 +105,15 @@ export default async function GRNPrintPage({ params }: { params: { id: string } 
                   <td className="px-2 py-1.5 text-right">{qtyLabel(l.poLine.qty, l.unit)}</td>
                   <td className="px-2 py-1.5 text-right">{l.qty}</td>
                   <td className="px-2 py-1.5 text-right">{l.rejectedQty || "—"}</td>
-                  <td className="px-2 py-1.5 text-right font-semibold">{l.acceptedQty}</td>
+                  <td className="px-2 py-1.5 text-right font-semibold">
+                    {l.acceptedQty}
+                    <span className="block text-[10px] font-normal text-gray-500">
+                      {l.acceptedBaseQty.toLocaleString()} PCS
+                    </span>
+                    <span className="block text-[10px] font-normal text-gray-500">
+                      {ctnLabel(l.acceptedBaseQty, lineCartonSize(l, l.product)) ?? "N/A ⚠"}
+                    </span>
+                  </td>
                   <td className="px-2 py-1.5 text-right">{peso(l.unitCost)}</td>
                   <td className="px-2 py-1.5 text-right">{peso(l.acceptedQty * l.unitCost)}</td>
                   <td className="px-2 py-1.5 text-left font-mono text-xs">
@@ -118,7 +128,13 @@ export default async function GRNPrintPage({ params }: { params: { id: string } 
                 <td colSpan={3} className="px-2 py-2 text-right">TOTAL</td>
                 <td className="px-2 py-2 text-right">{grn.lines.reduce((s, l) => s + l.qty, 0)}</td>
                 <td className="px-2 py-2 text-right">{rejected || "—"}</td>
-                <td className="px-2 py-2 text-right">{accepted}</td>
+                <td className="px-2 py-2 text-right">
+                  {accepted}
+                  <span className="block text-[10px] font-normal">{acceptedPcs.toLocaleString()} PCS</span>
+                  <span className="block text-[10px] font-normal">
+                    {acceptedCtn.toLocaleString("en-PH", { maximumFractionDigits: 2 })} CTN
+                  </span>
+                </td>
                 <td />
                 <td className="px-2 py-2 text-right">{peso(value)}</td>
                 <td />

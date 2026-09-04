@@ -81,3 +81,74 @@ export function lineGrossWeightKg(baseQty: number, product: WeighedProduct): num
 export function kgLabel(kg: number): string {
   return `${kg.toLocaleString("en-PH", { maximumFractionDigits: 2 })} kg`;
 }
+
+/* ------------------------------------------------------------------ *
+ * Carton equivalent — the single source of the CTN figure shown       *
+ * anywhere in the system.                                             *
+ *                                                                     *
+ * CTN is a DISPLAY conversion only. PCS remains the one inventory     *
+ * balance; nothing here ever writes stock, and a carton figure must   *
+ * never be fed back into a quantity field.                            *
+ * ------------------------------------------------------------------ */
+
+/** Pieces per carton for display. Unlike cartonSize() this never throws —
+    it returns null so the caller can render "N/A" and flag the product. */
+export function displayCartonSize(product: PackagedProduct | null | undefined): number | null {
+  const ppc = product?.piecesPerCarton;
+  return ppc && ppc > 0 ? ppc : null;
+}
+
+/**
+ * The conversion that was in force when a transaction line was entered.
+ *
+ * A line entered in CARTON carries its own factor: baseQty / qty. Using it means an old
+ * document keeps the packaging it was written under even after the product master changes
+ * (Jakpot! 2.5 EC moved from 60 to 72 per carton — its old documents must still read 60).
+ * A line entered in PCS never recorded a factor, so the product's current conversion is
+ * the only one available.
+ */
+export function lineCartonSize(
+  line: { qty: number; unit: string; baseQty?: number | null },
+  product: PackagedProduct | null | undefined
+): number | null {
+  if (line.unit === CARTON && line.qty > 0 && line.baseQty && line.baseQty > 0) {
+    return line.baseQty / line.qty;
+  }
+  return displayCartonSize(product);
+}
+
+/** Exact carton equivalent of a PCS figure. Null when there is no usable conversion. */
+export function ctnEquivalent(basePcs: number, ppc: number | null | undefined): number | null {
+  if (!ppc || ppc <= 0) return null; // guards division by zero and unset packaging
+  return basePcs / ppc;
+}
+
+/** Rounded to 2 dp for display and Excel. The PCS quantity itself is never rounded. */
+export function ctnValue(basePcs: number, ppc: number | null | undefined): number | null {
+  const e = ctnEquivalent(basePcs, ppc);
+  return e === null ? null : Math.round(e * 100) / 100;
+}
+
+/** "104.17 CTN" / "100 CTN". Null when the product has no conversion. */
+export function ctnLabel(basePcs: number, ppc: number | null | undefined): string | null {
+  const e = ctnEquivalent(basePcs, ppc);
+  if (e === null) return null;
+  return `${e.toLocaleString("en-PH", { maximumFractionDigits: 2 })} CTN`;
+}
+
+/** "104 + 2 PCS" — the whole cartons and loose pieces behind the decimal.
+    Null when the split is exact or there is no conversion. */
+export function ctnLooseLabel(basePcs: number, ppc: number | null | undefined): string | null {
+  if (!ppc || ppc <= 0) return null;
+  const sign = basePcs < 0 ? "-" : "";
+  const abs = Math.abs(basePcs);
+  const loose = abs % ppc;
+  if (loose === 0) return null;
+  return `${sign}${Math.floor(abs / ppc).toLocaleString()} + ${loose} PCS`;
+}
+
+/** "1 CTN = 12 PCS", for showing the conversion actually used. */
+export function conversionNote(ppc: number | null | undefined): string | null {
+  if (!ppc || ppc <= 0) return null;
+  return `1 CTN = ${ppc.toLocaleString("en-PH", { maximumFractionDigits: 2 })} PCS`;
+}

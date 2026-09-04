@@ -3,7 +3,8 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requirePerm } from "@/lib/auth";
 import { fmtDate, peso } from "@/lib/format";
-import { qtyLabel } from "@/lib/units";
+import { qtyLabel, lineCartonSize } from "@/lib/units";
+import { CtnEquiv } from "@/components/qty";
 import { PageHeader, StatusBadge } from "@/components/ui";
 import { markPOSent, cancelPO } from "../actions";
 import { getActiveCompany } from "@/lib/company";
@@ -64,32 +65,48 @@ export default async function PODetailPage({ params, searchParams }: { params: {
       {/* Receiving now runs through the Receive Inventory module: a goods received note is
           drafted, inspected and only then posted to stock. This table just shows progress. */}
       <div className="card overflow-x-auto p-0">
-        <table className="w-full min-w-[640px]">
+        <table className="w-full min-w-[860px]">
           <thead className="border-b border-gray-200 bg-gray-50">
             <tr>
               <th className="table-th">Product</th>
               <th className="table-th text-right">Ordered</th>
               <th className="table-th text-right">Received</th>
               <th className="table-th text-right">Remaining</th>
+              <th className="table-th text-right">Ordered (PCS)</th>
+              <th className="table-th text-right">Equivalent (CTN)</th>
               <th className="table-th text-right">Unit Cost</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {po.lines.map((l) => {
               const remaining = Math.max(0, l.qty - l.receivedQty);
+              // the line's own conversion, so an old order keeps the packaging it was raised under
+              const ppc = lineCartonSize(l, l.product);
+              const factor = l.qty > 0 ? l.baseQty / l.qty : 1;
               return (
                 <tr key={l.id}>
                   <td className="table-td">
                     <span className="font-mono text-xs text-gray-500">{l.product.sku}</span>{" "}
                     <span className="font-medium">{l.product.name}</span>
                   </td>
+                  <td className="table-td text-right">{qtyLabel(l.qty, l.unit)}</td>
                   <td className="table-td text-right">
-                    {qtyLabel(l.qty, l.unit)}
-                    {l.unit === "CARTON" && <p className="text-xs font-normal text-gray-400">= {l.baseQty.toLocaleString()} PCS</p>}
+                    {qtyLabel(l.receivedQty, l.unit)}
+                    <p className="text-xs font-normal text-gray-400">
+                      <CtnEquiv basePcs={Math.round(l.receivedQty * factor)} ppc={ppc} showLoose={false} />
+                    </p>
                   </td>
-                  <td className="table-td text-right">{qtyLabel(l.receivedQty, l.unit)}</td>
                   <td className={`table-td text-right ${remaining > 0 ? "font-semibold" : "text-gray-300"}`}>
                     {remaining ? qtyLabel(remaining, l.unit) : "—"}
+                    {remaining > 0 && (
+                      <p className="text-xs font-normal text-gray-400">
+                        <CtnEquiv basePcs={Math.round(remaining * factor)} ppc={ppc} showLoose={false} />
+                      </p>
+                    )}
+                  </td>
+                  <td className="table-td text-right">{l.baseQty.toLocaleString()}</td>
+                  <td className="table-td text-right text-sm">
+                    <CtnEquiv basePcs={l.baseQty} ppc={ppc} />
                   </td>
                   <td className="table-td text-right">
                     {peso(l.unitCost)}

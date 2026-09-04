@@ -1,3 +1,4 @@
+import { NoConversion } from "@/components/qty";
 import { Fragment } from "react";
 import Link from "next/link";
 import { requirePerm } from "@/lib/auth";
@@ -23,6 +24,7 @@ export default async function MonthlySalesPage({ searchParams }: { searchParams:
   const monthQty = (mi: number) => rows.reduce((s, r) => s + r.monthsQty[mi], 0);
   const monthAmt = (mi: number) => rows.reduce((s, r) => s + r.monthsAmt[mi], 0);
   const grandQty = rows.reduce((s, r) => s + r.monthsQty.reduce((a, b) => a + b, 0), 0);
+  const grandCtn = rows.reduce((s, r) => s + r.monthsCtn.reduce((a, b) => a + b, 0), 0);
   const grandAmt = rows.reduce((s, r) => s + r.monthsAmt.reduce((a, b) => a + b, 0), 0);
 
   let lastCategory = "";
@@ -64,12 +66,13 @@ export default async function MonthlySalesPage({ searchParams }: { searchParams:
       </form>
 
       <div className="card overflow-x-auto p-0">
-        <table className="w-full min-w-[1100px] text-xs">
+        <table className="w-full min-w-[1200px] text-xs">
           <thead className="border-b-2 border-gray-300 bg-gray-50">
             <tr>
               <th className="px-2 py-2 text-left font-semibold">PRODUCT</th>
               {MONTHS.map((m) => <th key={m} className="px-1 py-2 text-right font-semibold">{m}</th>)}
-              <th className="px-2 py-2 text-right font-bold text-red-600">TOTAL QTY</th>
+              <th className="px-2 py-2 text-right font-bold text-red-600">TOTAL QTY (PCS)</th>
+              <th className="px-2 py-2 text-right font-bold">EQUIV. (CTN)</th>
               <th className="px-2 py-2 text-right font-bold">AMOUNT</th>
             </tr>
           </thead>
@@ -78,12 +81,13 @@ export default async function MonthlySalesPage({ searchParams }: { searchParams:
               const showCat = r.category !== lastCategory;
               lastCategory = r.category;
               const totalQty = r.monthsQty.reduce((a, b) => a + b, 0);
+              const totalCtn = r.monthsCtn.reduce((a, b) => a + b, 0);
               const totalAmt = r.monthsAmt.reduce((a, b) => a + b, 0);
               return (
                 <Fragment key={r.name}>
                   {showCat && (
                     <tr className="bg-emerald-50/80">
-                      <td colSpan={15} className="px-2 py-1 font-bold uppercase tracking-wide text-emerald-900">{r.category}</td>
+                      <td colSpan={16} className="px-2 py-1 font-bold uppercase tracking-wide text-emerald-900">{r.category}</td>
                     </tr>
                   )}
                   <tr className="border-b border-gray-100 hover:bg-gray-50">
@@ -92,13 +96,16 @@ export default async function MonthlySalesPage({ searchParams }: { searchParams:
                       <td key={mi} className="px-1 py-1 text-right">{q ? q.toLocaleString() : "-"}</td>
                     ))}
                     <td className="px-2 py-1 text-right font-semibold text-red-600">{totalQty.toLocaleString()}</td>
+                    <td className="px-2 py-1 text-right font-semibold">
+                      {r.noConversion ? <NoConversion compact /> : `${totalCtn.toLocaleString("en-PH", { maximumFractionDigits: 2 })}`}
+                    </td>
                     <td className="px-2 py-1 text-right font-semibold">{peso(totalAmt)}</td>
                   </tr>
                 </Fragment>
               );
             })}
             {!rows.length && (
-              <tr><td colSpan={15} className="p-8 text-center text-sm text-gray-500">No invoiced sales for {region || "any region"} in {year}.</td></tr>
+              <tr><td colSpan={16} className="p-8 text-center text-sm text-gray-500">No invoiced sales for {region || "any region"} in {year}.</td></tr>
             )}
           </tbody>
           {rows.length > 0 && (
@@ -109,6 +116,7 @@ export default async function MonthlySalesPage({ searchParams }: { searchParams:
                   <td key={mi} className="px-1 py-1.5 text-right">{monthQty(mi).toLocaleString()}</td>
                 ))}
                 <td className="bg-yellow-100 px-2 py-1.5 text-right text-red-600">{grandQty.toLocaleString()}</td>
+                <td className="bg-yellow-100 px-2 py-1.5 text-right">{grandCtn.toLocaleString("en-PH", { maximumFractionDigits: 2 })}</td>
                 <td className="px-2 py-1.5" />
               </tr>
               <tr className="font-semibold text-emerald-900">
@@ -116,6 +124,7 @@ export default async function MonthlySalesPage({ searchParams }: { searchParams:
                 {MONTHS.map((_, mi) => (
                   <td key={mi} className="px-1 py-1.5 text-right">{monthAmt(mi).toLocaleString("en-PH", { maximumFractionDigits: 0 })}</td>
                 ))}
+                <td className="px-2 py-1.5" />
                 <td className="px-2 py-1.5" />
                 <td className="bg-yellow-100 px-2 py-1.5 text-right font-bold">{peso(grandAmt)}</td>
               </tr>

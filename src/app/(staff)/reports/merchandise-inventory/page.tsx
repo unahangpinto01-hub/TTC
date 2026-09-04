@@ -6,6 +6,8 @@ import { peso, fmtDate } from "@/lib/format";
 import { getMerchandiseInventory } from "@/lib/reports";
 import { PrintButton, BackButton } from "@/components/print-button";
 import { getCategoryNames } from "@/lib/categories";
+import { ctnValue } from "@/lib/units";
+import { CtnEquiv } from "@/components/qty";
 
 export default async function MerchandiseInventoryPage({
   searchParams,
@@ -46,6 +48,10 @@ export default async function MerchandiseInventoryPage({
     showZero ? "Including zero stock" : "Zero stock hidden",
   ].join(" · ");
 
+  // cartons are totalled per product at that product's own conversion; products with no
+  // packaging setup contribute nothing and are counted separately so the gap is visible
+  const totalCartons = report.rows.reduce((s, r) => s + (ctnValue(r.stock, r.piecesPerCarton) ?? 0), 0);
+  const noConversion = report.rows.filter((r) => !r.piecesPerCarton || r.piecesPerCarton <= 0).length;
   let lastCategory = "";
 
   return (
@@ -103,7 +109,15 @@ export default async function MerchandiseInventoryPage({
 
       <div className="mb-4 grid grid-cols-3 gap-3">
         <div className="card py-3"><p className="text-xs text-gray-500">Inventory Items</p><p className="text-lg font-bold">{report.items.toLocaleString()}</p></div>
-        <div className="card py-3"><p className="text-xs text-gray-500">Total Stock</p><p className="text-lg font-bold">{report.totalStock.toLocaleString()} PCS</p></div>
+        <div className="card py-3">
+          <p className="text-xs text-gray-500">Total Stock</p>
+          <p className="text-lg font-bold">{report.totalStock.toLocaleString()} PCS</p>
+          <p className="text-xs text-gray-500">
+            {/* summed per product at each product's own conversion, never one blanket divisor */}
+            = {totalCartons.toLocaleString("en-PH", { maximumFractionDigits: 2 })} CTN
+            {noConversion > 0 && <span className="text-amber-700"> · {noConversion} product(s) with no conversion ⚠</span>}
+          </p>
+        </div>
         <div className="card py-3"><p className="text-xs text-gray-500">Total Inventory Value</p><p className="text-lg font-bold text-emerald-800">{peso(report.totalValue)}</p></div>
       </div>
 
@@ -117,6 +131,7 @@ export default async function MerchandiseInventoryPage({
             <th className="py-1.5 pr-2">Pack</th>
             <th className="py-1.5 pr-2 text-right">Unit Cost</th>
             <th className="py-1.5 pr-2 text-right">Stock (PCS)</th>
+            <th className="py-1.5 pr-2 text-right">Equivalent (CTN)</th>
             <th className="py-1.5 text-right">Amount</th>
           </tr>
         </thead>
@@ -128,7 +143,7 @@ export default async function MerchandiseInventoryPage({
               <Fragment key={r.id}>
                 {showCat && !category && (
                   <tr className="bg-gray-100 print:bg-gray-100">
-                    <td colSpan={scope.combined ? 8 : 7} className="py-1 pl-1 text-xs font-bold uppercase tracking-wide text-emerald-900">{r.category}</td>
+                    <td colSpan={scope.combined ? 9 : 8} className="py-1 pl-1 text-xs font-bold uppercase tracking-wide text-emerald-900">{r.category}</td>
                   </tr>
                 )}
                 <tr className={`border-b border-gray-200 ${r.stock < 0 ? "bg-red-50 text-red-700" : ""}`}>
@@ -139,18 +154,23 @@ export default async function MerchandiseInventoryPage({
                   <td className="py-1.5 pr-2">{r.packSize}</td>
                   <td className="py-1.5 pr-2 text-right">{peso(r.unitCost)}</td>
                   <td className="py-1.5 pr-2 text-right">{r.stock.toLocaleString()}{r.stock < 0 ? " ⚠" : ""}</td>
+                  <td className="py-1.5 pr-2 text-right">
+                    <CtnEquiv basePcs={r.stock} ppc={r.piecesPerCarton} />
+                  </td>
                   <td className="py-1.5 text-right font-semibold">{peso(r.amount)}</td>
                 </tr>
               </Fragment>
             );
           })}
           {!report.rows.length && (
-            <tr><td colSpan={scope.combined ? 8 : 7} className="p-8 text-center text-gray-500">No products match the filters{showZero ? "" : " (zero-stock products are hidden — tick “Show zero stock”)"}.</td></tr>
+            <tr><td colSpan={scope.combined ? 9 : 8} className="p-8 text-center text-gray-500">No products match the filters{showZero ? "" : " (zero-stock products are hidden — tick “Show zero stock”)"}.</td></tr>
           )}
         </tbody>
         <tfoot>
           <tr className="border-t-2 border-gray-400 text-base font-bold">
-            <td colSpan={scope.combined ? 7 : 6} className="py-2 pr-2 text-right">{scope.combined ? "COMBINED TOTAL INVENTORY VALUE" : "TOTAL INVENTORY VALUE"}</td>
+            <td colSpan={scope.combined ? 6 : 5} className="py-2 pr-2 text-right">{scope.combined ? "COMBINED TOTAL INVENTORY VALUE" : "TOTAL INVENTORY VALUE"}</td>
+            <td className="py-2 pr-2 text-right text-sm">{report.totalStock.toLocaleString()} PCS</td>
+            <td className="py-2 pr-2 text-right text-sm">{totalCartons.toLocaleString("en-PH", { maximumFractionDigits: 2 })} CTN</td>
             <td className="py-2 text-right text-emerald-900">{peso(report.totalValue)}</td>
           </tr>
         </tfoot>

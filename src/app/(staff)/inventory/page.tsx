@@ -2,7 +2,8 @@ import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { requirePerm } from "@/lib/auth";
 import { peso, fmtDate, daysUntil, EXPIRY_WARN_DAYS } from "@/lib/format";
-import { cartonLabel } from "@/lib/units";
+import { displayCartonSize } from "@/lib/units";
+import { CtnEquiv } from "@/components/qty";
 import { getPage, pageCount, PAGE_SIZE } from "@/lib/paginate";
 import { PageHeader, Pagination, StatusBadge, stockStatus } from "@/components/ui";
 import { renameParentItem, ungroupParentItem } from "./actions";
@@ -87,7 +88,8 @@ export default async function InventoryPage({ searchParams }: { searchParams: { 
               <th className="table-th">Category</th>
               <th className="table-th">Pack</th>
               <th className="table-th text-right">Dealer Price</th>
-              <th className="table-th text-right">Stock</th>
+              <th className="table-th text-right">Stock (PCS)</th>
+              <th className="table-th text-right">Equivalent (CTN)</th>
               <th className="table-th">Expiry</th>
               <th className="table-th">Status</th>
             </tr>
@@ -102,7 +104,7 @@ export default async function InventoryPage({ searchParams }: { searchParams: { 
                 const renaming = canEdit && searchParams.renameParent === p.parentItem;
                 rows.push(
                   <tr key={`grp-${p.parentItem}`} className="bg-emerald-50/70">
-                    <td colSpan={8} className="px-3 py-1.5 text-xs font-bold uppercase tracking-wide text-emerald-900">
+                    <td colSpan={9} className="px-3 py-1.5 text-xs font-bold uppercase tracking-wide text-emerald-900">
                       {renaming ? (
                         <form action={renameParentItem} className="flex flex-wrap items-center gap-2 normal-case">
                           <span>📦</span>
@@ -146,12 +148,9 @@ export default async function InventoryPage({ searchParams }: { searchParams: { 
                 <td className="table-td text-sm text-gray-600">{p.category}</td>
                 <td className="table-td">{p.packSize}</td>
                 <td className="table-td text-right">{peso(p.dealerPrice)}</td>
-                <td className="table-td text-right font-semibold">
-                  {p.stockQty.toLocaleString()}
-                  {(() => {
-                    const c = cartonLabel(p.stockQty, p);
-                    return c ? <p className="text-xs font-normal text-gray-500">{c}</p> : null;
-                  })()}
+                <td className="table-td text-right font-semibold">{p.stockQty.toLocaleString()}</td>
+                <td className="table-td text-right text-sm">
+                  <CtnEquiv basePcs={p.stockQty} ppc={displayCartonSize(p)} />
                 </td>
                 <td className="table-td">
                   {p.expDate ? (
@@ -179,7 +178,7 @@ export default async function InventoryPage({ searchParams }: { searchParams: { 
             })}
             {!products.length && (
               <tr>
-                <td colSpan={8} className="p-8 text-center text-sm text-gray-500">
+                <td colSpan={9} className="p-8 text-center text-sm text-gray-500">
                   {q ? <>No products found for &ldquo;{q}&rdquo;.</> : "No products match your filters."}
                 </td>
               </tr>

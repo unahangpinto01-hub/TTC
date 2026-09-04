@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { requirePerm } from "@/lib/auth";
 import { peso, fmtDateTime } from "@/lib/format";
 import { runNotificationSweep } from "@/lib/notify";
+import { ctnLabel, displayCartonSize } from "@/lib/units";
 import { getPerm } from "@/lib/permissions";
 import { getSalesReport, getPnl } from "@/lib/reports";
 import { getActiveCompany } from "@/lib/company";
@@ -222,7 +223,12 @@ export default async function DashboardPage() {
               {lowItems.slice(0, 6).map((p) => (
                 <li key={p.id} className="flex items-center justify-between">
                   <Link href={`/inventory/${p.id}`} className="truncate pr-2 hover:underline">{p.name}</Link>
-                  <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">{p.stockQty} left</span>
+                  <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
+                    {p.stockQty.toLocaleString()} PCS left
+                    {ctnLabel(p.stockQty, displayCartonSize(p)) && (
+                      <span className="ml-1 font-normal text-amber-600">({ctnLabel(p.stockQty, displayCartonSize(p))})</span>
+                    )}
+                  </span>
                 </li>
               ))}
               {!outItems.length && !lowItems.length && <p className="text-sm text-gray-400">All stock levels healthy. ✔</p>}

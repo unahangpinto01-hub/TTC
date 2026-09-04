@@ -91,9 +91,9 @@ export default async function ReceivingReportPage({
                 <th className="table-th">Supplier</th>
                 <th className="table-th">PO</th>
                 <th className="table-th">Supplier DR / Invoice</th>
-                <th className="table-th text-right">Received</th>
-                <th className="table-th text-right">Rejected</th>
-                <th className="table-th text-right">Accepted</th>
+                <th className="table-th text-right">Received (PCS / CTN)</th>
+                <th className="table-th text-right">Rejected (PCS / CTN)</th>
+                <th className="table-th text-right">Accepted (PCS / CTN)</th>
                 <th className="table-th text-right">Value</th>
                 <th className="table-th">Status</th>
               </tr>
@@ -114,9 +114,11 @@ export default async function ReceivingReportPage({
                     {r.grn.deliveryRefNo || "—"}
                     {r.grn.supplierInvoiceNo && <span className="block text-gray-400">Inv {r.grn.supplierInvoiceNo}</span>}
                   </td>
-                  <td className="table-td text-right">{r.received.toLocaleString()}</td>
-                  <td className={`table-td text-right ${r.rejected ? "font-semibold text-red-600" : "text-gray-300"}`}>{r.rejected || "—"}</td>
-                  <td className="table-td text-right font-semibold">{r.accepted.toLocaleString()}</td>
+                  <td className="table-td text-right"><Qty pcs={r.receivedPcs} ctn={r.receivedCtn} /></td>
+                  <td className={`table-td text-right ${r.rejected ? "font-semibold text-red-600" : ""}`}>
+                    <Qty pcs={r.rejectedPcs} ctn={r.rejectedCtn} dash />
+                  </td>
+                  <td className="table-td text-right font-semibold"><Qty pcs={r.acceptedPcs} ctn={r.acceptedCtn} /></td>
                   <td className="table-td text-right">{peso(r.value)}</td>
                   <td className="table-td text-xs">{r.grn.status}</td>
                 </tr>
@@ -125,9 +127,9 @@ export default async function ReceivingReportPage({
             <tfoot className="border-t-2 border-gray-300 bg-gray-50 font-bold">
               <tr>
                 <td className="table-td" colSpan={scope.combined ? 6 : 5}>TOTAL — {totals.receipts} receipt(s)</td>
-                <td className="table-td text-right">{totals.received.toLocaleString()}</td>
-                <td className="table-td text-right text-red-600">{totals.rejected || "—"}</td>
-                <td className="table-td text-right">{totals.accepted.toLocaleString()}</td>
+                <td className="table-td text-right"><Qty pcs={totals.receivedPcs} ctn={totals.receivedCtn} /></td>
+                <td className="table-td text-right text-red-600"><Qty pcs={totals.rejectedPcs} ctn={totals.rejectedCtn} dash /></td>
+                <td className="table-td text-right"><Qty pcs={totals.acceptedPcs} ctn={totals.acceptedCtn} /></td>
                 <td className="table-td text-right">{peso(totals.value)}</td>
                 <td />
               </tr>
@@ -142,5 +144,18 @@ export default async function ReceivingReportPage({
         Only <strong>Posted</strong> receipts have reached inventory; of the value above, {peso(totals.postedValue)} is posted.
       </p>
     </div>
+  );
+}
+
+/** PCS on top, carton equivalent beneath — the standard quantity cell in these reports. */
+function Qty({ pcs, ctn, className = "", dash = false }: { pcs: number; ctn: number; className?: string; dash?: boolean }) {
+  if (dash && pcs === 0) return <span className="text-gray-300">—</span>;
+  return (
+    <span className={`whitespace-nowrap ${className}`}>
+      {pcs.toLocaleString()}
+      <span className="block text-xs font-normal text-gray-500">
+        {ctn.toLocaleString("en-PH", { maximumFractionDigits: 2 })} CTN
+      </span>
+    </span>
   );
 }

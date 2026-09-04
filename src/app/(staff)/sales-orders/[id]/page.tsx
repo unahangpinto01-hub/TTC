@@ -3,7 +3,8 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requirePerm } from "@/lib/auth";
 import { fmtDate, peso, termLabel, vatBreakdown } from "@/lib/format";
-import { cartonLabel, qtyLabel } from "@/lib/units";
+import { qtyLabel, lineCartonSize, displayCartonSize } from "@/lib/units";
+import { CtnEquiv, LineQty } from "@/components/qty";
 import { PageHeader, StatusBadge } from "@/components/ui";
 import { confirmSO, cancelSO, generateDR, updateLineQty, updateLinePrice, removeLine } from "../actions";
 import { ScheduleForm } from "./schedule-form";
@@ -91,10 +92,17 @@ export default async function SODetailPage({ params, searchParams }: { params: {
                         <button className="btn-secondary px-2 py-1 text-xs" type="submit">Set</button>
                       </form>
                     ) : (
-                      qtyLabel(l.qty, l.unit)
+                      <LineQty qty={l.qty} unit={l.unit} basePcs={l.baseQty} ppc={lineCartonSize(l, l.product)} />
                     )}
-                    {l.unit === "CARTON" && (
-                      <p className="text-xs font-normal text-gray-400">= {l.baseQty.toLocaleString()} PCS</p>
+                    {so.status === "Draft" && (
+                      <p className="text-xs font-normal text-gray-400">
+                        {l.unit === "CARTON"
+                          ? `= ${l.baseQty.toLocaleString()} PCS`
+                          : (() => {
+                              const ppc = lineCartonSize(l, l.product);
+                              return ppc ? `= ${(l.baseQty / ppc).toLocaleString("en-PH", { maximumFractionDigits: 2 })} CTN` : "N/A ⚠";
+                            })()}
+                      </p>
                     )}
                   </td>
                   <td className="table-td text-right">
@@ -116,10 +124,9 @@ export default async function SODetailPage({ params, searchParams }: { params: {
                   <td className="table-td text-right">{peso(l.lineTotal)}</td>
                   <td className="table-td text-right">
                     {l.product.stockQty.toLocaleString()} <span className="text-xs text-gray-400">PCS</span>
-                    {(() => {
-                      const c = cartonLabel(l.product.stockQty, l.product);
-                      return c ? <p className="text-xs font-normal text-gray-400">{c}</p> : null;
-                    })()}
+                    <p className="text-xs font-normal text-gray-400">
+                      <CtnEquiv basePcs={l.product.stockQty} ppc={displayCartonSize(l.product)} showLoose={false} />
+                    </p>
                   </td>
                   <td className="table-td">
                     <StatusBadge status={short ? "Out" : "In Stock"} />
@@ -192,7 +199,13 @@ export default async function SODetailPage({ params, searchParams }: { params: {
                     <input type="hidden" name="lineId" value={l.id} />
                     <span className="w-72 truncate">{l.product.name}</span>
                     <input name="drQty" type="number" min={0} max={l.qty} defaultValue={l.qty} className="input w-24 text-right" />
-                    <span className="text-xs text-gray-400">of {qtyLabel(l.qty, l.unit)}</span>
+                    <span className="text-xs text-gray-400">
+                      of {qtyLabel(l.qty, l.unit)}
+                      {l.unit !== "CARTON" && (() => {
+                        const ppc = lineCartonSize(l, l.product);
+                        return ppc ? ` (${(l.baseQty / ppc).toLocaleString("en-PH", { maximumFractionDigits: 2 })} CTN)` : "";
+                      })()}
+                    </span>
                   </div>
                 ))}
               </div>

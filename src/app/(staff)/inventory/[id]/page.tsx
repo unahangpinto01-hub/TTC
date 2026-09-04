@@ -3,12 +3,13 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requirePerm } from "@/lib/auth";
 import { peso, fmtDate, daysUntil, EXPIRY_WARN_DAYS } from "@/lib/format";
-import { cartonLabel, unitDealerPrice, CARTON } from "@/lib/units";
+import { unitDealerPrice, CARTON, displayCartonSize, ctnLabel, ctnLooseLabel, conversionNote } from "@/lib/units";
 import { PageHeader, StatusBadge, stockStatus } from "@/components/ui";
 import { ProductEditForm } from "./product-edit-form";
 import { AdjustStockForm } from "./adjust-stock-form";
 import { getActiveCompany } from "@/lib/company";
 import { getCategoryNames } from "@/lib/categories";
+import { CtnEquiv } from "@/components/qty";
 
 export default async function ProductDetailPage({ params, searchParams }: { params: { id: string }; searchParams: { error?: string } }) {
   const user = await requirePerm("inventory");
@@ -39,6 +40,7 @@ export default async function ProductDetailPage({ params, searchParams }: { para
     ? await prisma.supplier.findMany({ where: { status: "Active" }, orderBy: { name: "asc" }, select: { id: true, name: true } })
     : [];
   const categories = isSuperAdmin ? await getCategoryNames() : [];
+  const ppc = displayCartonSize(product); // one conversion for the whole stock card
 
   return (
     <div>
@@ -83,8 +85,8 @@ export default async function ProductDetailPage({ params, searchParams }: { para
           ],
           ["Dealer Price (PCS)", peso(product.dealerPrice)],
           [
-            "Pieces per Carton",
-            product.piecesPerCarton ? `${product.piecesPerCarton} PCS = 1 CTN` : "— (not sold by carton)",
+            "Packaging Conversion",
+            conversionNote(product.piecesPerCarton) ?? "N/A — packaging setup incomplete ⚠",
           ],
           [
             "Dealer Price (Carton)",
@@ -98,12 +100,16 @@ export default async function ProductDetailPage({ params, searchParams }: { para
           ],
           ["SRP", product.itemClass === "NON_INVENTORY" ? "— (promo item)" : peso(product.srp)],
           ["Reorder Point", `${product.reorderPoint} PCS`],
+          ["Stock on Hand (PCS)", `${product.stockQty.toLocaleString()} PCS`],
           [
-            "Stock on Hand",
-            `${product.stockQty.toLocaleString()} PCS${(() => {
-              const c = cartonLabel(product.stockQty, product);
-              return c ? ` = ${c}` : "";
-            })()}`,
+            "Equivalent (CTN)",
+            (() => {
+              const ppc = displayCartonSize(product);
+              const label = ctnLabel(product.stockQty, ppc);
+              if (!label) return "N/A — packaging setup incomplete ⚠";
+              const loose = ctnLooseLabel(product.stockQty, ppc);
+              return loose ? `${label}  (${loose})` : label;
+            })(),
           ],
           ["Batch Number", product.batchNo ?? "—"],
           ["Manufacturing Date", product.mfgDate ? fmtDate(product.mfgDate) : "—"],
@@ -112,7 +118,7 @@ export default async function ProductDetailPage({ params, searchParams }: { para
           ([k]) =>
             product.itemClass !== "NON_INVENTORY" ||
             // promo materials show only the basics
-            ["Classification", "Category", "SKU", "Unit Cost", "Pack Size", "Reorder Point", "Stock on Hand", "Gross Weight per Pack", "Batch Number", "Supplier"].includes(k as string)
+            ["Classification", "Category", "SKU", "Unit Cost", "Pack Size", "Reorder Point", "Stock on Hand (PCS)", "Equivalent (CTN)", "Packaging Conversion", "Gross Weight per Pack", "Batch Number", "Supplier"].includes(k as string)
         ).map(([k, v]) => (
           <div key={k} className="card py-3">
             <p className="text-xs text-gray-500">{k}</p>
@@ -175,16 +181,21 @@ export default async function ProductDetailPage({ params, searchParams }: { para
 
       {canEdit && <AdjustStockForm productId={product.id} hasCarton={!!product.piecesPerCarton} />}
 
-      <h2 className="mb-2 text-lg font-semibold">Stock Card</h2>
+      <h2 className="mb-2 text-lg font-semibold">
+        Stock Card
+        {conversionNote(ppc) && <span className="ml-2 text-xs font-normal text-gray-500">({conversionNote(ppc)})</span>}
+      </h2>
       <div className="card overflow-x-auto p-0">
-        <table className="w-full min-w-[640px]">
+        <table className="w-full min-w-[820px]">
           <thead className="border-b border-gray-200 bg-gray-50">
             <tr>
               <th className="table-th">Date</th>
               <th className="table-th">Type</th>
               <th className="table-th">Reference</th>
-              <th className="table-th text-right">Qty</th>
-              <th className="table-th text-right">Balance</th>
+              <th className="table-th text-right">Qty (PCS)</th>
+              <th className="table-th text-right">Equivalent (CTN)</th>
+              <th className="table-th text-right">Balance (PCS)</th>
+              <th className="table-th text-right">Balance (CTN)</th>
               <th className="table-th">User</th>
             </tr>
           </thead>
@@ -205,16 +216,26 @@ export default async function ProductDetailPage({ params, searchParams }: { para
                   {m.supplierRef && <p className="text-xs text-gray-400">ref {m.supplierRef}</p>}
                 </td>
                 <td className="table-td text-right">
-                  {m.type === "OUT" || m.qty < 0 ? "−" : "+"}{Math.abs(m.qty)}
-                  {m.enteredUnit === "CARTON" && m.enteredQty != null && (
-                    <span className="text-xs text-gray-400"> ({m.enteredQty} CTN)</span>
-                  )}
+                  {m.type === "OUT" || m.qty < 0 ? "−" : "+"}{Math.abs(m.qty).toLocaleString()}
                 </td>
-                <td className="table-td text-right font-semibold">{m.balanceAfter}</td>
+                <td className="table-td text-right text-sm">
+                  {/* a movement entered in cartons carries its own conversion, so a historical
+                      row keeps the packaging that applied on the day it was posted */}
+                  {(() => {
+                    const moved = Math.abs(m.qty);
+                    const historic =
+                      m.enteredUnit === "CARTON" && m.enteredQty ? moved / m.enteredQty : ppc;
+                    return <CtnEquiv basePcs={moved} ppc={historic} />;
+                  })()}
+                </td>
+                <td className="table-td text-right font-semibold">{m.balanceAfter.toLocaleString()}</td>
+                <td className="table-td text-right text-sm text-gray-600">
+                  <CtnEquiv basePcs={m.balanceAfter} ppc={ppc} showLoose={false} />
+                </td>
                 <td className="table-td text-sm text-gray-600">{m.user?.name ?? "—"}</td>
               </tr>
             ))}
-            {!moves.length && <tr><td colSpan={6} className="p-8 text-center text-sm text-gray-500">No stock movements yet.</td></tr>}
+            {!moves.length && <tr><td colSpan={8} className="p-8 text-center text-sm text-gray-500">No stock movements yet.</td></tr>}
           </tbody>
         </table>
       </div>

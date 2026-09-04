@@ -3,7 +3,8 @@ import { prisma } from "@/lib/db";
 import { requirePermWrite } from "@/lib/auth";
 import { getActiveCompany } from "@/lib/company";
 import { peso, fmtDate } from "@/lib/format";
-import { qtyLabel } from "@/lib/units";
+import { qtyLabel, lineCartonSize, conversionNote } from "@/lib/units";
+import { CtnEquiv } from "@/components/qty";
 import { PageHeader } from "@/components/ui";
 import { createGRN } from "../actions";
 
@@ -84,7 +85,7 @@ export default async function NewReceivingPage({
           <div>
             <p className="mb-2 text-sm font-semibold">Outstanding on this purchase order</p>
             <div className="overflow-x-auto rounded-lg border border-gray-200">
-              <table className="w-full min-w-[620px]">
+              <table className="w-full min-w-[880px]">
                 <thead className="border-b border-gray-200 bg-gray-50">
                   <tr>
                     <th className="table-th">Product</th>
@@ -92,19 +93,28 @@ export default async function NewReceivingPage({
                     <th className="table-th text-right">Ordered</th>
                     <th className="table-th text-right">Received</th>
                     <th className="table-th text-right">Remaining</th>
+                    <th className="table-th text-right">Remaining (PCS)</th>
+                    <th className="table-th text-right">Equivalent (CTN)</th>
                     <th className="table-th text-right">PO Unit Cost</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {selected.lines.map((l) => {
                     const remaining = Math.max(0, l.qty - l.receivedQty);
+                    const ppc = lineCartonSize(l, l.product);
+                    const remainingPcs = Math.round(remaining * (l.qty > 0 ? l.baseQty / l.qty : 1));
                     return (
                       <tr key={l.id} className={remaining === 0 ? "text-gray-300" : ""}>
                         <td className="table-td font-medium">{l.product.name}</td>
-                        <td className="table-td text-sm">{l.product.packSize}</td>
+                        <td className="table-td text-sm">
+                          {l.product.packSize}
+                          <span className="block text-xs text-gray-400">{conversionNote(ppc) ?? "no carton conversion ⚠"}</span>
+                        </td>
                         <td className="table-td text-right text-sm">{qtyLabel(l.qty, l.unit)}</td>
                         <td className="table-td text-right text-sm">{l.receivedQty || "—"}</td>
                         <td className={`table-td text-right ${remaining > 0 ? "font-semibold" : ""}`}>{remaining || "—"}</td>
+                        <td className="table-td text-right text-sm">{remainingPcs.toLocaleString()}</td>
+                        <td className="table-td text-right text-sm"><CtnEquiv basePcs={remainingPcs} ppc={ppc} /></td>
                         <td className="table-td text-right text-sm">{peso(l.unitCost)}</td>
                       </tr>
                     );

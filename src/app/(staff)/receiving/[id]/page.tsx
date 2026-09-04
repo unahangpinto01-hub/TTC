@@ -4,7 +4,8 @@ import { prisma } from "@/lib/db";
 import { requirePerm } from "@/lib/auth";
 import { getActiveCompany } from "@/lib/company";
 import { peso, fmtDate, fmtDateTime } from "@/lib/format";
-import { qtyLabel } from "@/lib/units";
+import { qtyLabel, lineCartonSize, ctnValue } from "@/lib/units";
+import { CtnEquiv } from "@/components/qty";
 import { PageHeader, StatusBadge } from "@/components/ui";
 import { getAuditTrail } from "@/lib/salespeople";
 import { saveGRNLines, setGRNStatus, postGRN, voidGRN } from "../actions";
@@ -47,6 +48,9 @@ export default async function GRNDetailPage({
   const today = grn.receivedDate.toISOString().slice(0, 10);
 
   const accepted = grn.lines.reduce((s, l) => s + l.acceptedQty, 0);
+  // cartons are summed across products because a carton is a physical box, not a per-product unit
+  const acceptedCtn = grn.lines.reduce((s, l) => s + (ctnValue(l.acceptedBaseQty, lineCartonSize(l, l.product)) ?? 0), 0);
+  const acceptedPcs = grn.lines.reduce((s, l) => s + l.acceptedBaseQty, 0);
   const rejected = grn.lines.reduce((s, l) => s + l.rejectedQty, 0);
   const value = grn.lines.reduce((s, l) => s + l.acceptedQty * l.unitCost, 0);
   const costDiffs = grn.lines.filter((l) => Math.abs(l.unitCost - l.poUnitCost) > 0.004);
@@ -92,7 +96,13 @@ export default async function GRNDetailPage({
           </Link>
           <p className="text-xs text-gray-400">{grn.purchaseOrder.status}</p>
         </div>
-        <div className="card py-3"><p className="text-xs text-gray-500">Accepted / Rejected</p><p className="font-semibold">{accepted.toLocaleString()} <span className={rejected ? "text-red-600" : "text-gray-300"}>/ {rejected.toLocaleString()}</span></p></div>
+        <div className="card py-3">
+          <p className="text-xs text-gray-500">Accepted / Rejected</p>
+          <p className="font-semibold">{accepted.toLocaleString()} <span className={rejected ? "text-red-600" : "text-gray-300"}>/ {rejected.toLocaleString()}</span></p>
+          <p className="text-xs text-gray-500">
+            {acceptedPcs.toLocaleString()} PCS = {acceptedCtn.toLocaleString("en-PH", { maximumFractionDigits: 2 })} CTN
+          </p>
+        </div>
         <div className="card py-3"><p className="text-xs text-gray-500">Accepted Value</p><p className="font-semibold">{peso(value)}</p></div>
       </div>
 
@@ -110,7 +120,7 @@ export default async function GRNDetailPage({
         </div>
 
         <div className="overflow-x-auto rounded-lg border border-gray-200">
-          <table className="w-full min-w-[1040px]">
+          <table className="w-full min-w-[1240px]">
             <thead className="border-b border-gray-200 bg-gray-50">
               <tr>
                 <th className="table-th">Product</th>
@@ -121,6 +131,8 @@ export default async function GRNDetailPage({
                 <th className="table-th text-right">Received</th>
                 <th className="table-th text-right">Rejected</th>
                 <th className="table-th text-right">Accepted</th>
+                <th className="table-th text-right">Accepted (PCS)</th>
+                <th className="table-th text-right">Equivalent (CTN)</th>
                 <th className="table-th text-right">Unit Cost</th>
                 <th className="table-th text-right">Total</th>
                 <th className="table-th">Batch / Expiry</th>
@@ -130,6 +142,7 @@ export default async function GRNDetailPage({
               {grn.lines.map((l) => {
                 const remaining = Math.max(0, l.poLine.qty - l.poLine.receivedQty);
                 const diff = Math.abs(l.unitCost - l.poUnitCost) > 0.004;
+                const ppc = lineCartonSize(l, l.product);
                 return (
                   <tr key={l.id}>
                     <td className="table-td font-medium">{l.product.name}</td>
@@ -152,6 +165,10 @@ export default async function GRNDetailPage({
                       )}
                     </td>
                     <td className="table-td text-right font-semibold text-emerald-700">{l.acceptedQty || "—"}</td>
+                    <td className="table-td text-right text-sm">{l.acceptedBaseQty.toLocaleString()}</td>
+                    <td className="table-td text-right text-sm">
+                      <CtnEquiv basePcs={l.acceptedBaseQty} ppc={ppc} />
+                    </td>
                     <td className="table-td text-right">
                       {canEdit ? (
                         <input name={`cost_${l.id}`} type="number" min={0} step="0.01" defaultValue={l.unitCost} className={`input w-24 py-1 text-right ${diff ? "border-amber-400 bg-amber-50" : ""}`} />

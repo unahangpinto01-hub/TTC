@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db";
 import { requirePerm } from "@/lib/auth";
 import { getActiveCompany } from "@/lib/company";
 import { fmtDate } from "@/lib/format";
-import { cartonBreakdown } from "@/lib/units";
+import { cartonBreakdown, displayCartonSize, ctnLabel } from "@/lib/units";
 import { PageHeader } from "@/components/ui";
 import { PrintButton, BackButton } from "@/components/print-button";
 import { getCategoryNames } from "@/lib/categories";
@@ -59,7 +59,7 @@ export default async function CountSheetPage({ searchParams }: { searchParams: {
             <th className="py-1.5 pr-2">Pack</th>
             <th className="py-1.5 pr-2">Batch</th>
             <th className="py-1.5 pr-2 text-right">Stock (PCS)</th>
-            <th className="py-1.5 pr-2 text-right">Cartons</th>
+            <th className="py-1.5 pr-2 text-right">Equivalent (CTN)</th>
             <th className="py-1.5 pr-2 text-right">Loose PCS</th>
             <th className="w-28 py-1.5 pr-2 text-center">Physical Count</th>
             <th className="w-24 py-1.5 pr-2 text-center">Variance</th>
@@ -88,7 +88,16 @@ export default async function CountSheetPage({ searchParams }: { searchParams: {
                     const b = cartonBreakdown(p.stockQty, p);
                     return (
                       <>
-                        <td className="py-1.5 pr-2 text-right">{b ? `${b.cartons.toLocaleString()} × ${p.piecesPerCarton}` : "—"}</td>
+                        <td className="py-1.5 pr-2 text-right">
+                          {b ? (
+                            <>
+                              {ctnLabel(p.stockQty, displayCartonSize(p))}
+                              <span className="block text-[10px] text-gray-500">{b.cartons.toLocaleString()} × {p.piecesPerCarton}</span>
+                            </>
+                          ) : (
+                            <span className="text-amber-700">N/A ⚠</span>
+                          )}
+                        </td>
                         <td className="py-1.5 pr-2 text-right">{b ? b.loose : "—"}</td>
                       </>
                     );

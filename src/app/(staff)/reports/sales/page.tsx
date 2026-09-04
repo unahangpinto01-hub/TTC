@@ -1,3 +1,4 @@
+import { NoConversion } from "@/components/qty";
 import { requirePerm } from "@/lib/auth";
 import { resolveReportScope } from "@/lib/report-scope";
 import { getSalesReport, getProvinces, parseRange } from "@/lib/reports";
@@ -115,11 +116,18 @@ export default async function SalesReportPage({
           <div className="card overflow-x-auto p-0">
             <table className="w-full">
               <thead className="border-b border-gray-200 bg-gray-50">
-                <tr><th className="table-th">Product Line</th><th className="table-th text-right">Qty (PCS)</th><th className="table-th text-right">Amount</th></tr>
+                <tr><th className="table-th">Product Line</th><th className="table-th text-right">Qty (PCS)</th><th className="table-th text-right">Equivalent (CTN)</th><th className="table-th text-right">Amount</th></tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {r.byProduct.slice(0, 20).map((p) => (
-                  <tr key={p.name}><td className="table-td text-sm">{p.name}</td><td className="table-td text-right">{p.qty.toLocaleString()}</td><td className="table-td text-right">{peso(p.amount)}</td></tr>
+                  <tr key={p.name}>
+                    <td className="table-td text-sm">{p.name}</td>
+                    <td className="table-td text-right">{p.qty.toLocaleString()}</td>
+                    <td className="table-td text-right text-sm">
+                      {p.noConversion ? <NoConversion /> : `${p.ctn.toLocaleString("en-PH", { maximumFractionDigits: 2 })} CTN`}
+                    </td>
+                    <td className="table-td text-right">{peso(p.amount)}</td>
+                  </tr>
                 ))}
                 {!r.byProduct.length && <tr><td colSpan={3} className="p-6 text-center text-sm text-gray-500">No sales in range.</td></tr>}
               </tbody>

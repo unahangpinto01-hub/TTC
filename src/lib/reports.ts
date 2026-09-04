@@ -1,4 +1,5 @@
 import { prisma } from "./db";
+import { lineCartonSize } from "./units";
 
 export type Range = { from: Date; to: Date };
 
@@ -40,7 +41,7 @@ export async function getSalesReport({ from, to }: Range, companyIds: string[], 
 
   const byCustomer = new Map<string, { name: string; region: string; count: number; amount: number }>();
   // product totals roll up to the parent item (product line); standalone products use their own name
-  const byProduct = new Map<string, { name: string; qty: number; amount: number }>();
+  const byProduct = new Map<string, { name: string; qty: number; ctn: number; noConversion: boolean; amount: number }>();
   const byRegion = new Map<string, number>();
   // per-company subtotals, so a combined report shows each company and a grand total
   const byCompany = new Map<string, { name: string; count: number; amount: number }>();
@@ -59,8 +60,13 @@ export async function getSalesReport({ from, to }: Range, companyIds: string[], 
     byCompany.set(sr.companyId, co);
     for (const l of sr.deliveryReceipt.lines) {
       const key = l.product.parentItem?.trim() || l.product.name;
-      const p = byProduct.get(key) ?? { name: key, qty: 0, amount: 0 };
+      const p = byProduct.get(key) ?? { name: key, qty: 0, ctn: 0, noConversion: false, amount: 0 };
       p.qty += l.baseQty; // aggregate in base PCS — lines may be CARTON or PCS
+      // a product line can hold several products with different carton sizes, so cartons are
+      // accumulated line by line rather than dividing the rolled-up total by one figure
+      const ppc = lineCartonSize(l, l.product);
+      if (ppc) p.ctn += l.baseQty / ppc;
+      else p.noConversion = true;
       p.amount = round2(p.amount + l.qty * l.unitPrice);
       byProduct.set(key, p);
     }
@@ -79,8 +85,10 @@ export async function getSalesReport({ from, to }: Range, companyIds: string[], 
 export type MonthlyProductRow = {
   name: string; // parent item (product line)
   category: string;
-  monthsQty: number[]; // 12
+  monthsQty: number[]; // 12, base PCS
+  monthsCtn: number[]; // 12, carton equivalent at each line's own conversion
   monthsAmt: number[]; // 12
+  noConversion: boolean; // some product in this line has no packaging setup
 };
 
 /** Actual invoiced sales per product line per month, optionally filtered to one region and/or province. */
@@ -105,10 +113,17 @@ export async function getMonthlyProductSales(year: number, companyIds: string[],
       const key = l.product.parentItem?.trim() || l.product.name;
       let row = map.get(key);
       if (!row) {
-        row = { name: key, category: l.product.category, monthsQty: Array(12).fill(0), monthsAmt: Array(12).fill(0) };
+        row = {
+          name: key, category: l.product.category,
+          monthsQty: Array(12).fill(0), monthsCtn: Array(12).fill(0), monthsAmt: Array(12).fill(0),
+          noConversion: false,
+        };
         map.set(key, row);
       }
       row.monthsQty[mi] += l.baseQty; // base PCS
+      const ppc = lineCartonSize(l, l.product);
+      if (ppc) row.monthsCtn[mi] += l.baseQty / ppc;
+      else row.noConversion = true;
       row.monthsAmt[mi] = round2(row.monthsAmt[mi] + l.qty * l.unitPrice);
     }
   }
@@ -502,6 +517,9 @@ export async function getProductReport({ from, to }: Range, companyIds: string[]
   const map = new Map<string, {
     key: string; sku: string; name: string; company: string; category: string;
     qty: number; revenue: number; cogs: number;
+    // cartons are accumulated line by line at each line's OWN conversion, so a product whose
+    // packaging changed mid-year still totals correctly across old and new documents
+    ctn: number; noConversion: boolean;
   }>();
   for (const sr of srs) {
     for (const l of sr.deliveryReceipt.lines) {
@@ -509,9 +527,12 @@ export async function getProductReport({ from, to }: Range, companyIds: string[]
       const key = `${sr.companyId}:${l.productId}`;
       const row = map.get(key) ?? {
         key, sku: l.product.sku, name: l.product.name, company: sr.company.companyName,
-        category: l.product.category, qty: 0, revenue: 0, cogs: 0,
+        category: l.product.category, qty: 0, revenue: 0, cogs: 0, ctn: 0, noConversion: false,
       };
       row.qty += l.baseQty; // base PCS
+      const ppc = lineCartonSize(l, l.product);
+      if (ppc) row.ctn += l.baseQty / ppc;
+      else row.noConversion = true;
       row.revenue = round2(row.revenue + l.qty * l.unitPrice);
       row.cogs = round2(row.cogs + l.baseQty * (l.unitCostAtSale > 0 ? l.unitCostAtSale : l.product.unitCost));
       map.set(key, row);
@@ -524,6 +545,7 @@ export async function getProductReport({ from, to }: Range, companyIds: string[]
     rows,
     totals: {
       qty: rows.reduce((s, r) => s + r.qty, 0),
+      ctn: round2(rows.reduce((s, r) => s + r.ctn, 0)),
       revenue: round2(rows.reduce((s, r) => s + r.revenue, 0)),
       cogs: round2(rows.reduce((s, r) => s + r.cogs, 0)),
       margin: round2(rows.reduce((s, r) => s + r.margin, 0)),
@@ -544,6 +566,8 @@ export type SalesJournalRow = {
   sku: string;
   productId: string | null; // null on the freight row
   qty: string;              // "5 CTN" etc, blank on the freight row
+  qtyPcs: number;           // base PCS — 0 on the freight row
+  qtyCtn: number | null;    // carton equivalent, null when the product has no conversion
   unitPrice: number | null;
   gross: number;            // product line amount, or the freight amount on the freight row
   freight: number;          // only set on the freight row
@@ -623,6 +647,11 @@ export async function getSalesJournal(
         sku: l.product.sku,
         productId: l.productId,
         qty: `${l.qty.toLocaleString()} ${l.unit === "CARTON" ? "CTN" : "PCS"}`,
+        qtyPcs: l.baseQty,
+        qtyCtn: (() => {
+          const ppc = lineCartonSize(l, l.product);
+          return ppc ? l.baseQty / ppc : null;
+        })(),
         unitPrice: l.unitPrice,
         gross,
         freight: 0,
@@ -638,6 +667,8 @@ export async function getSalesJournal(
         sku: "",
         productId: null,
         qty: "",
+        qtyPcs: 0,
+        qtyCtn: null,
         unitPrice: null,
         gross: sr.freightCharge,
         freight: sr.freightCharge,

@@ -65,10 +65,10 @@ export default async function SupplierReceivingPage({
               <tr>
                 <th className="table-th">Supplier</th>
                 <th className="table-th text-right">Receipts</th>
-                <th className="table-th text-right">Received</th>
-                <th className="table-th text-right">Rejected</th>
+                <th className="table-th text-right">Received (PCS / CTN)</th>
+                <th className="table-th text-right">Rejected (PCS / CTN)</th>
                 <th className="table-th text-right">Reject Rate</th>
-                <th className="table-th text-right">Accepted</th>
+                <th className="table-th text-right">Accepted (PCS / CTN)</th>
                 <th className="table-th text-right">Accepted Value</th>
                 <th className="table-th text-right">Share</th>
                 <th className="table-th text-right">Cost Variance</th>
@@ -80,14 +80,16 @@ export default async function SupplierReceivingPage({
                 <tr key={r.id} className="hover:bg-gray-50">
                   <td className="table-td font-medium">{r.name}</td>
                   <td className="table-td text-right">{r.receipts}</td>
-                  <td className="table-td text-right">{r.received.toLocaleString()}</td>
-                  <td className={`table-td text-right ${r.rejected ? "font-semibold text-red-600" : "text-gray-300"}`}>{r.rejected || "—"}</td>
+                  <td className="table-td text-right"><Qty pcs={r.receivedPcs} ctn={r.receivedCtn} /></td>
+                  <td className={`table-td text-right ${r.rejected ? "font-semibold text-red-600" : ""}`}>
+                    <Qty pcs={r.rejectedPcs} ctn={r.rejectedCtn} dash />
+                  </td>
                   <td className="table-td text-right">
                     <span className={r.rejectRate > 5 ? "font-semibold text-red-600" : r.rejectRate > 0 ? "text-amber-600" : "text-gray-400"}>
                       {r.rejectRate.toFixed(1)}%
                     </span>
                   </td>
-                  <td className="table-td text-right font-semibold">{r.accepted.toLocaleString()}</td>
+                  <td className="table-td text-right font-semibold"><Qty pcs={r.acceptedPcs} ctn={r.acceptedCtn} /></td>
                   <td className="table-td text-right">{peso(r.value)}</td>
                   <td className="table-td text-right text-gray-500">{share(r.value)}</td>
                   <td className={`table-td text-right ${Math.abs(r.costVariance) > 0.005 ? "text-amber-700" : "text-gray-300"}`}>
@@ -101,10 +103,10 @@ export default async function SupplierReceivingPage({
               <tr>
                 <td className="table-td">TOTAL</td>
                 <td className="table-td text-right">{totals.receipts}</td>
-                <td className="table-td text-right">{totals.received.toLocaleString()}</td>
-                <td className="table-td text-right text-red-600">{totals.rejected || "—"}</td>
-                <td className="table-td text-right">{totals.received > 0 ? ((totals.rejected / totals.received) * 100).toFixed(1) + "%" : "—"}</td>
-                <td className="table-td text-right">{totals.accepted.toLocaleString()}</td>
+                <td className="table-td text-right"><Qty pcs={totals.receivedPcs} ctn={totals.receivedCtn} /></td>
+                <td className="table-td text-right text-red-600"><Qty pcs={totals.rejectedPcs} ctn={totals.rejectedCtn} dash /></td>
+                <td className="table-td text-right">{totals.receivedPcs > 0 ? ((totals.rejectedPcs / totals.receivedPcs) * 100).toFixed(1) + "%" : "—"}</td>
+                <td className="table-td text-right"><Qty pcs={totals.acceptedPcs} ctn={totals.acceptedCtn} /></td>
                 <td className="table-td text-right">{peso(totals.value)}</td>
                 <td className="table-td text-right">100%</td>
                 <td className="table-td text-right">{peso(totals.costVariance)}</td>
@@ -121,5 +123,18 @@ export default async function SupplierReceivingPage({
         purchase order price — positive means the supplier charged more than ordered.
       </p>
     </div>
+  );
+}
+
+/** PCS on top, carton equivalent beneath — the standard quantity cell in these reports. */
+function Qty({ pcs, ctn, className = "", dash = false }: { pcs: number; ctn: number; className?: string; dash?: boolean }) {
+  if (dash && pcs === 0) return <span className="text-gray-300">—</span>;
+  return (
+    <span className={`whitespace-nowrap ${className}`}>
+      {pcs.toLocaleString()}
+      <span className="block text-xs font-normal text-gray-500">
+        {ctn.toLocaleString("en-PH", { maximumFractionDigits: 2 })} CTN
+      </span>
+    </span>
   );
 }

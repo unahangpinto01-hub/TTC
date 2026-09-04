@@ -82,9 +82,9 @@ export default async function POReceivingStatusPage({
                 <th className="table-th">Date</th>
                 {scope.combined && <th className="table-th">Company</th>}
                 <th className="table-th">Supplier</th>
-                <th className="table-th text-right">Ordered</th>
-                <th className="table-th text-right">Received</th>
-                <th className="table-th text-right">Remaining</th>
+                <th className="table-th text-right">Ordered (PCS / CTN)</th>
+                <th className="table-th text-right">Received (PCS / CTN)</th>
+                <th className="table-th text-right">Remaining (PCS / CTN)</th>
                 <th className="table-th text-right">% Received</th>
                 <th className="table-th text-right">Receipts</th>
                 <th className="table-th text-right">Ordered Value</th>
@@ -102,9 +102,11 @@ export default async function POReceivingStatusPage({
                   <td className="table-td whitespace-nowrap text-sm">{fmtDate(r.po.date)}</td>
                   {scope.combined && <td className="table-td"><CompanyTag name={r.po.company.companyName} /></td>}
                   <td className="table-td text-sm">{r.po.supplier.name}</td>
-                  <td className="table-td text-right">{r.ordered.toLocaleString()}</td>
-                  <td className="table-td text-right">{r.received.toLocaleString()}</td>
-                  <td className={`table-td text-right ${r.remaining ? "font-semibold text-amber-700" : "text-gray-300"}`}>{r.remaining || "—"}</td>
+                  <td className="table-td text-right"><Qty pcs={r.orderedPcs} ctn={r.orderedCtn} /></td>
+                  <td className="table-td text-right"><Qty pcs={r.receivedPcs} ctn={r.receivedCtn} /></td>
+                  <td className={`table-td text-right ${r.remaining ? "font-semibold text-amber-700" : ""}`}>
+                    <Qty pcs={r.remainingPcs} ctn={r.remainingCtn} dash />
+                  </td>
                   <td className="table-td text-right">
                     <span className={r.pct >= 100 ? "font-semibold text-emerald-700" : r.pct > 0 ? "text-amber-600" : "text-gray-400"}>
                       {r.pct.toFixed(1)}%
@@ -119,11 +121,11 @@ export default async function POReceivingStatusPage({
             <tfoot className="border-t-2 border-gray-300 bg-gray-50 font-bold">
               <tr>
                 <td className="table-td" colSpan={scope.combined ? 4 : 3}>TOTAL — {totals.orders} order(s)</td>
-                <td className="table-td text-right">{totals.ordered.toLocaleString()}</td>
-                <td className="table-td text-right">{totals.received.toLocaleString()}</td>
-                <td className="table-td text-right text-amber-700">{totals.remaining.toLocaleString()}</td>
+                <td className="table-td text-right"><Qty pcs={totals.orderedPcs} ctn={totals.orderedCtn} /></td>
+                <td className="table-td text-right"><Qty pcs={totals.receivedPcs} ctn={totals.receivedCtn} /></td>
+                <td className="table-td text-right text-amber-700"><Qty pcs={totals.remainingPcs} ctn={totals.remainingCtn} /></td>
                 <td className="table-td text-right">
-                  {totals.ordered > 0 ? ((totals.received / totals.ordered) * 100).toFixed(1) + "%" : "—"}
+                  {totals.orderedPcs > 0 ? ((totals.receivedPcs / totals.orderedPcs) * 100).toFixed(1) + "%" : "—"}
                 </td>
                 <td />
                 <td className="table-td text-right">{peso(totals.orderedValue)}</td>
@@ -140,5 +142,18 @@ export default async function POReceivingStatusPage({
         received notes that are not draft or void. Draft purchase orders are excluded.
       </p>
     </div>
+  );
+}
+
+/** PCS on top, carton equivalent beneath — the standard quantity cell in these reports. */
+function Qty({ pcs, ctn, className = "", dash = false }: { pcs: number; ctn: number; className?: string; dash?: boolean }) {
+  if (dash && pcs === 0) return <span className="text-gray-300">—</span>;
+  return (
+    <span className={`whitespace-nowrap ${className}`}>
+      {pcs.toLocaleString()}
+      <span className="block text-xs font-normal text-gray-500">
+        {ctn.toLocaleString("en-PH", { maximumFractionDigits: 2 })} CTN
+      </span>
+    </span>
   );
 }
