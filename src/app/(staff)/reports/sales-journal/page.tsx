@@ -130,9 +130,7 @@ export default async function SalesJournalPage({ searchParams }: { searchParams:
               <th className="table-th">Customer</th>
               <th className="table-th">Reference</th>
               <th className="table-th">Product</th>
-              <th className="table-th text-right">Qty</th>
-              <th className="table-th text-right">PCS</th>
-              <th className="table-th text-right">CTN</th>
+              <th className="table-th text-right">Qty (CTN / PCS)</th>
               <th className="table-th text-right">Unit Price</th>
               <th className="table-th text-right">Gross Sales</th>
               <th className="table-th text-right">Freight</th>
@@ -153,12 +151,20 @@ export default async function SalesJournalPage({ searchParams }: { searchParams:
                 <td className="table-td text-sm">{r.customer}</td>
                 <td className="table-td font-mono text-xs text-gray-500">{r.reference}</td>
                 <td className={`table-td text-sm ${r.productId ? "" : "italic text-gray-500"}`}>{r.product}</td>
-                <td className="table-td whitespace-nowrap text-right text-sm">{r.qty || "—"}</td>
-                <td className="table-td whitespace-nowrap text-right text-sm text-gray-600">
-                  {r.productId ? r.qtyPcs.toLocaleString() : "—"}
-                </td>
-                <td className="table-td whitespace-nowrap text-right text-sm text-gray-600">
-                  {!r.productId ? "—" : r.qtyCtn === null ? <NoConversion /> : r.qtyCtn.toLocaleString("en-PH", { maximumFractionDigits: 2 })}
+                <td className="table-td whitespace-nowrap text-right text-sm" title={r.qty ? `entered as ${r.qty}` : undefined}>
+                  {!r.productId ? (
+                    "—"
+                  ) : r.qtyCtn !== null ? (
+                    <span>
+                      <span className="font-medium">{r.qtyCtn.toLocaleString("en-PH", { maximumFractionDigits: 2 })} CTN</span>
+                      <span className="block text-xs text-gray-500">({r.qtyPcs.toLocaleString()} PCS)</span>
+                    </span>
+                  ) : (
+                    <span>
+                      <span className="font-medium">{r.qtyPcs.toLocaleString()} PCS</span>
+                      <span className="block text-xs"><NoConversion compact /></span>
+                    </span>
+                  )}
                 </td>
                 <td className="table-td text-right text-sm">{r.unitPrice != null ? peso(r.unitPrice) : "—"}</td>
                 <td className="table-td text-right">{peso(r.gross)}</td>
@@ -170,7 +176,7 @@ export default async function SalesJournalPage({ searchParams }: { searchParams:
               </tr>
             ))}
             {!j.rows.length && (
-              <tr><td colSpan={scope.combined ? 14 : 13} className="p-8 text-center text-sm text-gray-500">No sales in this period for the selected filters.</td></tr>
+              <tr><td colSpan={scope.combined ? 12 : 11} className="p-8 text-center text-sm text-gray-500">No sales in this period for the selected filters.</td></tr>
             )}
           </tbody>
         </table>
