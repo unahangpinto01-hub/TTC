@@ -70,16 +70,26 @@ export async function refreshInvoiceStatus(salesReceiptId: string) {
   if (status !== sr.status) await prisma.salesReceipt.update({ where: { id: sr.id }, data: { status } });
 }
 
-/** amount − everything applied = the credit still available on this payment. */
-export function unappliedOf(p: { amount: number; applications: { amount: number }[] }): number {
-  return round2(p.amount - p.applications.reduce((s, a) => s + a.amount, 0));
+/** amount − applications − posted refunds drawn from it = the credit still available.
+    Pass the refunds relation when loaded; a payment refunded in cash holds less credit. */
+export function unappliedOf(p: {
+  amount: number;
+  applications: { amount: number }[];
+  refunds?: { amount: number; status: string }[];
+}): number {
+  const drawn = (p.refunds ?? []).filter((r) => r.status === "Posted").reduce((s, r) => s + r.amount, 0);
+  return round2(p.amount - p.applications.reduce((s, a) => s + a.amount, 0) - drawn);
 }
 
-/** A customer's total available credit in one company (posted, unapplied money). */
+/** A customer's available credit from posted payments in one company (overpayments not
+    yet applied or refunded). Credit memos add to this — see combinedCustomerCredit. */
 export async function customerCredit(customerId: string, companyId: string): Promise<number> {
   const posted = await prisma.receivePayment.findMany({
     where: { customerId, companyId, status: "Posted" },
-    include: { applications: { select: { amount: true } } },
+    include: {
+      applications: { select: { amount: true } },
+      refunds: { where: { status: "Posted" }, select: { amount: true, status: true } },
+    },
   });
   return round2(posted.reduce((s, p) => s + unappliedOf(p), 0));
 }
@@ -210,20 +220,28 @@ export async function unapplyApplication(applicationId: string, actor: { name: s
   });
 }
 
-/** A cash/bank account's running balance: opening + every posted inflow. */
+/** A cash/bank account's running balance: opening + posted payments in − posted refunds out. */
 export async function cashAccountBalances(companyId: string) {
   const accounts = await prisma.cashAccount.findMany({
     where: { companyId },
-    include: { payments: { where: { status: "Posted" }, select: { amount: true } } },
+    include: {
+      payments: { where: { status: "Posted" }, select: { amount: true } },
+      refundCredits: { where: { status: "Posted", type: "Refund" }, select: { amount: true } },
+    },
     orderBy: { name: "asc" },
   });
-  return accounts.map((a) => ({
-    id: a.id,
-    name: a.name,
-    type: a.type,
-    status: a.status,
-    openingBalance: a.openingBalance,
-    inflows: round2(a.payments.reduce((s, p) => s + p.amount, 0)),
-    balance: round2(a.openingBalance + a.payments.reduce((s, p) => s + p.amount, 0)),
-  }));
+  return accounts.map((a) => {
+    const inflows = round2(a.payments.reduce((s, p) => s + p.amount, 0));
+    const outflows = round2(a.refundCredits.reduce((s, r) => s + r.amount, 0));
+    return {
+      id: a.id,
+      name: a.name,
+      type: a.type,
+      status: a.status,
+      openingBalance: a.openingBalance,
+      inflows,
+      outflows,
+      balance: round2(a.openingBalance + inflows - outflows),
+    };
+  });
 }

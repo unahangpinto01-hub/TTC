@@ -17,6 +17,7 @@ export default async function PaymentPrintPage({ params }: { params: { id: strin
       cashAccount: { select: { name: true } },
       receivedBy: { select: { name: true } },
       applications: { include: { salesReceipt: { select: { srNumber: true, invoiceDate: true, amount: true } } }, orderBy: { createdAt: "asc" } },
+      refunds: { where: { status: "Posted" }, select: { amount: true, status: true } },
     },
   });
   if (!rp || rp.companyId !== company.id) notFound();

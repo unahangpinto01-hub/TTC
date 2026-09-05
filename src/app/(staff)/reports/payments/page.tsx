@@ -43,6 +43,7 @@ export default async function PaymentRegisterPage({
       cashAccount: { select: { name: true } },
       receivedBy: { select: { name: true } },
       applications: { select: { amount: true } },
+      refunds: { where: { status: "Posted" }, select: { amount: true, status: true } },
     },
     orderBy: [{ date: "asc" }, { prNumber: "asc" }],
   });

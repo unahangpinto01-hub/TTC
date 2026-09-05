@@ -19,6 +19,7 @@ export default async function UnappliedPaymentsPage({ searchParams }: { searchPa
       company: { select: { companyName: true } },
       customer: { select: { businessName: true } },
       applications: { select: { amount: true } },
+      refunds: { where: { status: "Posted" }, select: { amount: true, status: true } },
     },
     orderBy: { date: "asc" },
   });

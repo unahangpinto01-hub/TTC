@@ -4,7 +4,8 @@ import { requirePermWrite } from "@/lib/auth";
 import { getActiveCompany } from "@/lib/company";
 import { PageHeader } from "@/components/ui";
 import { SearchSelect } from "@/components/search-select";
-import { getOutstandingInvoices, customerCredit, PAYMENT_METHODS } from "@/lib/receive-payments";
+import { getOutstandingInvoices, PAYMENT_METHODS } from "@/lib/receive-payments";
+import { combinedCustomerCredit } from "@/lib/refunds-credits";
 import { fmtDate, peso } from "@/lib/format";
 import { createReceivePayment } from "../actions";
 import { EntryTable } from "./entry-table";
@@ -35,7 +36,7 @@ export default async function NewPaymentPage({
   const [invoices, credit, accounts] = customer
     ? await Promise.all([
         getOutstandingInvoices(customer.id, company.id),
-        customerCredit(customer.id, company.id),
+        combinedCustomerCredit(customer.id, company.id).then((c) => c.total),
         prisma.cashAccount.findMany({ where: { companyId: company.id, status: "Active" }, orderBy: { name: "asc" } }),
       ])
     : [[], 0, await prisma.cashAccount.findMany({ where: { companyId: company.id, status: "Active" }, orderBy: { name: "asc" } })];
@@ -69,7 +70,7 @@ export default async function NewPaymentPage({
         <button className="btn-secondary" type="submit">Load Invoices</button>
         {customer && credit > 0 && (
           <p className="pb-2 text-sm text-amber-700">
-            Available credit from earlier payments: <span className="font-bold">{peso(credit)}</span> — applied from those payments&rsquo; pages.
+            Available credit (unapplied payments + credit memos): <span className="font-bold">{peso(credit)}</span> — applied from those documents&rsquo; own pages.
           </p>
         )}
       </form>

@@ -39,6 +39,7 @@ const NAV: { section: string; items: Item[] }[] = [
     section: "Finance",
     items: [
       { href: "/payments", label: "Receive Payments", fn: "receivePayments" },
+      { href: "/refunds", label: "Refunds & Credits", fn: "refundsCredits" },
       { href: "/finance/accounts", label: "Cash / Bank Accounts", fn: "receivePayments" },
       { href: "/finance/ar", label: "AR / Aging", fn: "ar" },
       { href: "/finance/expenses", label: "Expenses", fn: "expenses" },

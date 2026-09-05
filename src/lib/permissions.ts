@@ -17,6 +17,7 @@ export const FUNCTIONS = [
   ["suppliers", "Suppliers"],
   ["ar", "AR / Aging & Payments"],
   ["receivePayments", "Receive Payments"],
+  ["refundsCredits", "Refunds & Credits"],
   ["expenses", "Expenses"],
   ["ledger", "Ledger"],
   ["reports", "Reports"],
@@ -40,7 +41,7 @@ export const ROLE_DEFAULTS: Record<string, Record<FnKey, PermLevel>> = {
   CLERK: {
     dashboard: RW, notifications: RW, orders: RW, salesOrders: RW, schedule: RW,
     deliveries: RW, invoicing: NO, invoices: RO, forecast: RO, customers: RW,
-    inventory: RO, purchaseOrders: RO, suppliers: RO, ar: NO, receivePayments: NO, expenses: NO,
+    inventory: RO, purchaseOrders: RO, suppliers: RO, ar: NO, receivePayments: NO, refundsCredits: NO, expenses: NO,
     ledger: NO, reports: NO, hr: NO, users: NO, company: NO,
   },
 };

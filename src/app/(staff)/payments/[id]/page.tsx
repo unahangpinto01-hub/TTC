@@ -28,6 +28,7 @@ export default async function PaymentDetailPage({
       cashAccount: { select: { name: true, type: true } },
       receivedBy: { select: { name: true } },
       applications: { include: { salesReceipt: { select: { id: true, srNumber: true, amount: true, status: true } } }, orderBy: { createdAt: "asc" } },
+      refunds: { where: { status: "Posted" }, select: { rcNumber: true, amount: true, status: true } },
     },
   });
   if (!rp || rp.companyId !== company.id) notFound();

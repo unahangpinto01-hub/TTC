@@ -38,6 +38,8 @@ model User {
   grnCreated     GoodsReceipt[]  @relation("GRNCreated")
   grnPosted      GoodsReceipt[]  @relation("GRNPosted")
   receivedPayments ReceivePayment[]
+  rcCreated      RefundCredit[]  @relation("RCCreated")
+  rcApproved     RefundCredit[]  @relation("RCApproved")
 }
 
 /// Server-side sessions: the cookie holds a random token; only its SHA-256 hash is stored.
@@ -121,6 +123,7 @@ model Customer {
   salesperson   Employee? @relation(fields: [salespersonId], references: [id])
 
   receivePayments ReceivePayment[]
+  refundCredits   RefundCredit[]
 
   users          User[]
   forecastLines  ForecastLine[]
@@ -186,6 +189,7 @@ model Product {
   poLines            POLine[]
   grnLines           GRNLine[]
   forecastLines      ForecastLine[]
+  refundCreditLines  RefundCreditLine[]
 
   @@unique([companyId, sku])
 }
@@ -362,6 +366,8 @@ model SalesReceipt {
 
   payments            Payment[]
   paymentApplications PaymentApplication[]
+  refundCredits       RefundCredit[]
+  creditApplications  CreditApplication[]
 
   @@unique([companyId, srNumber])
 }
@@ -375,9 +381,10 @@ model Payment {
   method         String // Cash | Check | Bank Transfer | GCash
   refNo          String?
 
-  // set when this row was produced by posting a Receive Payment application;
-  // legacy rows recorded straight on the invoice stay null
-  application PaymentApplication?
+  // set when this row was produced by posting a Receive Payment application or a
+  // credit memo application; legacy rows recorded straight on the invoice stay null
+  application       PaymentApplication?
+  creditApplication CreditApplication?
 }
 
 /// A cash or bank account per company — a simple register with a running balance,
@@ -391,7 +398,8 @@ model CashAccount {
   openingBalance Float   @default(0)
   status         String  @default("Active")
 
-  payments ReceivePayment[]
+  payments      ReceivePayment[]
+  refundCredits RefundCredit[]
 }
 
 /// A provisional receipt: one customer payment, applied to one or more of that
@@ -419,8 +427,79 @@ model ReceivePayment {
   createdAt     DateTime     @default(now())
 
   applications PaymentApplication[]
+  refunds      RefundCredit[] // refunds drawing down this payment's unapplied credit
 
   @@unique([companyId, prNumber])
+}
+
+/// Refunds & Credits: a Credit memo builds customer credit (or offsets an invoice);
+/// a Refund pays money back out. Draft → Pending Approval → Approved → Posted,
+/// plus Rejected and Void. Only Posted documents touch AR, credit, cash or stock.
+model RefundCredit {
+  id             String        @id @default(cuid())
+  companyId      String
+  company        Company       @relation(fields: [companyId], references: [id])
+  rcNumber       String // CM-2026-00001 (credit) or RF-2026-00001 (refund), per company
+  type           String // Credit | Refund
+  customerId     String
+  customer       Customer      @relation(fields: [customerId], references: [id])
+  salesReceiptId String? // the related invoice, when there is one
+  salesReceipt   SalesReceipt? @relation(fields: [salesReceiptId], references: [id])
+  date           DateTime      @default(now())
+  reason         String // Sales Return | Overpayment | Pricing Adjustment | Damaged Product | Incorrect Billing | Others
+  remarks        String
+  amount         Float // from the item lines, or typed directly for an amount-only document
+  status         String        @default("Draft") // Draft | Pending Approval | Approved | Posted | Rejected | Void
+  voidReason     String?
+  createdById    String?
+  createdBy      User?         @relation("RCCreated", fields: [createdById], references: [id])
+  approvedById   String?
+  approvedBy     User?         @relation("RCApproved", fields: [approvedById], references: [id])
+  // refund payout, recorded when the refund is posted
+  refundMethod   String?
+  refundRefNo    String?
+  refundDate     DateTime?
+  cashAccountId  String?
+  cashAccount    CashAccount?  @relation(fields: [cashAccountId], references: [id])
+  // a refund of an overpayment draws down that payment's unapplied credit …
+  sourcePaymentId String?
+  sourcePayment   ReceivePayment? @relation(fields: [sourcePaymentId], references: [id])
+  // … or the remaining balance of an earlier credit memo
+  sourceCreditId String?
+  sourceCredit   RefundCredit?  @relation("RefundOfCredit", fields: [sourceCreditId], references: [id])
+  refundsDrawn   RefundCredit[] @relation("RefundOfCredit")
+  createdAt      DateTime      @default(now())
+
+  lines        RefundCreditLine[]
+  applications CreditApplication[]
+
+  @@unique([companyId, rcNumber])
+}
+
+model RefundCreditLine {
+  id             String       @id @default(cuid())
+  refundCreditId String
+  refundCredit   RefundCredit @relation(fields: [refundCreditId], references: [id], onDelete: Cascade)
+  productId      String?
+  product        Product?     @relation(fields: [productId], references: [id])
+  description    String? // free text for amount-only / non-product lines
+  qty            Int          @default(1)
+  unitPrice      Float
+  returnToStock  Boolean      @default(false) // ticked = the goods came back and re-enter inventory on posting
+}
+
+/// A posted credit memo applied to one invoice — materialised as a legacy Payment row,
+/// the same pattern Receive Payment uses, so AR and every report read it natively.
+model CreditApplication {
+  id             String       @id @default(cuid())
+  refundCreditId String
+  refundCredit   RefundCredit @relation(fields: [refundCreditId], references: [id], onDelete: Cascade)
+  salesReceiptId String
+  salesReceipt   SalesReceipt @relation(fields: [salesReceiptId], references: [id])
+  amount         Float
+  createdAt      DateTime     @default(now())
+  paymentId      String?      @unique
+  payment        Payment?     @relation(fields: [paymentId], references: [id])
 }
 
 /// How much of a receive-payment went to one invoice. Posting creates a matching
@@ -739,6 +818,7 @@ model Company {
   goodsReceipts    GoodsReceipt[]
   cashAccounts     CashAccount[]
   receivePayments  ReceivePayment[]
+  refundCredits    RefundCredit[]
   expenses         Expense[]
   forecasts        Forecast[]
   notifications    Notification[]

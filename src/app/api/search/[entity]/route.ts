@@ -176,6 +176,20 @@ export async function GET(req: NextRequest, { params }: { params: { entity: stri
       }));
       break;
     }
+    case "refunds": {
+      const rows = await prisma.refundCredit.findMany({
+        where: { companyId: { in: companyIds }, ...(q ? { rcNumber: starts(q) } : {}) },
+        select: { id: true, rcNumber: true, type: true, status: true, amount: true, customer: { select: { businessName: true } } },
+        orderBy: { rcNumber: "desc" },
+        take: limit,
+      });
+      hits = rows.map((r) => ({
+        id: r.id,
+        label: r.rcNumber,
+        sub: `${r.type} · ${r.customer.businessName} · ₱${r.amount.toLocaleString("en-PH", { minimumFractionDigits: 2 })} · ${r.status}`,
+      }));
+      break;
+    }
     default:
       return new Response("Unknown entity", { status: 404 });
   }

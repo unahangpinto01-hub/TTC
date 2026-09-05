@@ -63,6 +63,7 @@ export const DOC_TYPES = [
   ["PO", "Purchase Order"],
   ["ORDER", "Incoming Order"],
   ["PR", "Payment Receipt"],
+  ["RC", "Credit Memo / Refund"],
 ] as const;
 export type DocTypeKey = (typeof DOC_TYPES)[number][0];
 

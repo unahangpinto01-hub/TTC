@@ -34,7 +34,12 @@ export default async function PaymentsListPage({
           }
         : {}),
     },
-    include: { customer: { select: { businessName: true } }, applications: { select: { amount: true } }, receivedBy: { select: { name: true } } },
+    include: {
+      customer: { select: { businessName: true } },
+      applications: { select: { amount: true } },
+      refunds: { where: { status: "Posted" }, select: { amount: true, status: true } },
+      receivedBy: { select: { name: true } },
+    },
     orderBy: { createdAt: "desc" },
     take: 200,
   });
