@@ -7,7 +7,6 @@ import { lineCartonSize } from "@/lib/units";
 import { LineQty } from "@/components/qty";
 import { getPerm } from "@/lib/permissions";
 import { PageHeader, StatusBadge } from "@/components/ui";
-import { recordPayment } from "../../finance/actions";
 import { voidSR } from "../../invoicing/actions";
 import { getActiveCompany } from "@/lib/company";
 
@@ -117,19 +116,19 @@ export default async function SRDetailPage({ params, searchParams }: { params: {
 
         {canFinance && sr.status !== "Void" && sr.status !== "Paid" && (
           <div>
-            <h2 className="mb-2 font-semibold">Record Payment</h2>
-            <form action={recordPayment} className="card space-y-3">
-              <input type="hidden" name="srId" value={sr.id} />
-              <div className="grid grid-cols-2 gap-3">
-                <div><label className="label">Amount (balance {peso(balance)})</label>
-                  <input name="amount" type="number" step="0.01" max={balance} defaultValue={balance.toFixed(2)} required className="input" /></div>
-                <div><label className="label">Date</label><input name="date" type="date" defaultValue={today} className="input" /></div>
-                <div><label className="label">Method</label>
-                  <select name="method" className="input"><option>Cash</option><option>Check</option><option>Bank Transfer</option><option>GCash</option></select></div>
-                <div><label className="label">Reference #</label><input name="refNo" className="input" placeholder="OR / check #" /></div>
-              </div>
-              <button className="btn-primary" type="submit">Record Payment</button>
-            </form>
+            <h2 className="mb-2 font-semibold">Receive Payment</h2>
+            <div className="card space-y-3">
+              <p className="text-sm text-gray-600">
+                Balance: <span className="font-bold text-emerald-800">{peso(balance)}</span>
+              </p>
+              <p className="text-xs text-gray-500">
+                Payments go through the Receive Payment module: a numbered provisional receipt, applied to one or
+                several invoices, approved and posted before it touches the account.
+              </p>
+              <Link href={`/payments/new?invoice=${sr.id}`} className="btn-primary inline-block">
+                💵 Receive Payment for this Customer
+              </Link>
+            </div>
           </div>
         )}
       </div>

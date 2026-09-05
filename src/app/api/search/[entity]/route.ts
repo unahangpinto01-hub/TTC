@@ -130,7 +130,13 @@ export async function GET(req: NextRequest, { params }: { params: { entity: stri
     }
     case "invoices": {
       const rows = await prisma.salesReceipt.findMany({
-        where: { companyId: { in: companyIds }, ...(q ? { srNumber: starts(q) } : {}) },
+        where: {
+          companyId: { in: companyIds },
+          // open=1 → invoices still carrying a balance; customer narrows to one account
+          ...(sp.get("open") === "1" ? { status: { in: ["Open", "Partial"] } } : {}),
+          ...(sp.get("customer") ? { customerId: sp.get("customer")! } : {}),
+          ...(q ? { srNumber: starts(q) } : {}),
+        },
         select: { id: true, srNumber: true, status: true, customer: { select: { businessName: true } } },
         orderBy: { srNumber: "desc" },
         take: limit,
@@ -151,6 +157,23 @@ export async function GET(req: NextRequest, { params }: { params: { entity: stri
         take: limit,
       });
       hits = rows.map((r) => ({ id: r.id, label: r.poNumber, sub: `${r.supplier?.name ?? ""} · ${r.status}` }));
+      break;
+    }
+    case "payments": {
+      const rows = await prisma.receivePayment.findMany({
+        where: {
+          companyId: { in: companyIds },
+          ...(q ? { OR: [{ prNumber: starts(q) }, { refNo: starts(q) }, { checkNo: starts(q) }] } : {}),
+        },
+        select: { id: true, prNumber: true, status: true, amount: true, customer: { select: { businessName: true } } },
+        orderBy: { prNumber: "desc" },
+        take: limit,
+      });
+      hits = rows.map((r) => ({
+        id: r.id,
+        label: r.prNumber,
+        sub: `${r.customer.businessName} · ₱${r.amount.toLocaleString("en-PH", { minimumFractionDigits: 2 })} · ${r.status}`,
+      }));
       break;
     }
     default:

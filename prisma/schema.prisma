@@ -37,6 +37,7 @@ model User {
   securityEvents SecurityEvent[]
   grnCreated     GoodsReceipt[]  @relation("GRNCreated")
   grnPosted      GoodsReceipt[]  @relation("GRNPosted")
+  receivedPayments ReceivePayment[]
 }
 
 /// Server-side sessions: the cookie holds a random token; only its SHA-256 hash is stored.
@@ -118,6 +119,8 @@ model Customer {
   // the employee who owns this account. One salesperson may hold many customers.
   salespersonId String?
   salesperson   Employee? @relation(fields: [salespersonId], references: [id])
+
+  receivePayments ReceivePayment[]
 
   users          User[]
   forecastLines  ForecastLine[]
@@ -357,7 +360,8 @@ model SalesReceipt {
   status            String          @default("Open") // Open | Partial | Paid | Void
   voidReason        String?
 
-  payments Payment[]
+  payments            Payment[]
+  paymentApplications PaymentApplication[]
 
   @@unique([companyId, srNumber])
 }
@@ -370,6 +374,69 @@ model Payment {
   date           DateTime     @default(now())
   method         String // Cash | Check | Bank Transfer | GCash
   refNo          String?
+
+  // set when this row was produced by posting a Receive Payment application;
+  // legacy rows recorded straight on the invoice stay null
+  application PaymentApplication?
+}
+
+/// A cash or bank account per company — a simple register with a running balance,
+/// deliberately not a general ledger. Posted customer payments flow in here.
+model CashAccount {
+  id             String  @id @default(cuid())
+  companyId      String
+  company        Company @relation(fields: [companyId], references: [id])
+  name           String // e.g. Cash on Hand, BDO Checking #1234
+  type           String  @default("Cash") // Cash | Bank | E-Wallet
+  openingBalance Float   @default(0)
+  status         String  @default("Active")
+
+  payments ReceivePayment[]
+}
+
+/// A provisional receipt: one customer payment, applied to one or more of that
+/// company's invoices. Draft → Pending Approval → Posted; only Posted touches AR.
+model ReceivePayment {
+  id            String       @id @default(cuid())
+  companyId     String
+  company       Company      @relation(fields: [companyId], references: [id])
+  prNumber      String // PR-2026-00001, per company
+  customerId    String
+  customer      Customer     @relation(fields: [customerId], references: [id])
+  date          DateTime     @default(now())
+  amount        Float
+  method        String // Cash | Check | Bank Transfer | GCash
+  cashAccountId String?
+  cashAccount   CashAccount? @relation(fields: [cashAccountId], references: [id])
+  refNo         String?
+  checkNo       String?
+  checkDate     DateTime?
+  remarks       String?
+  receivedById  String?
+  receivedBy    User?        @relation(fields: [receivedById], references: [id])
+  status        String       @default("Draft") // Draft | Pending Approval | Posted | Cancelled | Void
+  voidReason    String?
+  createdAt     DateTime     @default(now())
+
+  applications PaymentApplication[]
+
+  @@unique([companyId, prNumber])
+}
+
+/// How much of a receive-payment went to one invoice. Posting creates a matching
+/// legacy Payment row per application, so AR aging, collections, the invoice screens
+/// and the P&L keep reading the records they always have. The unapplied remainder
+/// (payment amount − applications) is the customer's credit.
+model PaymentApplication {
+  id               String         @id @default(cuid())
+  receivePaymentId String
+  receivePayment   ReceivePayment @relation(fields: [receivePaymentId], references: [id], onDelete: Cascade)
+  salesReceiptId   String
+  salesReceipt     SalesReceipt   @relation(fields: [salesReceiptId], references: [id])
+  amount           Float
+  createdAt        DateTime       @default(now())
+  paymentId        String?        @unique
+  payment          Payment?       @relation(fields: [paymentId], references: [id])
 }
 
 model PurchaseOrder {
@@ -670,6 +737,8 @@ model Company {
   salesReceipts    SalesReceipt[]
   purchaseOrders   PurchaseOrder[]
   goodsReceipts    GoodsReceipt[]
+  cashAccounts     CashAccount[]
+  receivePayments  ReceivePayment[]
   expenses         Expense[]
   forecasts        Forecast[]
   notifications    Notification[]

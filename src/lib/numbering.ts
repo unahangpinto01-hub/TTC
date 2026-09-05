@@ -6,11 +6,12 @@ const PREFIX: Record<string, string> = {
   SR: "SR",
   PO: "PO",
   GRN: "GRN",
+  PR: "PR", // provisional receipt (receive payment)
 };
 
 /** Atomic per-company, per-type, per-year sequential numbering: SO-2026-00001.
     Each company runs its own sequence; the printed letterhead identifies the issuer. */
-export async function nextDocNumber(docType: "SO" | "DR" | "SR" | "PO" | "GRN", companyId: string): Promise<string> {
+export async function nextDocNumber(docType: "SO" | "DR" | "SR" | "PO" | "GRN" | "PR", companyId: string): Promise<string> {
   const year = new Date().getFullYear();
   const counter = await prisma.documentCounter.upsert({
     where: { docType_year_companyId: { docType, year, companyId } },
