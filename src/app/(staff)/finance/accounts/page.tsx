@@ -3,6 +3,7 @@ import { getActiveCompany } from "@/lib/company";
 import { peso } from "@/lib/format";
 import { PageHeader } from "@/components/ui";
 import { canApprovePayments, cashAccountBalances } from "@/lib/receive-payments";
+import { SearchSelect } from "@/components/search-select";
 import { createCashAccount } from "../../payments/actions";
 
 /** Cash & bank accounts, per company: opening balance + posted customer payments in.
@@ -36,7 +37,10 @@ export default async function CashAccountsPage({ searchParams }: { searchParams:
               <tbody className="divide-y divide-gray-100">
                 {accounts.map((a) => (
                   <tr key={a.id} className={a.status !== "Active" ? "opacity-50" : ""}>
-                    <td className="table-td font-medium">{a.name}</td>
+                    <td className="table-td font-medium">
+                      {a.name}
+                      {a.glCode && <span className="block font-mono text-[10px] text-gray-400">{a.glCode}</span>}
+                    </td>
                     <td className="table-td text-sm text-gray-500">{a.type}</td>
                     <td className="table-td text-right">{peso(a.openingBalance)}</td>
                     <td className="table-td text-right">{peso(a.inflows)}</td>
@@ -64,6 +68,10 @@ export default async function CashAccountsPage({ searchParams }: { searchParams:
               <select name="type" className="input"><option>Cash</option><option>Bank</option><option>E-Wallet</option></select>
             </div>
             <div><label className="label">Opening Balance (₱)</label><input name="openingBalance" type="number" step="0.01" defaultValue="0" className="input" /></div>
+            <div>
+              <label className="label">GL Account (Chart of Accounts)</label>
+              <SearchSelect entity="gl-accounts" name="glAccountId" params={{ statement: "BS" }} placeholder="e.g. 110007 Petty Cash Fund" />
+            </div>
             <button className="btn-primary" type="submit">Add Account</button>
           </form>
         )}

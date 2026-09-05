@@ -23,6 +23,7 @@ export default async function ReportsHub() {
     { title: "Refunds & Credits Register", desc: "Credit memos and customer refunds in the period — filter to Refunds for the refund report", href: `/reports/refunds-credits?from=${monthStart}&to=${today}`, alt: `/reports/refunds-credits?from=${yearStart}&to=${today}` },
     { title: "Customer Credit Balances", desc: "Unused credits per customer — unapplied payments and open credit memos in one combined balance", href: "/reports/customer-credits", label: "Open Report" },
     { title: "Credit Application History", desc: "Every peso of credit applied onto an invoice, from payments and credit memos", href: `/reports/credit-applications?from=${monthStart}&to=${today}`, alt: `/reports/credit-applications?from=${yearStart}&to=${today}` },
+    { title: "Chart of Accounts", desc: "The GL account masterlist — filter by financial statement, group or status; print or export", href: "/finance/coa", label: "Open COA" },
     { title: "Customer Statement", desc: "Statement of account per customer: charges, payments and running balance", href: "/reports/customer-statement", label: "Open Report" },
     { title: "Customer Report", desc: "Sales, collections and outstanding balance per customer", href: `/reports/customers?from=${monthStart}&to=${today}`, alt: `/reports/customers?from=${yearStart}&to=${today}` },
     { title: "Product Report", desc: "Quantity sold, revenue, COGS and margin per product", href: `/reports/products?from=${monthStart}&to=${today}`, alt: `/reports/products?from=${yearStart}&to=${today}` },

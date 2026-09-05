@@ -48,6 +48,28 @@ export async function GET(req: NextRequest, { params }: { params: { report: stri
       ];
       return sheetResponse(rows, "Sales", `sales-report-${tag}.xlsx`);
     }
+    case "coa": {
+      // the Chart of Accounts is shared master data — the same filters as the screen
+      const accounts = await prisma.gLAccount.findMany({
+        where: {
+          ...(sp.q ? { OR: [{ code: { startsWith: sp.q, mode: "insensitive" } }, { description: { startsWith: sp.q, mode: "insensitive" } }] } : {}),
+          ...(sp.group ? { group: sp.group } : {}),
+          ...(sp.statement ? { statement: sp.statement } : {}),
+          ...(sp.status ? { status: sp.status } : {}),
+        },
+        orderBy: { code: "asc" },
+      });
+      const rows: (string | number)[][] = [
+        ["CHART OF ACCOUNTS", new Date().toISOString().slice(0, 10), sp.statement || "", sp.group || "", sp.status || ""],
+        [],
+        ["Account Code", "GL Account Description", "Financial Statement", "Account Group", "Normal Balance", "Manual Entry", "System", "Status"],
+        ...accounts.map((a) => [
+          a.code, a.description, a.statement, a.group, a.normalBalance,
+          a.allowManualEntry ? "Yes" : "No", a.isSystem ? "Yes" : "No", a.status,
+        ]),
+      ];
+      return sheetResponse(rows, "COA", `chart-of-accounts.xlsx`);
+    }
     case "expenses": {
       const r = await getExpenseReport(range, scope.ids);
       const rows: (string | number)[][] = [

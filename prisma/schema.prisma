@@ -397,6 +397,9 @@ model CashAccount {
   type           String  @default("Cash") // Cash | Bank | E-Wallet
   openingBalance Float   @default(0)
   status         String  @default("Active")
+  // which Chart of Accounts entry this physical account books to
+  glAccountId String?
+  glAccount   GLAccount? @relation(fields: [glAccountId], references: [id])
 
   payments      ReceivePayment[]
   refundCredits RefundCredit[]
@@ -617,6 +620,30 @@ model Expense {
   notes     String?
   userId    String?
   user      User?    @relation(fields: [userId], references: [id])
+  // which GL account this expense books to — picked from the Chart of Accounts
+  glAccountId String?
+  glAccount   GLAccount? @relation(fields: [glAccountId], references: [id])
+}
+
+/// Chart of Accounts: the single GL account master for the whole BMS. Shared by both
+/// companies — the transactions that reference an account stay company-separated on
+/// their own records. Codes and descriptions come from the imported masterlist and
+/// are preserved exactly; an account that has been used is deactivated, never deleted.
+model GLAccount {
+  id               String   @id @default(cuid())
+  code             String   @unique // Account Code / Cost Center
+  description      String // GL Account Description
+  statement        String // Financial Statement: BS | IS
+  group            String // Account Group, exactly as the masterlist (e.g. Current Assets)
+  status           String   @default("Active") // Active | Inactive
+  normalBalance    String   @default("Debit") // Debit | Credit
+  allowManualEntry Boolean  @default(true) // may appear in manual journal entries (future module)
+  isSystem         Boolean  @default(false) // used automatically by BMS modules; protected from edits
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  cashAccounts CashAccount[]
+  expenses     Expense[]
 }
 
 model Employee {

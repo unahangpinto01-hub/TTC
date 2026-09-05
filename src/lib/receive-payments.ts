@@ -227,6 +227,7 @@ export async function cashAccountBalances(companyId: string) {
     include: {
       payments: { where: { status: "Posted" }, select: { amount: true } },
       refundCredits: { where: { status: "Posted", type: "Refund" }, select: { amount: true } },
+      glAccount: { select: { code: true, description: true } },
     },
     orderBy: { name: "asc" },
   });
@@ -238,6 +239,7 @@ export async function cashAccountBalances(companyId: string) {
       name: a.name,
       type: a.type,
       status: a.status,
+      glCode: a.glAccount ? `${a.glAccount.code} ${a.glAccount.description}` : null,
       openingBalance: a.openingBalance,
       inflows,
       outflows,

@@ -5,6 +5,7 @@ import { getExpenseReport, parseRange } from "@/lib/reports";
 import { peso, fmtDate } from "@/lib/format";
 import { PageHeader } from "@/components/ui";
 import { createExpense } from "../actions";
+import { SearchSelect } from "@/components/search-select";
 
 const CATEGORIES = ["Fuel", "Salaries", "Utilities", "Freight", "Rent", "Supplies", "Others"];
 
@@ -64,6 +65,10 @@ export default async function ExpensesPage({ searchParams }: { searchParams: { f
           <div><label className="label">Category</label>
             <select name="category" className="input">{CATEGORIES.map((c) => <option key={c}>{c}</option>)}</select></div>
           <div><label className="label">Amount (₱)</label><input name="amount" type="number" step="0.01" min="0.01" required className="input" /></div>
+          <div>
+            <label className="label">GL Account (Chart of Accounts)</label>
+            <SearchSelect entity="gl-accounts" name="glAccountId" params={{ statement: "IS" }} placeholder="Type account code or name…" />
+          </div>
           <div><label className="label">Notes</label><input name="notes" className="input" /></div>
           <button className="btn-primary" type="submit">Save Expense</button>
         </form>

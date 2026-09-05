@@ -44,6 +44,7 @@ const NAV: { section: string; items: Item[] }[] = [
       { href: "/finance/ar", label: "AR / Aging", fn: "ar" },
       { href: "/finance/expenses", label: "Expenses", fn: "expenses" },
       { href: "/finance/ledger", label: "Ledger", fn: "ledger" },
+      { href: "/finance/coa", label: "Chart of Accounts", fn: "coa" },
       { href: "/reports", label: "Reports", fn: "reports" },
     ],
   },

@@ -38,6 +38,11 @@ export async function recordPayment(formData: FormData) {
 export async function createExpense(formData: FormData) {
   const user = await requirePermWrite("expenses");
   const company = await getActiveCompany(user);
+  // book to a Chart of Accounts entry when one was picked
+  const glAccountId = String(formData.get("glAccountId") || "") || null;
+  if (glAccountId && !(await prisma.gLAccount.findFirst({ where: { id: glAccountId, status: "Active" } }))) {
+    redirect("/finance/expenses");
+  }
   await prisma.expense.create({
     data: {
       companyId: company.id,
@@ -46,6 +51,7 @@ export async function createExpense(formData: FormData) {
       amount: round2(Number(formData.get("amount")) || 0),
       notes: String(formData.get("notes") || "").trim() || null,
       userId: user.id,
+      glAccountId,
     },
   });
   revalidatePath("/finance/expenses");

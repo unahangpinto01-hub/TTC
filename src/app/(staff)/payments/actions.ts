@@ -258,12 +258,18 @@ export async function createCashAccount(formData: FormData) {
   const company = await getActiveCompany(user);
   const name = String(formData.get("name") || "").trim();
   if (!name) redirect("/finance/accounts?error=name");
+  // book the physical account to a Chart of Accounts entry when one was picked
+  const glAccountId = String(formData.get("glAccountId") || "") || null;
+  if (glAccountId && !(await prisma.gLAccount.findFirst({ where: { id: glAccountId, status: "Active" } }))) {
+    redirect("/finance/accounts?error=name");
+  }
   await prisma.cashAccount.create({
     data: {
       companyId: company.id,
       name,
       type: ["Cash", "Bank", "E-Wallet"].includes(String(formData.get("type"))) ? String(formData.get("type")) : "Cash",
       openingBalance: round2(Number(formData.get("openingBalance")) || 0),
+      glAccountId,
     },
   });
   revalidatePath("/finance/accounts");

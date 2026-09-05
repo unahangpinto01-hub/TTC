@@ -190,6 +190,27 @@ export async function GET(req: NextRequest, { params }: { params: { entity: stri
       }));
       break;
     }
+    case "gl-accounts": {
+      // the Chart of Accounts — active by default; statement/group narrow the picker
+      const rows = await prisma.gLAccount.findMany({
+        where: {
+          ...(sp.get("all") === "1" ? {} : { status: "Active" }),
+          ...(sp.get("statement") ? { statement: sp.get("statement")! } : {}),
+          ...(sp.get("group") ? { group: sp.get("group")! } : {}),
+          ...(q ? { OR: [{ code: starts(q) }, { description: starts(q) }] } : {}),
+        },
+        select: { id: true, code: true, description: true, statement: true, group: true, normalBalance: true },
+        orderBy: { code: "asc" },
+        take: limit,
+      });
+      hits = rows.map((r) => ({
+        id: r.id,
+        label: r.description,
+        sub: `${r.code} · ${r.statement} · ${r.group}`,
+        data: { code: r.code, statement: r.statement, group: r.group, normalBalance: r.normalBalance },
+      }));
+      break;
+    }
     default:
       return new Response("Unknown entity", { status: 404 });
   }
