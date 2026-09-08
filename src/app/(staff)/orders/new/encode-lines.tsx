@@ -41,13 +41,25 @@ function fromHit(h: SearchHit): P {
   };
 }
 
-export function EncodeLines({ companyId }: { companyId: string }) {
-  const [rows, setRows] = useState<{ key: number; product: P | null; unit: string }[]>([
-    { key: 0, product: null, unit: "PCS" },
-    { key: 1, product: null, unit: "PCS" },
-    { key: 2, product: null, unit: "PCS" },
-  ]);
-  const setRow = (key: number, patch: Partial<{ product: P | null; unit: string }>) =>
+/** An existing order line, for editing rather than encoding from scratch. */
+export type InitialLine = P & { qty: number; unit: string };
+
+export function EncodeLines({ companyId, initial }: { companyId: string; initial?: InitialLine[] }) {
+  // encoding starts with three blank rows; editing starts with the order's own lines
+  // and one spare, so adding an item takes no extra click
+  const [rows, setRows] = useState<{ key: number; product: P | null; unit: string; qty: string }[]>(
+    initial?.length
+      ? [
+          ...initial.map((l, i) => ({ key: i, product: l as P, unit: l.unit, qty: String(l.qty) })),
+          { key: initial.length, product: null, unit: "PCS", qty: "" },
+        ]
+      : [
+          { key: 0, product: null, unit: "PCS", qty: "" },
+          { key: 1, product: null, unit: "PCS", qty: "" },
+          { key: 2, product: null, unit: "PCS", qty: "" },
+        ]
+  );
+  const setRow = (key: number, patch: Partial<{ product: P | null; unit: string; qty: string }>) =>
     setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...patch } : r)));
 
   return (
@@ -68,14 +80,36 @@ export function EncodeLines({ companyId }: { companyId: string }) {
                   params={{ company: companyId, active: "1" }}
                   placeholder="Type product name or SKU…"
                   className="flex-1"
+                  defaultValue={p ? { id: p.id, label: p.name } : null}
                   onSelect={(h) => setRow(r.key, { product: h ? fromHit(h) : null, unit: "PCS" })}
                 />
-                <input name="qty" type="number" min={0} placeholder="Qty" className="input w-24" />
+                <input
+                  name="qty"
+                  type="number"
+                  min={0}
+                  placeholder="Qty"
+                  className="input w-24"
+                  value={r.qty}
+                  onChange={(e) => setRow(r.key, { qty: e.target.value })}
+                />
                 {/* never disabled — a disabled select would drop its value from FormData and misalign the line arrays */}
                 <select name="unit" className="input w-28" value={unit} onChange={(e) => setRow(r.key, { unit: e.target.value })}>
                   <option value="PCS">PCS</option>
                   {hasCarton && <option value="CARTON">CARTON</option>}
                 </select>
+                <button
+                  type="button"
+                  title="Remove this line"
+                  aria-label="Remove this line"
+                  className="rounded border border-gray-200 px-2 text-sm text-gray-400 hover:border-red-200 hover:text-red-600"
+                  onClick={() =>
+                    // drop the whole row: productId/qty/unit are parallel arrays on submit,
+                    // so a row has to leave as one piece or the lines misalign
+                    setRows((rs) => (rs.length > 1 ? rs.filter((x) => x.key !== r.key) : rs))
+                  }
+                >
+                  ✕
+                </button>
               </div>
               {p && (
                 <p className="mt-0.5 pl-1 text-xs text-gray-500">
@@ -90,7 +124,7 @@ export function EncodeLines({ companyId }: { companyId: string }) {
       <button
         type="button"
         className="btn-secondary mt-2"
-        onClick={() => setRows((rs) => [...rs, { key: (rs[rs.length - 1]?.key ?? 0) + 1, product: null, unit: "PCS" }])}
+        onClick={() => setRows((rs) => [...rs, { key: (rs[rs.length - 1]?.key ?? 0) + 1, product: null, unit: "PCS", qty: "" }])}
       >
         + Add line
       </button>

@@ -5,7 +5,7 @@ import { getActiveCompany } from "@/lib/company";
 import { fmtDateTime, peso, termLabel } from "@/lib/format";
 import { getPage, pageCount } from "@/lib/paginate";
 import { PageHeader, Pagination, StatusBadge } from "@/components/ui";
-import { orderDeleteBlocker } from "@/lib/orders";
+import { orderDeleteBlocker, orderEditBlocker } from "@/lib/orders";
 import { DeleteOrderButton } from "./delete-order";
 
 export default async function OrderInboxPage({
@@ -35,6 +35,8 @@ export default async function OrderInboxPage({
   const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
   // the Delete column is Super Admin only; the action re-checks the role server-side
   const isSuperAdmin = user.role === "SUPER_ADMIN" && user.perm === "READ_WRITE";
+  // editing a pending order is ordinary work — anyone who can encode can correct
+  const canWrite = user.perm === "READ_WRITE";
 
   return (
     <div>
@@ -77,7 +79,7 @@ export default async function OrderInboxPage({
               <th className="table-th text-right">Items</th>
               <th className="table-th text-right">Amount</th>
               <th className="table-th">Status</th>
-              {isSuperAdmin && <th className="table-th text-right">Actions</th>}
+              {(canWrite || isSuperAdmin) && <th className="table-th text-right">Actions</th>}
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
@@ -85,6 +87,7 @@ export default async function OrderInboxPage({
               const amount = o.lines.reduce((s, l) => s + l.qty * l.unitPrice, 0) + o.freightTotal;
               const stale = o.status === "Pending" && o.createdAt < dayAgo;
               const blocker = orderDeleteBlocker(o);
+              const editBlocker = orderEditBlocker(o);
               return (
                 <tr key={o.id} className={`hover:bg-gray-50 ${stale ? "bg-red-50/60" : ""}`}>
                   <td className="table-td font-mono text-sm font-semibold text-gray-700">{o.orderNo ?? "—"}</td>
@@ -100,9 +103,18 @@ export default async function OrderInboxPage({
                   <td className="table-td text-right">{o.lines.length}</td>
                   <td className="table-td text-right">{peso(amount)}</td>
                   <td className="table-td"><StatusBadge status={o.status} /></td>
-                  {isSuperAdmin && (
+                  {(canWrite || isSuperAdmin) && (
                     <td className="table-td text-right">
-                      {blocker ? (
+                      <div className="flex items-center justify-end gap-2">
+                      {canWrite && !editBlocker && (
+                        <Link
+                          href={`/orders/${o.id}/edit`}
+                          className="rounded border border-emerald-200 px-2 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-50"
+                        >
+                          ✎ Edit
+                        </Link>
+                      )}
+                      {isSuperAdmin && (blocker ? (
                         // an order with downstream transactions is never offered the button,
                         // and the reason is spelled out rather than left as a dead control
                         <span
@@ -120,13 +132,14 @@ export default async function OrderInboxPage({
                           amount={peso(amount)}
                           lines={o.lines.length}
                         />
-                      )}
+                      ))}
+                      </div>
                     </td>
                   )}
                 </tr>
               );
             })}
-            {!orders.length && <tr><td colSpan={isSuperAdmin ? 9 : 8} className="p-8 text-center text-sm text-gray-500">No incoming orders.</td></tr>}
+            {!orders.length && <tr><td colSpan={canWrite || isSuperAdmin ? 9 : 8} className="p-8 text-center text-sm text-gray-500">No incoming orders.</td></tr>}
           </tbody>
         </table>
       </div>

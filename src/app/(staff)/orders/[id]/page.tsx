@@ -8,7 +8,8 @@ import { CtnEquiv, LineQty } from "@/components/qty";
 import { PageHeader, StatusBadge } from "@/components/ui";
 import { convertToSO, cancelIncoming } from "../actions";
 import { getActiveCompany } from "@/lib/company";
-import { orderDeleteBlocker } from "@/lib/orders";
+import { orderDeleteBlocker, orderEditBlocker } from "@/lib/orders";
+import { getAuditTrail } from "@/lib/salespeople";
 import { DeleteOrderButton } from "../delete-order";
 
 export default async function IncomingOrderPage({
@@ -16,7 +17,7 @@ export default async function IncomingOrderPage({
   searchParams,
 }: {
   params: { id: string };
-  searchParams: { error?: string };
+  searchParams: { error?: string; saved?: string };
 }) {
   const user = await requirePerm("orders");
   const company = await getActiveCompany(user);
@@ -29,14 +30,31 @@ export default async function IncomingOrderPage({
   const total = subtotal + order.freightTotal;
   const isSuperAdmin = user.role === "SUPER_ADMIN" && user.perm === "READ_WRITE";
   const blocker = orderDeleteBlocker(order);
+  const editBlocker = orderEditBlocker(order);
+  const canWrite = user.perm === "READ_WRITE";
+  const audit = await getAuditTrail("IncomingOrder", params.id, 20);
 
   return (
     <div className="max-w-3xl">
       <PageHeader title={`Incoming Order ${order.orderNo ? `#${order.orderNo}` : ""} · ${order.customer.businessName}`}>
         <StatusBadge status={order.status} />
+        {canWrite && !editBlocker && (
+          <Link href={`/orders/${order.id}/edit`} className="btn-secondary">✎ Edit Order</Link>
+        )}
         <Link href={`/orders/${order.id}/print`} className="btn-secondary">🖨 Print / PDF</Link>
       </PageHeader>
 
+      {searchParams.saved === "ok" && (
+        <p className="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">✔ Order updated.</p>
+      )}
+      {searchParams.saved === "nochange" && (
+        <p className="mb-3 rounded-lg bg-gray-100 px-3 py-2 text-sm text-gray-700">Nothing changed — the order is as it was.</p>
+      )}
+      {searchParams.error === "locked" && (
+        <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+          ⚠ {editBlocker ?? "This order can no longer be edited."}
+        </p>
+      )}
       {searchParams.error === "linked" && (
         <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
           ⚠ {blocker ?? "This order cannot be deleted because it is already linked to another transaction."}
@@ -124,6 +142,25 @@ export default async function IncomingOrderPage({
             {order.salesOrders[0].soNumber}
           </Link>
         </p>
+      )}
+
+      {audit.length > 0 && (
+        <div className="mt-6">
+          <h2 className="mb-2 text-sm font-semibold text-gray-700">Audit Trail</h2>
+          <div className="card divide-y divide-gray-100 p-0">
+            {audit.map((a) => (
+              <div key={a.id} className="px-3 py-2 text-sm">
+                <p className="text-gray-700">
+                  <span className="font-semibold">{a.action}</span> · {a.detail}
+                </p>
+                <p className="text-xs text-gray-400">
+                  {fmtDateTime(a.createdAt)} · {a.actorName}
+                  {a.reason ? ` · reason: ${a.reason}` : ""}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
       )}
 
       {isSuperAdmin && (

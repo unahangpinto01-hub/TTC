@@ -8,7 +8,8 @@ import { nextDocNumber, nextOrderNo } from "@/lib/numbering";
 import { notifyRoles } from "@/lib/notify";
 import { convertToBaseUnit, parseUnit, unitDealerPrice, UnitError } from "@/lib/units";
 import { getActiveCompany } from "@/lib/company";
-import { orderDeleteBlocker, DELETE_REASON_MIN } from "@/lib/orders";
+import { orderDeleteBlocker, DELETE_REASON_MIN, orderEditBlocker } from "@/lib/orders";
+import { logAudit } from "@/lib/salespeople";
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
@@ -118,6 +119,131 @@ export async function convertToSO(formData: FormData) {
   await prisma.incomingOrder.update({ where: { id: orderId }, data: { status: "Converted" } });
   await notifyRoles(["ADMIN", "SUPER_ADMIN"], "ORDER_CONVERTED", `${soNumber} created from ${order.customer.businessName}'s order`, `/sales-orders/${so.id}`, order.companyId);
   redirect(`/sales-orders/${so.id}`);
+}
+
+/**
+ * Amend an order that is still sitting in the inbox.
+ *
+ * Only while it is Pending: the moment a sales order exists the figures have been acted on
+ * downstream, and correcting them here would leave the two documents disagreeing silently.
+ *
+ * Lines are rebuilt rather than patched — nothing references an incoming order line, so a
+ * clean replace is both simpler and safer than diffing rows. Prices are re-read from the
+ * product master exactly as encoding does, so an edited line is priced the same as a
+ * freshly encoded one; negotiated pricing stays on the sales order, where it is approved.
+ */
+export async function updateIncomingOrder(formData: FormData) {
+  const user = await requirePermWrite("orders");
+  const company = await getActiveCompany(user);
+  const orderId = String(formData.get("orderId"));
+
+  const before = await prisma.incomingOrder.findUnique({
+    where: { id: orderId },
+    include: {
+      customer: { select: { businessName: true } },
+      lines: { include: { product: { select: { name: true } } } },
+      salesOrders: { select: { soNumber: true } },
+    },
+  });
+  if (!before || before.companyId !== company.id) redirect("/orders?error=missing");
+  const blocker = orderEditBlocker(before);
+  if (blocker) redirect(`/orders/${orderId}?error=locked`);
+
+  const productIds = formData.getAll("productId").map(String);
+  const qtys = formData.getAll("qty").map(Number);
+  const units = formData.getAll("unit").map(parseUnit);
+  const lines = productIds
+    .map((pid, i) => ({ productId: pid, qty: Math.floor(qtys[i] || 0), unit: units[i] ?? "PCS" }))
+    .filter((l) => l.productId && l.qty > 0);
+  if (!lines.length) redirect(`/orders/${orderId}/edit?error=empty`);
+
+  // same company check as encoding — a line may not reach across companies
+  const products = await prisma.product.findMany({
+    where: { id: { in: lines.map((l) => l.productId) }, companyId: company.id },
+  });
+  if (products.length !== new Set(lines.map((l) => l.productId)).size) redirect(`/orders/${orderId}/edit?error=empty`);
+
+  let lineData;
+  try {
+    lineData = lines.map((l) => {
+      const product = products.find((p) => p.id === l.productId)!;
+      return {
+        productId: l.productId,
+        qty: l.qty,
+        unit: l.unit,
+        baseQty: convertToBaseUnit(l.qty, l.unit, product),
+        unitPrice: unitDealerPrice(product, l.unit),
+      };
+    });
+  } catch (e) {
+    if (e instanceof UnitError) redirect(`/orders/${orderId}/edit?error=nocarton`);
+    throw e;
+  }
+
+  const dateRaw = String(formData.get("orderDate") || "");
+  const parsed = dateRaw ? new Date(`${dateRaw}T12:00:00`) : null;
+  const orderDate =
+    parsed && !Number.isNaN(parsed.getTime()) && parsed.getTime() < Date.now() ? parsed : before.orderDate;
+
+  const freightPerCarton = Math.max(0, Number(formData.get("freightPerCarton")) || 0);
+  const freightCartons = lines.filter((l) => l.unit === "CARTON").reduce((s, l) => s + l.qty, 0);
+  const freightTotal = round2(freightPerCarton * freightCartons);
+
+  const next = {
+    source: String(formData.get("source") || before.source),
+    term: String(formData.get("term") || before.term),
+    notes: String(formData.get("notes") || "").trim() || null,
+    orderDate,
+    freightPerCarton,
+    freightTotal,
+  };
+
+  const value = (ls: { qty: number; unitPrice: number }[], fr: number) =>
+    round2(ls.reduce((s, l) => s + l.qty * l.unitPrice, 0) + fr);
+  const oldValue = value(before.lines, before.freightTotal);
+  const newValue = value(lineData, freightTotal);
+
+  // what actually moved, in words, so the audit entry is worth reading later
+  const changes: string[] = [];
+  if (before.source !== next.source) changes.push(`source ${before.source} → ${next.source}`);
+  if (before.term !== next.term) changes.push(`term ${before.term} → ${next.term}`);
+  if (before.orderDate.toDateString() !== orderDate.toDateString())
+    changes.push(`order date ${before.orderDate.toISOString().slice(0, 10)} → ${orderDate.toISOString().slice(0, 10)}`);
+  if (round2(before.freightPerCarton) !== round2(freightPerCarton))
+    changes.push(`freight/carton ${before.freightPerCarton} → ${freightPerCarton}`);
+  if ((before.notes ?? "") !== (next.notes ?? "")) changes.push("notes edited");
+  if (before.lines.length !== lineData.length) changes.push(`${before.lines.length} line(s) → ${lineData.length}`);
+  else {
+    const moved = before.lines.filter((b, i) => {
+      const n = lineData[i];
+      return !n || b.productId !== n.productId || b.qty !== n.qty || b.unit !== n.unit;
+    }).length;
+    if (moved) changes.push(`${moved} line(s) changed`);
+  }
+  if (oldValue !== newValue) changes.push(`total ${oldValue.toFixed(2)} → ${newValue.toFixed(2)}`);
+  if (!changes.length) redirect(`/orders/${orderId}?saved=nochange`);
+
+  await prisma.$transaction([
+    prisma.incomingOrderLine.deleteMany({ where: { orderId } }),
+    prisma.incomingOrder.update({
+      where: { id: orderId },
+      data: { ...next, lines: { create: lineData } },
+    }),
+  ]);
+
+  await logAudit({
+    entity: "IncomingOrder",
+    entityId: orderId,
+    action: "EDITED",
+    detail: `${before.orderNo ?? orderId.slice(-6)} · ${before.customer.businessName} — ${changes.join("; ")}`,
+    actorName: user.name,
+    actorEmail: user.email,
+    companyId: before.companyId,
+  });
+
+  revalidatePath("/orders");
+  revalidatePath(`/orders/${orderId}`);
+  redirect(`/orders/${orderId}?saved=ok`);
 }
 
 /**
