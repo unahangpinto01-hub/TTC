@@ -5,8 +5,14 @@ import { getActiveCompany } from "@/lib/company";
 import { fmtDateTime, peso, termLabel } from "@/lib/format";
 import { getPage, pageCount } from "@/lib/paginate";
 import { PageHeader, Pagination, StatusBadge } from "@/components/ui";
+import { orderDeleteBlocker } from "@/lib/orders";
+import { DeleteOrderButton } from "./delete-order";
 
-export default async function OrderInboxPage({ searchParams }: { searchParams: { status?: string; page?: string } }) {
+export default async function OrderInboxPage({
+  searchParams,
+}: {
+  searchParams: { status?: string; page?: string; deleted?: string; error?: string };
+}) {
   const user = await requirePerm("orders");
   const company = await getActiveCompany(user);
   const { page, skip, take } = getPage(searchParams);
@@ -27,12 +33,29 @@ export default async function OrderInboxPage({ searchParams }: { searchParams: {
   ]);
 
   const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  // the Delete column is Super Admin only; the action re-checks the role server-side
+  const isSuperAdmin = user.role === "SUPER_ADMIN" && user.perm === "READ_WRITE";
 
   return (
     <div>
       <PageHeader title={`Order Inbox${pendingCount ? ` · ${pendingCount} pending` : ""}`}>
+        {isSuperAdmin && (
+          <Link href="/orders/deleted" className="btn-secondary">🗑 Deleted Orders</Link>
+        )}
         <Link href="/orders/new" className="btn-primary">+ Encode Order (Messenger/Text)</Link>
       </PageHeader>
+
+      {searchParams.deleted && (
+        <p className="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+          ✔ Order <span className="font-mono font-semibold">{searchParams.deleted}</span> was permanently deleted. The
+          deletion is recorded in <Link href="/orders/deleted" className="underline">Deleted Orders</Link>.
+        </p>
+      )}
+      {searchParams.error === "missing" && (
+        <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+          ⚠ That order no longer exists, or it belongs to another company.
+        </p>
+      )}
       <form method="GET" className="mb-4 flex gap-2">
         <select name="status" defaultValue={status} className="input max-w-[160px]">
           <option value="">All statuses</option>
@@ -54,12 +77,14 @@ export default async function OrderInboxPage({ searchParams }: { searchParams: {
               <th className="table-th text-right">Items</th>
               <th className="table-th text-right">Amount</th>
               <th className="table-th">Status</th>
+              {isSuperAdmin && <th className="table-th text-right">Actions</th>}
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {orders.map((o) => {
               const amount = o.lines.reduce((s, l) => s + l.qty * l.unitPrice, 0) + o.freightTotal;
               const stale = o.status === "Pending" && o.createdAt < dayAgo;
+              const blocker = orderDeleteBlocker(o);
               return (
                 <tr key={o.id} className={`hover:bg-gray-50 ${stale ? "bg-red-50/60" : ""}`}>
                   <td className="table-td font-mono text-sm font-semibold text-gray-700">{o.orderNo ?? "—"}</td>
@@ -75,10 +100,33 @@ export default async function OrderInboxPage({ searchParams }: { searchParams: {
                   <td className="table-td text-right">{o.lines.length}</td>
                   <td className="table-td text-right">{peso(amount)}</td>
                   <td className="table-td"><StatusBadge status={o.status} /></td>
+                  {isSuperAdmin && (
+                    <td className="table-td text-right">
+                      {blocker ? (
+                        // an order with downstream transactions is never offered the button,
+                        // and the reason is spelled out rather than left as a dead control
+                        <span
+                          className="whitespace-nowrap text-xs text-gray-400"
+                          title={blocker}
+                        >
+                          🔒 linked
+                        </span>
+                      ) : (
+                        <DeleteOrderButton
+                          orderId={o.id}
+                          orderNo={o.orderNo ?? "—"}
+                          customer={o.customer.businessName}
+                          company={company.companyName}
+                          amount={peso(amount)}
+                          lines={o.lines.length}
+                        />
+                      )}
+                    </td>
+                  )}
                 </tr>
               );
             })}
-            {!orders.length && <tr><td colSpan={8} className="p-8 text-center text-sm text-gray-500">No incoming orders.</td></tr>}
+            {!orders.length && <tr><td colSpan={isSuperAdmin ? 9 : 8} className="p-8 text-center text-sm text-gray-500">No incoming orders.</td></tr>}
           </tbody>
         </table>
       </div>

@@ -8,8 +8,16 @@ import { CtnEquiv, LineQty } from "@/components/qty";
 import { PageHeader, StatusBadge } from "@/components/ui";
 import { convertToSO, cancelIncoming } from "../actions";
 import { getActiveCompany } from "@/lib/company";
+import { orderDeleteBlocker } from "@/lib/orders";
+import { DeleteOrderButton } from "../delete-order";
 
-export default async function IncomingOrderPage({ params }: { params: { id: string } }) {
+export default async function IncomingOrderPage({
+  params,
+  searchParams,
+}: {
+  params: { id: string };
+  searchParams: { error?: string };
+}) {
   const user = await requirePerm("orders");
   const company = await getActiveCompany(user);
   const order = await prisma.incomingOrder.findUnique({
@@ -19,6 +27,8 @@ export default async function IncomingOrderPage({ params }: { params: { id: stri
   if (!order || order.companyId !== company.id) notFound();
   const subtotal = order.lines.reduce((s, l) => s + l.qty * l.unitPrice, 0);
   const total = subtotal + order.freightTotal;
+  const isSuperAdmin = user.role === "SUPER_ADMIN" && user.perm === "READ_WRITE";
+  const blocker = orderDeleteBlocker(order);
 
   return (
     <div className="max-w-3xl">
@@ -26,6 +36,17 @@ export default async function IncomingOrderPage({ params }: { params: { id: stri
         <StatusBadge status={order.status} />
         <Link href={`/orders/${order.id}/print`} className="btn-secondary">🖨 Print / PDF</Link>
       </PageHeader>
+
+      {searchParams.error === "linked" && (
+        <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+          ⚠ {blocker ?? "This order cannot be deleted because it is already linked to another transaction."}
+        </p>
+      )}
+      {searchParams.error === "reason" && (
+        <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+          ⚠ Deletion cancelled — a reason is required and must be at least a few words.
+        </p>
+      )}
 
       <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4">
         <div className="card py-3">
@@ -103,6 +124,31 @@ export default async function IncomingOrderPage({ params }: { params: { id: stri
             {order.salesOrders[0].soNumber}
           </Link>
         </p>
+      )}
+
+      {isSuperAdmin && (
+        <div className="mt-6 rounded-lg border border-red-200 bg-red-50/50 p-4">
+          <p className="text-sm font-semibold text-red-800">Super Admin</p>
+          {blocker ? (
+            <p className="mt-1 text-sm text-gray-600">{blocker}</p>
+          ) : (
+            <>
+              <p className="mb-3 mt-1 text-sm text-gray-600">
+                Permanently remove this order and its lines. Use it for an order encoded in error — cancelling is the
+                normal route, and it keeps the record.
+              </p>
+              <DeleteOrderButton
+                orderId={order.id}
+                orderNo={order.orderNo ?? "—"}
+                customer={order.customer.businessName}
+                company={company.companyName}
+                amount={peso(total)}
+                lines={order.lines.length}
+                size="md"
+              />
+            </>
+          )}
+        </div>
       )}
     </div>
   );

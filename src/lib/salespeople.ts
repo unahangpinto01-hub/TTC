@@ -39,6 +39,11 @@ export async function logAudit(opts: {
   detail: string;
   actorName: string;
   actorEmail: string;
+  /** set it when the entry must survive the record it describes (a permanent delete) */
+  companyId?: string;
+  reason?: string;
+  /** JSON snapshot of what was removed, for an audit screen that can no longer load it */
+  meta?: string;
 }) {
   await prisma.auditLog.create({ data: opts });
 }

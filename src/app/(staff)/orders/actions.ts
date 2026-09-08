@@ -3,11 +3,12 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
-import { requirePermWrite } from "@/lib/auth";
+import { requirePermWrite, requireStepUp } from "@/lib/auth";
 import { nextDocNumber, nextOrderNo } from "@/lib/numbering";
 import { notifyRoles } from "@/lib/notify";
 import { convertToBaseUnit, parseUnit, unitDealerPrice, UnitError } from "@/lib/units";
 import { getActiveCompany } from "@/lib/company";
+import { orderDeleteBlocker, DELETE_REASON_MIN } from "@/lib/orders";
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
@@ -117,6 +118,87 @@ export async function convertToSO(formData: FormData) {
   await prisma.incomingOrder.update({ where: { id: orderId }, data: { status: "Converted" } });
   await notifyRoles(["ADMIN", "SUPER_ADMIN"], "ORDER_CONVERTED", `${soNumber} created from ${order.customer.businessName}'s order`, `/sales-orders/${so.id}`, order.companyId);
   redirect(`/sales-orders/${so.id}`);
+}
+
+/**
+ * Permanently delete an incoming order. Super Admin only, and only while the order has
+ * produced nothing downstream.
+ *
+ * Every guard below runs on the server. Hiding the button in the Order Inbox is a
+ * convenience for the people who cannot use it — it is not the control. A hand-made POST
+ * straight at this action meets exactly the same checks in the same order.
+ */
+export async function deleteIncomingOrder(formData: FormData) {
+  // 1. write access to Orders at all
+  const user = await requirePermWrite("orders");
+  // 2. and the Super Admin role specifically — an Admin with full write access is refused
+  if (user.role !== "SUPER_ADMIN") redirect("/denied");
+  // 3. a permanent delete is a sensitive action, so the password/2FA must be fresh,
+  //    the same bar the Users and HR modules already set
+  await requireStepUp("/orders");
+
+  const company = await getActiveCompany(user);
+  const orderId = String(formData.get("orderId"));
+  const reason = String(formData.get("reason") || "").trim();
+
+  const order = await prisma.incomingOrder.findUnique({
+    where: { id: orderId },
+    include: {
+      customer: { select: { businessName: true } },
+      company: { select: { companyName: true } },
+      lines: { select: { qty: true, unitPrice: true } },
+      salesOrders: { select: { soNumber: true } },
+    },
+  });
+  // company isolation: another company's order is not visible even by direct id
+  if (!order || order.companyId !== company.id) redirect("/orders?error=missing");
+
+  // 4. the downstream check — converted, invoiced, or linked in any way blocks the delete
+  const blocker = orderDeleteBlocker(order);
+  if (blocker) redirect(`/orders/${orderId}?error=linked`);
+
+  // 5. the reason is what makes the audit entry worth keeping
+  if (reason.length < DELETE_REASON_MIN) redirect(`/orders/${orderId}?error=reason`);
+
+  const amount = round2(order.lines.reduce((s, l) => s + l.qty * l.unitPrice, 0) + order.freightTotal);
+  const label = order.orderNo ?? orderId.slice(-6);
+
+  // the entry and the deletion commit together: no record of an order that is still here,
+  // and no order vanishing without a record
+  await prisma.$transaction([
+    prisma.auditLog.create({
+      data: {
+        entity: "IncomingOrder",
+        entityId: orderId,
+        action: "DELETED",
+        detail: `${label} · ${order.customer.businessName} · ${order.company.companyName} · ${order.lines.length} line(s) · ${amount.toLocaleString("en-PH", { style: "currency", currency: "PHP" })}`,
+        actorName: user.name,
+        actorEmail: user.email,
+        companyId: order.companyId,
+        reason,
+        // the order itself is gone after this, so everything the audit screen needs to
+        // describe it has to be captured here
+        meta: JSON.stringify({
+          orderNo: order.orderNo,
+          customer: order.customer.businessName,
+          company: order.company.companyName,
+          source: order.source,
+          term: order.term,
+          status: order.status,
+          lines: order.lines.length,
+          amount,
+          orderDate: order.orderDate.toISOString(),
+          encodedAt: order.createdAt.toISOString(),
+        }),
+      },
+    }),
+    // IncomingOrderLine cascades on delete, so the lines go with it
+    prisma.incomingOrder.delete({ where: { id: orderId } }),
+  ]);
+
+  revalidatePath("/orders");
+  revalidatePath("/orders/deleted");
+  redirect(`/orders?deleted=${encodeURIComponent(label)}`);
 }
 
 export async function cancelIncoming(formData: FormData) {

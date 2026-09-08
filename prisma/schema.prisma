@@ -803,9 +803,18 @@ model AuditLog {
   detail     String // human sentence, e.g. "Salesperson: (none) → Marites Uy"
   actorName  String
   actorEmail String
+  /// The company the record belonged to. Set on entries that OUTLIVE their record — a
+  /// permanent delete leaves no row to read the company from afterwards.
+  companyId  String?
+  /// The reason the actor gave, where the action demands one (a permanent delete does).
+  reason     String?
+  /// JSON snapshot of the deleted record's identifying fields, so an audit screen can still
+  /// show what is gone: { orderNo, customer, source, amount, lines, orderDate }.
+  meta       String?
   createdAt  DateTime @default(now())
 
   @@index([entity, entityId, createdAt])
+  @@index([entity, action, createdAt])
 }
 
 /// Company master (one row per company). Mapped onto the original CompanySetting table so the
