@@ -36,14 +36,15 @@ export async function GET(req: NextRequest, { params }: { params: { report: stri
       };
       const prev = previousPeriod(f);
       const year = range.to.getFullYear();
-      const throughMonth = range.from.getFullYear() === year ? range.to.getMonth() + 1 : 12;
+      const throughMonth = range.to.getMonth() + 1;
+      const fromMonth = range.from.getFullYear() === year ? range.from.getMonth() + 1 : 1;
       const [sales, prior, ar, trend, fc, cmp] = await Promise.all([
         getSalesMetrics(f),
         getSalesMetrics({ ...f, from: prev.from, to: prev.to }),
         getArMetrics(f),
         getMonthlyTrend(year, f),
-        getForecastVsActual(f, year, throughMonth),
-        getCompanyComparison(f, year, throughMonth),
+        getForecastVsActual(f, year, fromMonth, throughMonth),
+        getCompanyComparison(f, year, fromMonth, throughMonth),
       ]);
       const col = await getCollectionMetrics(f, sales.grossSales);
       const inv = await getInventoryMetrics(f, sales.cogs);
@@ -55,7 +56,7 @@ export async function GET(req: NextRequest, { params }: { params: { report: stri
 
       const rows: (string | number)[][] = [
         ["EXECUTIVE DASHBOARD", tag, scope.label],
-        [`Compared against ${prev.from.toISOString().slice(0, 10)} — ${prev.to.toISOString().slice(0, 10)}`],
+        [`Compared against the same period last year: ${prev.from.toISOString().slice(0, 10)} — ${prev.to.toISOString().slice(0, 10)}`],
         [sp.category ? `Category: ${sp.category}` : "", sp.area ? `Area: ${sp.area}` : ""],
         [],
         ["KEY FIGURES"],

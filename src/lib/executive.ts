@@ -45,10 +45,27 @@ function customerWhere(f: ExecFilters) {
   return Object.keys(w).length ? w : undefined;
 }
 
-/** The previous window of the same length, for every "vs previous period" comparison. */
+/** The same calendar day one year earlier, clamped so 29 Feb lands on 28 Feb. */
+function sameDayLastYear(d: Date): Date {
+  const year = d.getFullYear() - 1;
+  const month = d.getMonth();
+  const lastOfMonth = new Date(year, month + 1, 0).getDate();
+  return new Date(
+    year, month, Math.min(d.getDate(), lastOfMonth),
+    d.getHours(), d.getMinutes(), d.getSeconds(), d.getMilliseconds()
+  );
+}
+
+/**
+ * The period every "vs" figure is measured against: the SAME window one year earlier.
+ *
+ * Taking the immediately preceding window of equal length instead reads badly for the view
+ * people actually open — a year to date of 1 January to 9 September would be compared with
+ * 24 April to 31 December of the year before, a stretch that straddles two years and lines
+ * up with nothing. Against September last year, the number means something.
+ */
 export function previousPeriod(f: ExecFilters): { from: Date; to: Date } {
-  const span = f.to.getTime() - f.from.getTime();
-  return { from: new Date(f.from.getTime() - span - 1), to: new Date(f.from.getTime() - 1) };
+  return { from: sameDayLastYear(f.from), to: sameDayLastYear(f.to) };
 }
 
 /** Growth as a percentage, or null when there is no prior figure to grow from. */
@@ -333,7 +350,7 @@ export type ForecastRow = {
  * snapshot. Actual sales carry no salesperson of their own, so they are attributed through
  * the customer's CURRENT owner — reassigning an account moves its past sales with it.
  */
-export async function getForecastVsActual(f: ExecFilters, year: number, throughMonth: number) {
+export async function getForecastVsActual(f: ExecFilters, year: number, fromMonth: number, throughMonth: number) {
   const lines = await prisma.forecastLine.findMany({
     where: {
       forecast: { year },
@@ -360,7 +377,9 @@ export async function getForecastVsActual(f: ExecFilters, year: number, throughM
     const sp = l.salesperson ?? l.customer?.salesperson ?? null;
     const key = sp?.id ?? "none";
     const months = [l.m1, l.m2, l.m3, l.m4, l.m5, l.m6, l.m7, l.m8, l.m9, l.m10, l.m11, l.m12];
-    const qty = months.slice(0, throughMonth).reduce((a, b) => a + b, 0);
+    // only the months the chosen period actually covers — picking August alone must not
+    // compare August's plan against the whole year to date
+    const qty = months.slice(fromMonth - 1, throughMonth).reduce((a, b) => a + b, 0);
     const price = l.unitPrice ?? l.product.srp;
 
     let row = rows.get(key);
@@ -381,7 +400,7 @@ export async function getForecastVsActual(f: ExecFilters, year: number, throughM
   }
 
   // actual sales for the same window, attributed through the customer's current owner
-  const from = new Date(year, 0, 1);
+  const from = new Date(year, fromMonth - 1, 1);
   const to = new Date(year, throughMonth, 0, 23, 59, 59, 999);
   const cw = customerWhere(f);
   const srs = await prisma.salesReceipt.findMany({
@@ -487,7 +506,7 @@ export type CompanyRow = {
  * so nothing is double counted and a shared customer is counted once per company it
  * actually bought from.
  */
-export async function getCompanyComparison(f: ExecFilters, year: number, throughMonth: number): Promise<CompanyRow[]> {
+export async function getCompanyComparison(f: ExecFilters, year: number, fromMonth: number, throughMonth: number): Promise<CompanyRow[]> {
   const companies = await prisma.company.findMany({
     where: { id: { in: f.companyIds } },
     select: { id: true, companyName: true, isPrimary: true },
@@ -501,7 +520,7 @@ export async function getCompanyComparison(f: ExecFilters, year: number, through
       getSalesMetrics(one),
       getArMetrics(one),
       getInventoryMetrics(one, 0),
-      getForecastVsActual(one, year, throughMonth),
+      getForecastVsActual(one, year, fromMonth, throughMonth),
     ]);
     const col = await getCollectionMetrics(one, sales.grossSales);
     rows.push({

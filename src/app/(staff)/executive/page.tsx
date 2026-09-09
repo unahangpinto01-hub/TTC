@@ -23,7 +23,7 @@ import {
   MEASURES, type Measure,
 } from "./sections";
 
-/** A KPI tile: the figure, and how it moved against the same length of time before it. */
+/** A KPI tile: the figure, and how it moved against the same window a year earlier. */
 function Kpi({
   label, value, sub, delta, invert = false, muted = false,
 }: {
@@ -43,10 +43,10 @@ function Kpi({
       {sub && <p className="text-xs text-gray-500">{sub}</p>}
       {delta != null && (
         <p className={`text-xs font-semibold ${good === null ? "text-gray-400" : good ? "text-emerald-700" : "text-red-600"}`}>
-          {delta > 0 ? "▲" : delta < 0 ? "▼" : "•"} {Math.abs(delta).toFixed(1)}% vs previous period
+          {delta > 0 ? "▲" : delta < 0 ? "▼" : "•"} {Math.abs(delta).toFixed(1)}% vs same period last year
         </p>
       )}
-      {delta === null && sub === undefined && <p className="text-xs text-gray-300">no prior period</p>}
+      {delta === null && sub === undefined && <p className="text-xs text-gray-300">nothing to compare last year</p>}
     </div>
   );
 }
@@ -57,6 +57,10 @@ const ymd = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 const num = (n: number) => n.toLocaleString("en-PH", { maximumFractionDigits: 2 });
 const round2 = (n: number) => Math.round(n * 100) / 100;
+const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+/** "Aug 2026" for a single month, "Jan–Sep 2026" for a span. */
+const monthSpan = (a: number, b: number, year: number) =>
+  a === b ? `${MONTH_NAMES[a - 1]} ${year}` : `${MONTH_NAMES[a - 1]}–${MONTH_NAMES[b - 1]} ${year}`;
 
 export default async function ExecutiveDashboard({
   searchParams,
@@ -86,7 +90,9 @@ export default async function ExecutiveDashboard({
   };
   const prev = previousPeriod(f);
   const year = to.getFullYear();
-  const throughMonth = from.getFullYear() === year ? to.getMonth() + 1 : 12;
+  const throughMonth = to.getMonth() + 1;
+  // a period starting in an earlier year still begins at January of the forecast year
+  const fromMonth = from.getFullYear() === year ? from.getMonth() + 1 : 1;
 
   const [sales, prevSales, ar, trend, priorTrend, forecast, comparison, categories, salespeople, customers, areas] =
     await Promise.all([
@@ -95,8 +101,8 @@ export default async function ExecutiveDashboard({
       getArMetrics(f),
       getMonthlyTrend(year, f),
       getMonthlyTrend(year - 1, f),
-      getForecastVsActual(f, year, throughMonth),
-      getCompanyComparison(f, year, throughMonth),
+      getForecastVsActual(f, year, fromMonth, throughMonth),
+      getCompanyComparison(f, year, fromMonth, throughMonth),
       getCategoryNames(),
       getSalespeople(),
       prisma.customer.findMany({ orderBy: { businessName: "asc" }, select: { id: true, businessName: true } }),
@@ -201,8 +207,8 @@ export default async function ExecutiveDashboard({
       </form>
 
       <p className="mb-4 text-sm text-gray-600">
-        <span className="font-semibold">{scope.label}</span> · {fmtDate(from)} – {fmtDate(to)} · compared against{" "}
-        {fmtDate(prev.from)} – {fmtDate(prev.to)}
+        <span className="font-semibold">{scope.label}</span> · {fmtDate(from)} – {fmtDate(to)} · compared against the
+        same period last year, {fmtDate(prev.from)} – {fmtDate(prev.to)}
         {searchParams.category ? ` · ${searchParams.category}` : ""}
       </p>
 
@@ -235,7 +241,7 @@ export default async function ExecutiveDashboard({
         <div className="card">
           <h2 className="mb-1 font-semibold text-emerald-900">Sales vs Forecast</h2>
           <p className="mb-2 text-xs text-gray-500">
-            Jan–{["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][throughMonth - 1]} {year}, by salesperson.
+            {monthSpan(fromMonth, throughMonth, year)}, by salesperson.
           </p>
           {forecastChart.length ? <ForecastChart data={forecastChart} /> : <p className="py-16 text-center text-sm text-gray-400">No forecast for {year} in this scope.</p>}
         </div>
@@ -246,7 +252,8 @@ export default async function ExecutiveDashboard({
         <div className="flex flex-wrap items-baseline justify-between gap-2 px-4 pt-4">
           <h2 className="font-semibold text-emerald-900">Sales vs Forecast by Salesperson</h2>
           <p className="text-xs text-gray-500">
-            Quantities normalised to the 1,000-ml equivalent before comparing.
+            {monthSpan(fromMonth, throughMonth, year)} · quantities normalised to the 1,000-ml equivalent before
+            comparing.
           </p>
         </div>
         <table className="mt-2 w-full min-w-[860px]">
