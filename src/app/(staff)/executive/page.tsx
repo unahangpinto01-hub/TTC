@@ -25,7 +25,7 @@ import {
 
 /** A KPI tile: the figure, and how it moved against the same window a year earlier. */
 function Kpi({
-  label, value, sub, delta, invert = false, muted = false,
+  label, value, sub, delta, invert = false, muted = false, comparable = true,
 }: {
   label: string;
   value: string;
@@ -34,6 +34,8 @@ function Kpi({
   /** true when going up is bad (receivables, overdue) */
   invert?: boolean;
   muted?: boolean;
+  /** false when last year holds no data at all — then the tile says nothing about it */
+  comparable?: boolean;
 }) {
   const good = delta == null ? null : invert ? delta < 0 : delta > 0;
   return (
@@ -46,7 +48,9 @@ function Kpi({
           {delta > 0 ? "▲" : delta < 0 ? "▼" : "•"} {Math.abs(delta).toFixed(1)}% vs same period last year
         </p>
       )}
-      {delta === null && sub === undefined && <p className="text-xs text-gray-300">nothing to compare last year</p>}
+      {comparable && delta === null && sub === undefined && (
+        <p className="text-xs text-gray-300">nothing to compare last year</p>
+      )}
     </div>
   );
 }
@@ -133,6 +137,10 @@ export default async function ExecutiveDashboard({
   const alerts = buildAlerts({ ar, stock: stockRows, forecast, customers: custRows, credits, purchasing, sales, prevSales });
 
   const trendData = trend.map((m, i) => ({ ...m, prior: priorTrend[i]?.netSales ?? 0 }));
+  // with no trading last year there is nothing to compare against, so the dashboard says
+  // nothing about it rather than showing a comparison that is empty by construction
+  const hasPrior = prevSales.invoices > 0 || prevSales.orders > 0 || prevSales.grossSales > 0;
+  const hasPriorYear = priorTrend.some((m) => m.invoices > 0);
   const forecastChart = forecast.rows
     .filter((r) => r.forecastValue > 0 || r.actualValue > 0)
     .map((r) => ({ name: r.salesperson.replace("— Unassigned —", "Unassigned"), forecast: r.forecastValue, actual: r.actualValue }));
@@ -207,8 +215,8 @@ export default async function ExecutiveDashboard({
       </form>
 
       <p className="mb-4 text-sm text-gray-600">
-        <span className="font-semibold">{scope.label}</span> · {fmtDate(from)} – {fmtDate(to)} · compared against the
-        same period last year, {fmtDate(prev.from)} – {fmtDate(prev.to)}
+        <span className="font-semibold">{scope.label}</span> · {fmtDate(from)} – {fmtDate(to)}
+        {hasPrior && <> · compared against the same period last year, {fmtDate(prev.from)} – {fmtDate(prev.to)}</>}
         {searchParams.category ? ` · ${searchParams.category}` : ""}
       </p>
 
@@ -223,9 +231,9 @@ export default async function ExecutiveDashboard({
       </div>
 
       <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
-        <Kpi label="Sales Orders" value={num(sales.orders)} delta={growthPct(sales.orders, prevSales.orders)} />
-        <Kpi label="Sales Invoices" value={num(sales.invoices)} delta={growthPct(sales.invoices, prevSales.invoices)} />
-        <Kpi label="Average Order Value" value={sales.avgOrderValue == null ? "—" : peso(sales.avgOrderValue)} delta={growthPct(sales.avgOrderValue ?? 0, prevSales.avgOrderValue ?? 0)} />
+        <Kpi label="Sales Orders" value={num(sales.orders)} delta={growthPct(sales.orders, prevSales.orders)} comparable={hasPrior} />
+        <Kpi label="Sales Invoices" value={num(sales.invoices)} delta={growthPct(sales.invoices, prevSales.invoices)} comparable={hasPrior} />
+        <Kpi label="Average Order Value" value={sales.avgOrderValue == null ? "—" : peso(sales.avgOrderValue)} delta={growthPct(sales.avgOrderValue ?? 0, prevSales.avgOrderValue ?? 0)} comparable={hasPrior} />
         <Kpi label="Cost of Goods Sold" value={peso(sales.cogs)} sub={`${num(sales.qtyPcs)} PCS · ${num(sales.qtyCtn)} CTN`} invert delta={growthPct(sales.cogs, prevSales.cogs)} />
         <Kpi label="Inventory Value" value={peso(inventory.value)} sub={`${num(inventory.pcs)} PCS · ${num(inventory.ctn)} CTN`} />
         <Kpi label="Inventory Turnover" value={inventory.turnover == null ? "—" : `${inventory.turnover.toFixed(2)}×`} sub="COGS ÷ closing stock" />
@@ -235,8 +243,10 @@ export default async function ExecutiveDashboard({
       <div className="mb-6 grid gap-4 lg:grid-cols-2">
         <div className="card">
           <h2 className="mb-1 font-semibold text-emerald-900">Monthly Sales Trend · {year}</h2>
-          <p className="mb-2 text-xs text-gray-500">Net sales and gross profit by month, with {year - 1} behind for comparison.</p>
-          <SalesTrendChart data={trendData} />
+          <p className="mb-2 text-xs text-gray-500">
+            Net sales and gross profit by month{hasPriorYear ? `, with ${year - 1} behind for comparison` : ""}.
+          </p>
+          <SalesTrendChart data={trendData} showPrior={hasPriorYear} />
         </div>
         <div className="card">
           <h2 className="mb-1 font-semibold text-emerald-900">Sales vs Forecast</h2>

@@ -34,8 +34,12 @@ const GREY = "#cbd5e1";
 /** Monthly net sales and gross profit, with last year's sales behind for comparison. */
 export function SalesTrendChart({
   data,
+  showPrior = true,
 }: {
   data: { month: string; netSales: number; grossProfit: number; prior: number }[];
+  /** drop the previous-year bars when there was no trading to show — an all-zero series
+      still claims a legend entry and invites the reader to look for bars that cannot exist */
+  showPrior?: boolean;
 }) {
   return (
     <div className="h-72 w-full">
@@ -46,7 +50,7 @@ export function SalesTrendChart({
           <YAxis tickFormatter={short} tick={{ fontSize: 11 }} stroke="#9ca3af" width={58} />
           <Tooltip formatter={tip} contentStyle={{ fontSize: 12 }} />
           <Legend wrapperStyle={{ fontSize: 12 }} />
-          <Bar dataKey="prior" name="Previous year" fill={GREY} radius={[3, 3, 0, 0]} />
+          {showPrior && <Bar dataKey="prior" name="Previous year" fill={GREY} radius={[3, 3, 0, 0]} />}
           <Bar dataKey="netSales" name="Net sales" fill={GREEN} radius={[3, 3, 0, 0]} />
           <Line dataKey="grossProfit" name="Gross profit" stroke={AMBER} strokeWidth={2} dot={{ r: 2 }} />
         </ComposedChart>

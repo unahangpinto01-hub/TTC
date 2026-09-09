@@ -56,7 +56,9 @@ export async function GET(req: NextRequest, { params }: { params: { report: stri
 
       const rows: (string | number)[][] = [
         ["EXECUTIVE DASHBOARD", tag, scope.label],
-        [`Compared against the same period last year: ${prev.from.toISOString().slice(0, 10)} — ${prev.to.toISOString().slice(0, 10)}`],
+        ...(prior.invoices > 0 || prior.orders > 0
+          ? [[`Compared against the same period last year: ${prev.from.toISOString().slice(0, 10)} — ${prev.to.toISOString().slice(0, 10)}`]]
+          : [["No data exists for the same period last year, so no comparison is shown."]]),
         [sp.category ? `Category: ${sp.category}` : "", sp.area ? `Area: ${sp.area}` : ""],
         [],
         ["KEY FIGURES"],
