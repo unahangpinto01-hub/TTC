@@ -1,4 +1,4 @@
-import { requirePerm } from "@/lib/auth";
+import { requireReport } from "@/lib/report-access";
 import { resolveReportScope } from "@/lib/report-scope";
 import { getProductReport, parseRange } from "@/lib/reports";
 import { getCategoryNames } from "@/lib/categories";
@@ -13,7 +13,7 @@ export default async function ProductReportPage({
 }: {
   searchParams: { from?: string; to?: string; company?: string; category?: string };
 }) {
-  const user = await requirePerm("reports");
+  const user = await requireReport("products");
   const scope = await resolveReportScope(user, searchParams.company);
   const range = parseRange(searchParams);
   const categories = await getCategoryNames();

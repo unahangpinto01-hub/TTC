@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Fragment } from "react";
 import { prisma } from "@/lib/db";
-import { requirePerm } from "@/lib/auth";
+import { requireReport } from "@/lib/report-access";
 import { PageHeader } from "@/components/ui";
 import { PrintButton } from "@/components/print-button";
 import { resolveReportScope } from "@/lib/report-scope";
@@ -27,7 +27,7 @@ export default async function SalesVsForecastPage({
 }: {
   searchParams: { year?: string; forecast?: string; month?: string; company?: string };
 }) {
-  const user = await requirePerm("reports");
+  const user = await requireReport("sales-vs-forecast");
   const scope = await resolveReportScope(user, searchParams.company);
 
   const all = await prisma.forecast.findMany({ orderBy: [{ year: "desc" }, { area: "asc" }], select: { id: true, title: true, area: true, year: true } });

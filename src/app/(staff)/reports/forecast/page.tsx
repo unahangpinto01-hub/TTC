@@ -1,7 +1,7 @@
 import { Fragment } from "react";
 import Link from "next/link";
 import { prisma } from "@/lib/db";
-import { requirePerm } from "@/lib/auth";
+import { requireReport } from "@/lib/report-access";
 import { resolveReportScope } from "@/lib/report-scope";
 import { CompanyFilter } from "@/components/company-filter";
 import { peso, fmtDateTime } from "@/lib/format";
@@ -118,7 +118,7 @@ const iso = (d: Date) => d.toISOString().slice(0, 10);
 const daysInMonth = (y: number, m: number) => new Date(Date.UTC(y, m, 0)).getUTCDate();
 
 export default async function ForecastReportPage({ searchParams }: { searchParams: SP }) {
-  const user = await requirePerm("reports");
+  const user = await requireReport("forecast");
   const scope = await resolveReportScope(user, searchParams.company);
   const view = VIEWS.some(([v]) => v === searchParams.view) ? searchParams.view! : "breakdown";
   const isCustom = searchParams.period === CUSTOM;

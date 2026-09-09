@@ -1,4 +1,4 @@
-import { requirePerm } from "@/lib/auth";
+import { requireReport } from "@/lib/report-access";
 import { resolveReportScope } from "@/lib/report-scope";
 import { CompanyFilter, CompanyTag } from "@/components/company-filter";
 import { getMovements, parseRange } from "@/lib/reports";
@@ -9,7 +9,7 @@ import { displayCartonSize, ctnValue } from "@/lib/units";
 import { CtnEquiv } from "@/components/qty";
 
 export default async function InventoryReportPage({ searchParams }: { searchParams: { from?: string; to?: string; company?: string } }) {
-  const user = await requirePerm("reports");
+  const user = await requireReport("inventory-movement");
   const scope = await resolveReportScope(user, searchParams.company);
   const range = parseRange(searchParams);
   const moves = await getMovements(range, scope.ids);

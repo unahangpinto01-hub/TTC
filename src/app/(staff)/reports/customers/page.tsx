@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { requirePerm } from "@/lib/auth";
+import { requireReport } from "@/lib/report-access";
 import { resolveReportScope } from "@/lib/report-scope";
 import { getCustomerReport, getProvinces, parseRange } from "@/lib/reports";
 import { peso, fmtDate } from "@/lib/format";
@@ -12,7 +12,7 @@ export default async function CustomerReportPage({
 }: {
   searchParams: { from?: string; to?: string; company?: string; province?: string };
 }) {
-  const user = await requirePerm("reports");
+  const user = await requireReport("customers");
   const scope = await resolveReportScope(user, searchParams.company);
   const range = parseRange(searchParams);
   const provinces = await getProvinces();

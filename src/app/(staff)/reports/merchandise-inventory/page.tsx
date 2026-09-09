@@ -1,5 +1,5 @@
 import { Fragment } from "react";
-import { requirePerm } from "@/lib/auth";
+import { requireReport } from "@/lib/report-access";
 import { resolveReportScope } from "@/lib/report-scope";
 import { CompanyFilter, CompanyTag } from "@/components/company-filter";
 import { peso, fmtDate } from "@/lib/format";
@@ -15,7 +15,7 @@ export default async function MerchandiseInventoryPage({
 }: {
   searchParams: { asOf?: string; category?: string; q?: string; zero?: string; class?: string; company?: string };
 }) {
-  const user = await requirePerm("reports");
+  const user = await requireReport("merchandise-inventory");
   const scope = await resolveReportScope(user, searchParams.company);
   const CATEGORIES = await getCategoryNames();
   const today = new Date().toISOString().slice(0, 10);

@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import { requirePerm } from "@/lib/auth";
+import { requireReport } from "@/lib/report-access";
 import { resolveReportScope } from "@/lib/report-scope";
 import { CompanyFilter, CompanyTag } from "@/components/company-filter";
 import { SearchSelect } from "@/components/search-select";
@@ -12,7 +12,7 @@ export default async function CustomerStatementPage({
 }: {
   searchParams: { company?: string; customer?: string; from?: string; to?: string };
 }) {
-  const user = await requirePerm("reports");
+  const user = await requireReport("customer-statement");
   const scope = await resolveReportScope(user, searchParams.company);
   const year = new Date().getFullYear();
   const from = searchParams.from ? new Date(searchParams.from) : new Date(year, 0, 1);

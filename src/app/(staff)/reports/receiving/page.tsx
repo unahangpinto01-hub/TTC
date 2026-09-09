@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
-import { requirePerm } from "@/lib/auth";
+import { requireReport } from "@/lib/report-access";
 import { resolveReportScope } from "@/lib/report-scope";
 import { CompanyFilter, CompanyTag } from "@/components/company-filter";
 import { peso, fmtDate, fmtDateTime } from "@/lib/format";
@@ -17,7 +17,7 @@ export default async function ReceivingReportPage({
 }: {
   searchParams: { company?: string; from?: string; to?: string; supplier?: string; status?: string; q?: string };
 }) {
-  const user = await requirePerm("reports");
+  const user = await requireReport("receiving");
   const scope = await resolveReportScope(user, searchParams.company);
   const range = parseRange(searchParams);
 

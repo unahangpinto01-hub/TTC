@@ -30,7 +30,9 @@ export default async function UsersPage({ searchParams }: { searchParams: Record
 
   return (
     <div>
-      <PageHeader title="User Management" />
+      <PageHeader title="User Management">
+        <Link href="/users/report-permissions" className="btn-secondary">🔑 Report Permissions</Link>
+      </PageHeader>
       <UserNotice searchParams={searchParams} />
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="lg:col-span-2">

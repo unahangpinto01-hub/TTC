@@ -7,6 +7,9 @@ import { prisma } from "@/lib/db";
 import { requireStaffWrite, requireStepUp } from "@/lib/auth";
 import { passwordPolicyCode, logSecurityEvent } from "@/lib/security";
 import { notifyUser } from "@/lib/notify";
+import { logAudit } from "@/lib/salespeople";
+import { REPORTS, reportPermKey } from "@/lib/report-registry";
+import { storedReportPerm } from "@/lib/report-access";
 
 const ACCESS_LEVELS = ["NONE", "READ_WRITE", "READ_ONLY"];
 
@@ -60,7 +63,14 @@ export async function updateUserPerms(formData: FormData) {
   const id = String(formData.get("id"));
   const target = await prisma.user.findUniqueOrThrow({ where: { id } });
   if (target.role === "SUPER_ADMIN") redirect("/users"); // super admin is always full access
-  const perms: Record<string, string> = {};
+  // start from what is already stored: the report grants live in the same blob and are
+  // edited on their own screen, so rebuilding from FUNCTIONS alone would erase them
+  let perms: Record<string, string> = {};
+  try {
+    perms = target.permsJson ? (JSON.parse(target.permsJson) as Record<string, string>) : {};
+  } catch {
+    perms = {};
+  }
   for (const [key] of FUNCTIONS) {
     const v = String(formData.get(`perm_${key}`) || "");
     perms[key] = ACCESS_LEVELS.includes(v) ? v : "NONE";
@@ -68,6 +78,67 @@ export async function updateUserPerms(formData: FormData) {
   await prisma.user.update({ where: { id }, data: { permsJson: JSON.stringify(perms) } });
   revalidatePath(`/users/${id}`);
   redirect(`/users/${id}`);
+}
+
+/**
+ * Save the Report Permissions grid (Super Admin only).
+ *
+ * Writes into the same per-user permissions the rest of the BMS reads, so a report grant and
+ * a module grant can never drift into two different stories. Only the rows actually on
+ * screen are touched, and only real changes are written or logged.
+ */
+export async function saveReportPermissions(formData: FormData) {
+  const actor = await requireStaffWrite(["SUPER_ADMIN"]);
+  await requireStepUp("/users/report-permissions");
+
+  const targets = await prisma.user.findMany({
+    where: { role: { notIn: ["SUPER_ADMIN", "DEALER"] } },
+    select: { id: true, name: true, email: true, role: true, access: true, permsJson: true },
+  });
+
+  type Change = { user: string; report: string; from: string; to: string };
+  const changes: Change[] = [];
+
+  for (const u of targets) {
+    let perms: Record<string, string> = {};
+    try {
+      perms = u.permsJson ? (JSON.parse(u.permsJson) as Record<string, string>) : {};
+    } catch {
+      perms = {};
+    }
+    let touched = false;
+
+    for (const r of REPORTS) {
+      const field = formData.get(`p_${u.id}_${r.key}`);
+      if (field === null) continue; // not on the filtered screen — leave it exactly as it is
+      const next = ACCESS_LEVELS.includes(String(field)) ? String(field) : "NONE";
+      const before = storedReportPerm(u, r.key);
+      if (before === next) continue;
+      perms[reportPermKey(r.key)] = next;
+      touched = true;
+      changes.push({ user: u.name, report: r.title, from: before, to: next });
+    }
+
+    if (touched) await prisma.user.update({ where: { id: u.id }, data: { permsJson: JSON.stringify(perms) } });
+  }
+
+  const label: Record<string, string> = { NONE: "No Access", READ_ONLY: "Read Only", READ_WRITE: "Read/Write" };
+  for (const c of changes) {
+    await logAudit({
+      entity: "ReportPermission",
+      // one shared thread, so the whole history reads in order on the permissions screen
+      entityId: "ALL",
+      action: "CHANGED",
+      detail: `${c.user} · ${c.report}: ${label[c.from] ?? c.from} → ${label[c.to] ?? c.to}`,
+      actorName: actor.name,
+      actorEmail: actor.email,
+    });
+  }
+
+  const back = String(formData.get("returnTo") || "");
+  revalidatePath("/users/report-permissions");
+  revalidatePath("/reports");
+  redirect(`/users/report-permissions?${back ? back + "&" : ""}saved=${changes.length ? "ok" : "none"}`);
 }
 
 /** Admin-performed password reset (no self-service email flow exists).

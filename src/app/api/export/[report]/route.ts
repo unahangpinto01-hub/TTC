@@ -13,10 +13,27 @@ import {
   getPurchasingMetrics, getCreditMetrics,
 } from "@/lib/executive";
 import { prisma } from "@/lib/db";
+import { reportByExportKey } from "@/lib/report-registry";
+import { canExportReport, reportPerm } from "@/lib/report-access";
 
 export async function GET(req: NextRequest, { params }: { params: { report: string } }) {
   const user = await getUser();
   if (!user || user.role === "DEALER") return new Response("Unauthorized", { status: 401 });
+
+  // Authorisation, not decoration. This endpoint hands over the whole dataset as a
+  // spreadsheet, so it re-checks the report grant itself rather than trusting that the
+  // caller reached it from a page they were allowed to open.
+  const def = reportByExportKey(params.report);
+  if (!def) return new Response("Unknown report", { status: 404 });
+  if (reportPerm(user, def.key) === "NONE") {
+    return new Response(`Access Denied — you do not have access to the ${def.title}.`, { status: 403 });
+  }
+  if (!canExportReport(user, def.key)) {
+    return new Response(
+      `Access Denied — exporting the ${def.title} needs Read/Write access; yours is Read Only.`,
+      { status: 403 }
+    );
+  }
 
   const company = await getActiveCompany(user);
   const sp = Object.fromEntries(req.nextUrl.searchParams.entries());

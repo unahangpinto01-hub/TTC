@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
-import { requirePerm } from "@/lib/auth";
+import { requireReport } from "@/lib/report-access";
 import { resolveReportScope } from "@/lib/report-scope";
 import { CompanyFilter, CompanyTag } from "@/components/company-filter";
 import { peso, fmtDate, fmtDateTime } from "@/lib/format";
@@ -16,7 +16,7 @@ export default async function RefundsCreditsRegisterPage({
 }: {
   searchParams: { company?: string; from?: string; to?: string; type?: string; status?: string };
 }) {
-  const user = await requirePerm("reports");
+  const user = await requireReport("refunds-credits");
   const scope = await resolveReportScope(user, searchParams.company);
   const range = parseRange(searchParams);
   const type = ["Credit", "Refund"].includes(searchParams.type || "") ? searchParams.type! : "";

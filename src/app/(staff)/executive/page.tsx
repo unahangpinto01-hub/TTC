@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
-import { requirePerm } from "@/lib/auth";
+import { requireReport } from "@/lib/report-access";
 import { resolveReportScope } from "@/lib/report-scope";
 import { CompanyFilter } from "@/components/company-filter";
 import { peso, fmtDate } from "@/lib/format";
@@ -75,7 +75,7 @@ export default async function ExecutiveDashboard({
     measure?: string;
   };
 }) {
-  const user = await requirePerm("reports");
+  const user = await requireReport("executive");
   const scope = await resolveReportScope(user, searchParams.company);
 
   const today = new Date();

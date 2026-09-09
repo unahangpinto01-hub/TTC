@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Fragment } from "react";
 import { prisma } from "@/lib/db";
-import { requirePerm } from "@/lib/auth";
+import { requireReport } from "@/lib/report-access";
 import { resolveReportScope } from "@/lib/report-scope";
 import { CompanyFilter, CompanyTag } from "@/components/company-filter";
 import { SearchSelect } from "@/components/search-select";
@@ -19,7 +19,7 @@ export default async function PaymentRegisterPage({
 }: {
   searchParams: { company?: string; from?: string; to?: string; customer?: string; method?: string; status?: string };
 }) {
-  const user = await requirePerm("reports");
+  const user = await requireReport("payments");
   const scope = await resolveReportScope(user, searchParams.company);
   const range = parseRange(searchParams);
   const method = (PAYMENT_METHODS as readonly string[]).includes(searchParams.method || "") ? searchParams.method! : "";

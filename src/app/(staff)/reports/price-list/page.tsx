@@ -1,6 +1,6 @@
 import { Fragment } from "react";
 import { prisma } from "@/lib/db";
-import { requirePerm } from "@/lib/auth";
+import { requireReport } from "@/lib/report-access";
 import { resolveReportScope } from "@/lib/report-scope";
 import { CompanyFilter, CompanyTag } from "@/components/company-filter";
 import { peso, fmtDateTime } from "@/lib/format";
@@ -24,7 +24,7 @@ const SORTS: Record<string, { label: string; order: any }> = {
 };
 
 export default async function PriceListPage({ searchParams }: { searchParams: SP }) {
-  const user = await requirePerm("reports");
+  const user = await requireReport("price-list");
   const scope = await resolveReportScope(user, searchParams.company);
   const company = scope.company;
 

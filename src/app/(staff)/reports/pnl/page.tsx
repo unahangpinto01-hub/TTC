@@ -1,4 +1,4 @@
-import { requirePerm } from "@/lib/auth";
+import { requireReport } from "@/lib/report-access";
 import { resolveReportScope } from "@/lib/report-scope";
 import { CompanyFilter } from "@/components/company-filter";
 import { getPnl, parseRange } from "@/lib/reports";
@@ -7,7 +7,7 @@ import { PageHeader } from "@/components/ui";
 import { PrintButton } from "@/components/print-button";
 
 export default async function PnlPage({ searchParams }: { searchParams: { from?: string; to?: string; company?: string } }) {
-  const user = await requirePerm("reports");
+  const user = await requireReport("pnl");
   const scope = await resolveReportScope(user, searchParams.company);
   const range = parseRange(searchParams);
   const r = await getPnl(range, scope.ids);

@@ -1,4 +1,4 @@
-import { requirePerm } from "@/lib/auth";
+import { requireReport } from "@/lib/report-access";
 import { resolveReportScope } from "@/lib/report-scope";
 import { getCollections, parseRange } from "@/lib/reports";
 import { peso, fmtDate } from "@/lib/format";
@@ -13,7 +13,7 @@ export default async function CollectionsReportPage({
 }: {
   searchParams: { from?: string; to?: string; company?: string; method?: string };
 }) {
-  const user = await requirePerm("ar");
+  const user = await requireReport("collections");
   const scope = await resolveReportScope(user, searchParams.company);
   const range = parseRange(searchParams);
   const method = METHODS.includes(searchParams.method || "") ? searchParams.method! : "";

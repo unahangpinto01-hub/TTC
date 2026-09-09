@@ -1,5 +1,5 @@
 import { NoConversion } from "@/components/qty";
-import { requirePerm } from "@/lib/auth";
+import { requireReport } from "@/lib/report-access";
 import { resolveReportScope } from "@/lib/report-scope";
 import { getSalesReport, getProvinces, parseRange } from "@/lib/reports";
 import { peso, fmtDate } from "@/lib/format";
@@ -12,7 +12,7 @@ export default async function SalesReportPage({
 }: {
   searchParams: { from?: string; to?: string; province?: string; company?: string };
 }) {
-  const user = await requirePerm("reports");
+  const user = await requireReport("sales");
   const scope = await resolveReportScope(user, searchParams.company);
   const range = parseRange(searchParams);
   const provinces = await getProvinces();

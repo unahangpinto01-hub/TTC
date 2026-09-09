@@ -1,4 +1,4 @@
-import { requirePerm } from "@/lib/auth";
+import { requireReport } from "@/lib/report-access";
 import { resolveReportScope } from "@/lib/report-scope";
 import { CompanyFilter } from "@/components/company-filter";
 import { peso, fmtDate, fmtDateTime } from "@/lib/format";
@@ -11,7 +11,7 @@ export default async function SupplierReceivingPage({
 }: {
   searchParams: { company?: string; from?: string; to?: string };
 }) {
-  const user = await requirePerm("reports");
+  const user = await requireReport("supplier-receiving");
   const scope = await resolveReportScope(user, searchParams.company);
   const range = parseRange(searchParams);
   const { rows, totals } = await getSupplierReceivingHistory(range, scope.ids);

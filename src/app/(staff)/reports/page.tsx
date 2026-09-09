@@ -1,60 +1,93 @@
 import Link from "next/link";
-import { requirePerm } from "@/lib/auth";
+import { requireStaff } from "@/lib/auth";
 import { PageHeader } from "@/components/ui";
+import { visibleReports } from "@/lib/report-access";
+import { REPORT_MODULES } from "@/lib/report-registry";
 
+/**
+ * The Reports hub lists only what this user has been granted.
+ *
+ * A report missing from here is not merely hidden — the page itself and its export route
+ * refuse the same user independently, so knowing the URL gains nothing.
+ */
 export default async function ReportsHub() {
-  await requirePerm("reports");
+  const user = await requireStaff();
+  const reports = visibleReports(user);
+  if (!reports.length) {
+    return (
+      <div>
+        <PageHeader title="Reports" />
+        <div className="card text-center">
+          <p className="text-sm text-gray-600">You have not been given access to any report.</p>
+          <p className="mt-1 text-xs text-gray-500">
+            Report access is granted per report by a Super Admin, under Users → Report Permissions.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   const now = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
   const yearStart = new Date(now.getFullYear(), 0, 1).toISOString().slice(0, 10);
   const today = now.toISOString().slice(0, 10);
-
-  const reports = [
-    { title: "Executive Dashboard", desc: "One screen for the whole business — KPIs against the previous period, sales trend, forecast achievement by salesperson, and Teamagro vs Trigreen", href: `/executive?from=${yearStart}&to=${today}`, label: "Open Dashboard" },
-    { title: "Sales Report", desc: "By customer, product, and region", href: `/reports/sales?from=${monthStart}&to=${today}`, alt: `/reports/sales?from=${yearStart}&to=${today}` },
-    { title: "Sales Journal", desc: "Chronological register of every posted invoice, by product line", href: `/reports/sales-journal?from=${monthStart}&to=${today}`, alt: `/reports/sales-journal?from=${yearStart}&to=${today}` },
-    { title: "Monthly Sales per Region", desc: "Products sold per month with totals, filtered by region", href: "/reports/sales-monthly", label: "Open Report" },
-    { title: "Sales vs Forecast by Area", desc: "Achievement per product and area — sales converted to forecast units (1,000-ml equivalents), with pack-size drill-down", href: "/reports/sales-vs-forecast", label: "Open Report" },
-    { title: "Expense Report", desc: "By category with detail listing", href: `/finance/expenses?from=${monthStart}&to=${today}`, alt: `/finance/expenses?from=${yearStart}&to=${today}` },
-    { title: "Income Statement (P&L)", desc: "Revenue, COGS, expenses, net income", href: `/reports/pnl?from=${monthStart}&to=${today}`, alt: `/reports/pnl?from=${yearStart}&to=${today}` },
-    { title: "AR Aging", desc: "Receivables by days past due", href: "/finance/ar" },
-    { title: "Collections", desc: "Payments received by method, customer and company", href: `/reports/collections?from=${monthStart}&to=${today}`, alt: `/reports/collections?from=${yearStart}&to=${today}` },
-    { title: "Receive Payment Register", desc: "Provisional receipts by day with method totals — the daily collection report; filter by customer for payment history", href: `/reports/payments?from=${monthStart}&to=${today}`, alt: `/reports/payments?from=${yearStart}&to=${today}` },
-    { title: "Unapplied Payments", desc: "Customer credits — posted payments not yet applied to an invoice", href: "/reports/unapplied-payments", label: "Open Report" },
-    { title: "Refunds & Credits Register", desc: "Credit memos and customer refunds in the period — filter to Refunds for the refund report", href: `/reports/refunds-credits?from=${monthStart}&to=${today}`, alt: `/reports/refunds-credits?from=${yearStart}&to=${today}` },
-    { title: "Customer Credit Balances", desc: "Unused credits per customer — unapplied payments and open credit memos in one combined balance", href: "/reports/customer-credits", label: "Open Report" },
-    { title: "Credit Application History", desc: "Every peso of credit applied onto an invoice, from payments and credit memos", href: `/reports/credit-applications?from=${monthStart}&to=${today}`, alt: `/reports/credit-applications?from=${yearStart}&to=${today}` },
-    { title: "Chart of Accounts", desc: "The GL account masterlist — filter by financial statement, group or status; print or export", href: "/finance/coa", label: "Open COA" },
-    { title: "Customer Statement", desc: "Statement of account per customer: charges, payments and running balance", href: "/reports/customer-statement", label: "Open Report" },
-    { title: "Customer Report", desc: "Sales, collections and outstanding balance per customer", href: `/reports/customers?from=${monthStart}&to=${today}`, alt: `/reports/customers?from=${yearStart}&to=${today}` },
-    { title: "Product Report", desc: "Quantity sold, revenue, COGS and margin per product", href: `/reports/products?from=${monthStart}&to=${today}`, alt: `/reports/products?from=${yearStart}&to=${today}` },
-    { title: "Merchandise Inventory", desc: "Inventory valuation at cost — stock × unit cost per product", href: "/reports/merchandise-inventory", label: "Open Report" },
-    { title: "Inventory Movement", desc: "Stock IN/OUT by date range + stock on hand", href: `/reports/inventory?from=${monthStart}&to=${today}` },
-    { title: "Product Price List", desc: "Printable SRP list by category — for customers and sales staff", href: "/reports/price-list", label: "Open Report" },
-    { title: "Sales Forecast vs Sales", desc: "Forecast against invoiced sales by salesperson, customer and product — quantity, value, % achieved and variance, monthly to annual", href: "/reports/forecast", label: "Open Report" },
-    { title: "Receiving Report", desc: "Every goods received note in the period — received, rejected, accepted, value and cost variance", href: `/reports/receiving?from=${monthStart}&to=${today}`, alt: `/reports/receiving?from=${yearStart}&to=${today}` },
-    { title: "PO Receiving Status", desc: "Ordered against received for every purchase order, with what is still outstanding", href: "/reports/po-receiving", label: "Open Report" },
-    { title: "Partial Receiving Report", desc: "Only the purchase orders with quantities still to come", href: "/reports/po-receiving?outstanding=1", label: "Open Report" },
-    { title: "Supplier Receiving History", desc: "What each supplier delivered, their reject rate and any cost variance", href: `/reports/supplier-receiving?from=${monthStart}&to=${today}`, alt: `/reports/supplier-receiving?from=${yearStart}&to=${today}` },
-    { title: "Physical Count Sheet", desc: "Product masterlist with blank count columns for stocktaking", href: "/reports/count-sheet", label: "Open Sheet" },
-    { title: "Delivery Performance", desc: "Deliveries per day vs 5/day target", href: `/reports/deliveries?from=${monthStart}&to=${today}` },
-  ];
+  // reports that read a date range get the usual two shortcuts; the rest just open
+  const DATED = new Set([
+    "sales", "sales-journal", "customers", "products", "pnl", "collections", "expenses",
+    "inventory-movement", "receiving", "supplier-receiving", "deliveries", "executive",
+    "payments", "refunds-credits",
+  ]);
 
   return (
     <div>
-      <PageHeader title="Reports" />
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {reports.map((r) => (
-          <div key={r.title} className="card">
-            <h2 className="font-semibold text-emerald-900">{r.title}</h2>
-            <p className="mb-3 text-sm text-gray-500">{r.desc}</p>
-            <div className="flex gap-2">
-              <Link href={r.href} className="btn-primary">{(r as any).label ?? "This Month"}</Link>
-              {r.alt && <Link href={r.alt} className="btn-secondary">This Year</Link>}
+      <PageHeader title="Reports">
+        {user.role === "SUPER_ADMIN" && (
+          <Link href="/users/report-permissions" className="btn-secondary">🔑 Report Permissions</Link>
+        )}
+      </PageHeader>
+
+      {REPORT_MODULES.map((mod) => {
+        const group = reports.filter((r) => r.module === mod);
+        if (!group.length) return null;
+        return (
+          <div key={mod} className="mb-6">
+            <h2 className="mb-2 text-xs font-semibold uppercase tracking-wider text-emerald-700">{mod}</h2>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {group.map((r) => {
+                const dated = DATED.has(r.key);
+                const href = dated ? `${r.href}?from=${monthStart}&to=${today}` : r.href;
+                return (
+                  <div key={r.key} className="card">
+                    <div className="flex items-start justify-between gap-2">
+                      <h3 className="font-semibold text-emerald-900">{r.title}</h3>
+                      {r.perm === "READ_ONLY" && (
+                        <span
+                          className="shrink-0 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-semibold text-gray-500"
+                          title="You can view, filter and print this report. Excel export needs Read/Write access."
+                        >
+                          READ ONLY
+                        </span>
+                      )}
+                    </div>
+                    <p className="mb-3 text-sm text-gray-500">{r.desc}</p>
+                    <div className="flex gap-2">
+                      <Link href={href} className="btn-primary">{dated ? "This Month" : "Open Report"}</Link>
+                      {dated && (
+                        <Link href={`${r.href}?from=${yearStart}&to=${today}`} className="btn-secondary">This Year</Link>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
-        ))}
-      </div>
+        );
+      })}
+
+      <p className="text-xs text-gray-500">
+        {reports.length} report(s) available to you.
+        {user.role === "SUPER_ADMIN" && " As Super Admin you have full access to every report, which cannot be removed."}
+      </p>
     </div>
   );
 }

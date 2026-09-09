@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
-import { requirePerm } from "@/lib/auth";
+import { requireReport } from "@/lib/report-access";
 import { resolveReportScope } from "@/lib/report-scope";
 import { CompanyFilter, CompanyTag } from "@/components/company-filter";
 import { SearchSelect } from "@/components/search-select";
@@ -13,7 +13,7 @@ export default async function POReceivingStatusPage({
 }: {
   searchParams: { company?: string; supplier?: string; outstanding?: string };
 }) {
-  const user = await requirePerm("reports");
+  const user = await requireReport("po-receiving");
   const scope = await resolveReportScope(user, searchParams.company);
   // the same report, narrowed: outstanding-only IS the Partial Receiving Report
   const outstandingOnly = searchParams.outstanding === "1";

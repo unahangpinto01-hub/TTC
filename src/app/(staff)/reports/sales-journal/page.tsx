@@ -1,7 +1,7 @@
 import { NoConversion } from "@/components/qty";
 import Link from "next/link";
 import { prisma } from "@/lib/db";
-import { requirePerm } from "@/lib/auth";
+import { requireReport } from "@/lib/report-access";
 import { resolveReportScope } from "@/lib/report-scope";
 import { getSalesJournal, parseRange } from "@/lib/reports";
 import { peso, fmtDate } from "@/lib/format";
@@ -17,7 +17,7 @@ type SP = {
 };
 
 export default async function SalesJournalPage({ searchParams }: { searchParams: SP }) {
-  const user = await requirePerm("reports");
+  const user = await requireReport("sales-journal");
   const scope = await resolveReportScope(user, searchParams.company);
   const range = parseRange(searchParams);
   const fromStr = range.from.toISOString().slice(0, 10);

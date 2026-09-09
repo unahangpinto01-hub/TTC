@@ -1,7 +1,7 @@
 import { NoConversion } from "@/components/qty";
 import { Fragment } from "react";
 import Link from "next/link";
-import { requirePerm } from "@/lib/auth";
+import { requireReport } from "@/lib/report-access";
 import { resolveReportScope } from "@/lib/report-scope";
 import { CompanyFilter } from "@/components/company-filter";
 import { getMonthlyProductSales, getProvinces } from "@/lib/reports";
@@ -13,7 +13,7 @@ const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "
 const REGIONS = ["Luzon", "Visayas", "Mindanao"];
 
 export default async function MonthlySalesPage({ searchParams }: { searchParams: { year?: string; region?: string; province?: string; company?: string } }) {
-  const user = await requirePerm("reports");
+  const user = await requireReport("sales-monthly");
   const scope = await resolveReportScope(user, searchParams.company);
   const year = Number(searchParams.year) || new Date().getFullYear();
   const region = REGIONS.includes(searchParams.region || "") ? searchParams.region! : "";

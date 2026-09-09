@@ -1,6 +1,6 @@
 import { Fragment } from "react";
 import { prisma } from "@/lib/db";
-import { requirePerm } from "@/lib/auth";
+import { requireReport } from "@/lib/report-access";
 import { getActiveCompany } from "@/lib/company";
 import { fmtDate } from "@/lib/format";
 import { cartonBreakdown, displayCartonSize, ctnLabel } from "@/lib/units";
@@ -9,7 +9,7 @@ import { PrintButton, BackButton } from "@/components/print-button";
 import { getCategoryNames } from "@/lib/categories";
 
 export default async function CountSheetPage({ searchParams }: { searchParams: { category?: string } }) {
-  await requirePerm("reports");
+  await requireReport("count-sheet");
   const company = await getActiveCompany();
   const CATEGORIES = await getCategoryNames();
   const category = searchParams.category || "";

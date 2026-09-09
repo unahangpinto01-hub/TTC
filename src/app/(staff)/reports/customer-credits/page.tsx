@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
-import { requirePerm } from "@/lib/auth";
+import { requireReport } from "@/lib/report-access";
 import { resolveReportScope } from "@/lib/report-scope";
 import { CompanyFilter, CompanyTag } from "@/components/company-filter";
 import { peso, fmtDate, fmtDateTime } from "@/lib/format";
@@ -11,7 +11,7 @@ import { remainingOf } from "@/lib/refunds-credits";
 /** Customer Credit Balance / Unused Credits: ONE combined pot per customer —
     unapplied posted payments plus open credit memos, itemised per source. */
 export default async function CustomerCreditsPage({ searchParams }: { searchParams: { company?: string } }) {
-  const user = await requirePerm("reports");
+  const user = await requireReport("customer-credits");
   const scope = await resolveReportScope(user, searchParams.company);
 
   const [payments, credits] = await Promise.all([

@@ -1,4 +1,4 @@
-import { requirePerm } from "@/lib/auth";
+import { requireReport } from "@/lib/report-access";
 import { resolveReportScope } from "@/lib/report-scope";
 import { CompanyFilter } from "@/components/company-filter";
 import { getDeliveryPerformance, parseRange } from "@/lib/reports";
@@ -9,7 +9,7 @@ import { PrintButton } from "@/components/print-button";
 const TARGET = 5;
 
 export default async function DeliveryPerformancePage({ searchParams }: { searchParams: { from?: string; to?: string; company?: string } }) {
-  const user = await requirePerm("reports");
+  const user = await requireReport("deliveries");
   const scope = await resolveReportScope(user, searchParams.company);
   const range = parseRange(searchParams);
   const perf = await getDeliveryPerformance(range, scope.ids);

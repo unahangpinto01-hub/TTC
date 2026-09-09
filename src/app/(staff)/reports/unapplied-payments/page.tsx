@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
-import { requirePerm } from "@/lib/auth";
+import { requireReport } from "@/lib/report-access";
 import { resolveReportScope } from "@/lib/report-scope";
 import { CompanyFilter, CompanyTag } from "@/components/company-filter";
 import { peso, fmtDate, fmtDateTime } from "@/lib/format";
@@ -10,7 +10,7 @@ import { unappliedOf } from "@/lib/receive-payments";
 /** Every posted payment still holding customer credit — money received but not yet
     applied to an invoice. Apply it from the payment's own page. */
 export default async function UnappliedPaymentsPage({ searchParams }: { searchParams: { company?: string } }) {
-  const user = await requirePerm("reports");
+  const user = await requireReport("unapplied-payments");
   const scope = await resolveReportScope(user, searchParams.company);
 
   const posted = await prisma.receivePayment.findMany({
