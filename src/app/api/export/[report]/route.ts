@@ -9,6 +9,8 @@ import { getReceivingReport, getPOReceivingStatus, getSupplierReceivingHistory }
 import {
   getSalesMetrics, getArMetrics, getCollectionMetrics, getInventoryMetrics,
   getMonthlyTrend, getForecastVsActual, getCompanyComparison, previousPeriod, growthPct,
+  getCustomerPerformance, getProductPerformance, getInventoryPerformance,
+  getPurchasingMetrics, getCreditMetrics,
 } from "@/lib/executive";
 import { prisma } from "@/lib/db";
 
@@ -45,6 +47,10 @@ export async function GET(req: NextRequest, { params }: { params: { report: stri
       ]);
       const col = await getCollectionMetrics(f, sales.grossSales);
       const inv = await getInventoryMetrics(f, sales.cogs);
+      const [customers, products, stock, purchasing, credits] = await Promise.all([
+        getCustomerPerformance(f), getProductPerformance(f), getInventoryPerformance(f),
+        getPurchasingMetrics(f), getCreditMetrics(f),
+      ]);
       const g = (a: number, b: number) => growthPct(a, b) ?? "";
 
       const rows: (string | number)[][] = [
@@ -114,8 +120,44 @@ export async function GET(req: NextRequest, { params }: { params: { report: stri
             : []),
         ]),
         [],
+        ["CUSTOMER PERFORMANCE"],
+        ["Customer", "Salesperson", "Invoices", "Qty (PCS)", "Equivalent (CTN)", "Sales", "Gross Profit", "Margin %", "Outstanding", "Last Sale", "New?"],
+        ...customers.map((c) => [
+          c.label, c.salesperson, c.invoices, c.qtyPcs, c.qtyCtn, c.amount, c.grossProfit,
+          c.marginPct ?? "", c.outstanding, c.lastSale ? c.lastSale.toISOString().slice(0, 10) : "", c.isNew ? "NEW" : "",
+        ]),
+        [],
+        ["PRODUCT PROFITABILITY"],
+        ["SKU", "Product", "Pack", "Category", "Qty (PCS)", "Equivalent (CTN)", "Avg Price", "Unit Cost", "Sales", "COGS", "Gross Profit", "Margin %"],
+        ...products.map((x) => [
+          x.sku, x.label, x.packSize, x.category, x.qtyPcs, x.qtyCtn, x.avgPrice ?? "", x.unitCost,
+          x.amount, x.cogs, x.grossProfit, x.marginPct ?? "",
+        ]),
+        [],
+        ["INVENTORY PERFORMANCE"],
+        ["SKU", "Product", "Category", "Company", "Stock (PCS)", "Equivalent (CTN)", "Unit Cost", "Value", "Reorder Point", "Sold (PCS)", "Months Cover", "Movement", "Low Stock", "Stockout Risk", "Last Movement", "Age (days)"],
+        ...stock.map((s) => [
+          s.sku, s.name, s.category, s.company, s.stockPcs, s.stockCtn ?? "N/A", s.unitCost, s.value,
+          s.reorderPoint, s.soldPcs, s.monthsCover ?? "", s.movement, s.lowStock ? "YES" : "", s.stockout ? "YES" : "",
+          s.lastMovement ? s.lastMovement.toISOString().slice(0, 10) : "", s.ageDays ?? "",
+        ]),
+        [],
+        ["PURCHASING"],
+        ["Ordered", purchasing.totalOrdered],
+        ["Received", purchasing.totalReceived],
+        ["Still to arrive", purchasing.outstandingValue],
+        ["Open orders", purchasing.openOrders],
+        [],
+        ["Supplier", "Orders", "Ordered", "Received"],
+        ...purchasing.bySupplier.map((s) => [s.name, s.orders, s.ordered, s.received]),
+        [],
+        ["CREDITS"],
+        ["Unapplied payments", credits.unapplied, `${credits.unappliedCount} payment(s)`],
+        ["Customer credits outstanding", credits.credits, `${credits.creditCount} credit(s)`],
+        [],
         ["NOTES"],
         ["Only posted, non-void invoices are included."],
+        ["Accounts payable is not available — the BMS has no supplier bill (Enter Bills / Enter Bills Against Inventory)."],
         ["Sales are attributed through each customer's current salesperson — no sales document stores one."],
         ["Forecasts carry no approval status, so every forecast in scope for the year is included."],
         ...(col.collected ? [] : [["No customer payments have been recorded yet, so collections are zero."]]),

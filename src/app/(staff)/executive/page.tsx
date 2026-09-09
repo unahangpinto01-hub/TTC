@@ -11,9 +11,17 @@ import { getSalespeople } from "@/lib/salespeople";
 import {
   getSalesMetrics, getArMetrics, getCollectionMetrics, getInventoryMetrics,
   getMonthlyTrend, getForecastVsActual, getCompanyComparison,
+  getSalesBreakdown, getCustomerPerformance, getProductPerformance,
+  getInventoryPerformance, getPurchasingMetrics, getCreditMetrics,
+  buildAlerts, getRecentTransactions,
   previousPeriod, growthPct, type ExecFilters,
 } from "@/lib/executive";
 import { SalesTrendChart, ForecastChart, CompanyBars } from "./charts";
+import {
+  BreakdownTable, CustomersSection, ProductsSection, ArSection,
+  InventorySection, PurchasingSection, AlertsSection, RecentSection,
+  MEASURES, type Measure,
+} from "./sections";
 
 /** A KPI tile: the figure, and how it moved against the same length of time before it. */
 function Kpi({
@@ -56,6 +64,7 @@ export default async function ExecutiveDashboard({
   searchParams: {
     from?: string; to?: string; company?: string;
     salesperson?: string; customer?: string; area?: string; category?: string;
+    measure?: string;
   };
 }) {
   const user = await requirePerm("reports");
@@ -99,6 +108,23 @@ export default async function ExecutiveDashboard({
     getCollectionMetrics({ ...f, from: prev.from, to: prev.to }, prevSales.grossSales),
     getInventoryMetrics(f, sales.cogs),
   ]);
+
+  // ---- phase 2 datasets, all narrowed by the same filters as everything above
+  const measure = (MEASURES.some((m) => m.key === searchParams.measure) ? searchParams.measure : "amount") as Measure;
+  const [byProduct, byCustomer, bySalesperson, byArea, custRows, prodRows, stockRows, purchasing, credits, recent] =
+    await Promise.all([
+      getSalesBreakdown(f, "product"),
+      getSalesBreakdown(f, "customer"),
+      getSalesBreakdown(f, "salesperson"),
+      getSalesBreakdown(f, "area"),
+      getCustomerPerformance(f),
+      getProductPerformance(f),
+      getInventoryPerformance(f),
+      getPurchasingMetrics(f),
+      getCreditMetrics(f),
+      getRecentTransactions(f, 10),
+    ]);
+  const alerts = buildAlerts({ ar, stock: stockRows, forecast, customers: custRows, credits, purchasing, sales, prevSales });
 
   const trendData = trend.map((m, i) => ({ ...m, prior: priorTrend[i]?.netSales ?? 0 }));
   const forecastChart = forecast.rows
@@ -162,6 +188,12 @@ export default async function ExecutiveDashboard({
           <select name="category" defaultValue={searchParams.category ?? ""} className="input max-w-[170px]">
             <option value="">All categories</option>
             {categories.map((c) => <option key={c}>{c}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="label">Measure</label>
+          <select name="measure" defaultValue={measure} className="input max-w-[170px]" title="Applies to the sales breakdowns below">
+            {MEASURES.map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}
           </select>
         </div>
         <button className="btn-primary" type="submit">Apply</button>
@@ -332,6 +364,46 @@ export default async function ExecutiveDashboard({
         </div>
       </div>
 
+      {/* ------------------------------------------- row 3c: sales broken down four ways */}
+      <div className="mb-6">
+        <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="font-semibold text-emerald-900">Sales Breakdown</h2>
+          <p className="text-xs text-gray-500">
+            Ranked by <span className="font-semibold">{MEASURES.find((m) => m.key === measure)?.label}</span> — change it
+            in the Measure filter above.
+          </p>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <BreakdownTable title="By Product" rows={byProduct} measure={measure} hrefFor={(r) => `/inventory/${r.key}`} />
+          <BreakdownTable title="By Customer" rows={byCustomer} measure={measure} hrefFor={(r) => `/customers/${r.key}`} />
+          <BreakdownTable title="By Salesperson" rows={bySalesperson} measure={measure} />
+          <BreakdownTable title="By Area" note="Customer province" rows={byArea} measure={measure} />
+        </div>
+      </div>
+
+      {/* ---------------------------------------- row 4: top customers | top products */}
+      <div className="mb-6 grid gap-4">
+        <CustomersSection rows={custRows} measure={measure} />
+        <ProductsSection rows={prodRows} measure={measure} />
+      </div>
+
+      {/* ------------------------------------ row 5: AR ageing | inventory performance */}
+      <div className="mb-6 grid gap-4 lg:grid-cols-2">
+        <ArSection ar={ar} collections={collections} credits={credits} />
+        <InventorySection rows={stockRows} />
+      </div>
+
+      {/* ------------------------------------------------------------ purchasing */}
+      <div className="mb-6">
+        <PurchasingSection p={purchasing} />
+      </div>
+
+      {/* --------------------------------- row 6: alerts | recent transactions */}
+      <div className="mb-6 grid gap-4 lg:grid-cols-2">
+        <AlertsSection alerts={alerts} />
+        <RecentSection rows={recent} combined={scope.combined} />
+      </div>
+
       {/* -------------------------------------------------------- honest limitations */}
       <div className="card border-amber-200 bg-amber-50/60 text-sm text-amber-900">
         <p className="font-semibold">What these figures do and do not cover</p>
@@ -348,7 +420,11 @@ export default async function ExecutiveDashboard({
           )}
           <li>Inventory turnover uses closing stock at weighted average cost — the system keeps one current cost per product, not a cost history.</li>
           {inventory.noConversion > 0 && <li>{inventory.noConversion} product(s) have no carton conversion, so they add nothing to the CTN totals.</li>}
-          <li>Accounts payable, supplier bills and product/customer breakdowns arrive with the next phase — this screen covers rows 1–3 of the layout.</li>
+          <li>
+            Accounts payable is blank because the BMS has no supplier bill — Enter Bills and Enter Bills Against
+            Inventory do not exist, so what is owed to a supplier cannot be derived from a receipt.
+          </li>
+          <li>Movement is judged on the period&rsquo;s own selling rate: under two months of cover is Fast, over six is Slow.</li>
         </ul>
       </div>
     </div>

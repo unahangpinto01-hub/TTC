@@ -519,3 +519,492 @@ export async function getCompanyComparison(f: ExecFilters, year: number, through
   }
   return rows;
 }
+
+/* ==========================================================================
+ * Phase 2 — customers, products, inventory, purchasing, credits and alerts.
+ * Same rules as above: posted documents only, one pass per dataset, and every
+ * figure derived from the same definitions the KPI row uses.
+ * ========================================================================== */
+
+const pesoText = (n: number) => `₱${n.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+/** Every invoice in scope, resolved once so the breakdowns below share one read. */
+async function salesLines(f: ExecFilters) {
+  const cw = customerWhere(f);
+  return prisma.salesReceipt.findMany({
+    where: {
+      companyId: { in: f.companyIds },
+      status: { not: "Void" },
+      invoiceDate: { gte: f.from, lte: f.to },
+      ...(cw ? { customer: cw } : {}),
+    },
+    select: {
+      id: true, srNumber: true, invoiceDate: true, companyId: true, amount: true,
+      company: { select: { companyName: true } },
+      customer: {
+        select: { id: true, businessName: true, province: true, region: true, salesperson: { select: { id: true, name: true } } },
+      },
+      deliveryReceipt: {
+        select: {
+          lines: {
+            select: {
+              qty: true, unit: true, baseQty: true, unitPrice: true, unitCostAtSale: true,
+              product: { select: { id: true, sku: true, name: true, category: true, packSize: true, unitCost: true, piecesPerCarton: true } },
+            },
+          },
+        },
+      },
+    },
+  });
+}
+
+export type Measured = { amount: number; qtyPcs: number; qtyCtn: number; cogs: number; grossProfit: number };
+const emptyMeasure = (): Measured => ({ amount: 0, qtyPcs: 0, qtyCtn: 0, cogs: 0, grossProfit: 0 });
+
+export type BreakdownRow = Measured & { key: string; label: string; sub?: string; marginPct: number | null };
+export type BreakdownDim = "product" | "customer" | "salesperson" | "area" | "company" | "category";
+
+/**
+ * Sales cut by one dimension, carrying all four measures at once so the screen can switch
+ * between Amount, Quantity, Equivalent CTN and Gross Profit without another query.
+ *
+ * "Area" uses the customer's province, which is what the forecast areas are mapped from.
+ */
+export async function getSalesBreakdown(f: ExecFilters, dim: BreakdownDim): Promise<BreakdownRow[]> {
+  const srs = await salesLines(f);
+  const map = new Map<string, BreakdownRow>();
+  for (const sr of srs) {
+    for (const l of sr.deliveryReceipt.lines) {
+      if (f.category && l.product.category !== f.category) continue;
+      const spec: [string, string, string | undefined] =
+        dim === "product" ? [l.product.id, l.product.name, l.product.sku]
+        : dim === "customer" ? [sr.customer.id, sr.customer.businessName, sr.customer.salesperson?.name ?? "— Unassigned —"]
+        : dim === "salesperson" ? [sr.customer.salesperson?.id ?? "none", sr.customer.salesperson?.name ?? "— Unassigned —", undefined]
+        : dim === "area" ? [sr.customer.province || "none", sr.customer.province || "— No province —", sr.customer.region]
+        : dim === "company" ? [sr.companyId, sr.company.companyName, undefined]
+        : [l.product.category, l.product.category, undefined];
+      const [key, label, sub] = spec;
+
+      let row = map.get(key);
+      if (!row) {
+        row = { key, label, sub, marginPct: null, ...emptyMeasure() };
+        map.set(key, row);
+      }
+      row.amount = round2(row.amount + l.qty * l.unitPrice);
+      row.cogs = round2(row.cogs + l.baseQty * (l.unitCostAtSale > 0 ? l.unitCostAtSale : l.product.unitCost));
+      row.grossProfit = round2(row.amount - row.cogs);
+      row.qtyPcs += l.baseQty;
+      const ppc = lineCartonSize(l, l.product);
+      if (ppc) row.qtyCtn = round2(row.qtyCtn + l.baseQty / ppc);
+    }
+  }
+  return [...map.values()]
+    .map((r) => ({ ...r, marginPct: r.amount ? round2((r.grossProfit / r.amount) * 100) : null }))
+    .sort((a, b) => b.amount - a.amount);
+}
+
+export type CustomerRow = BreakdownRow & {
+  salesperson: string;
+  outstanding: number;
+  lastSale: Date | null;
+  invoices: number;
+  isNew: boolean;
+};
+
+/**
+ * Customer performance: what each account bought, what it earned, and what it still owes.
+ *
+ * "New" means the account's first ever invoice falls inside the period. Accounts that
+ * bought nothing are returned too, with zeroes, so a customer going quiet is visible
+ * rather than simply absent from the list.
+ */
+export async function getCustomerPerformance(f: ExecFilters): Promise<CustomerRow[]> {
+  const [srs, firstEver, balances, customers] = await Promise.all([
+    salesLines(f),
+    prisma.salesReceipt.groupBy({
+      by: ["customerId"],
+      where: { companyId: { in: f.companyIds }, status: { not: "Void" } },
+      _min: { invoiceDate: true },
+    }),
+    prisma.salesReceipt.findMany({
+      where: { companyId: { in: f.companyIds }, status: { not: "Void" }, invoiceDate: { lte: f.to } },
+      select: { customerId: true, amount: true, payments: { select: { amount: true, date: true } } },
+    }),
+    prisma.customer.findMany({
+      where: {
+        ...(f.customerId ? { id: f.customerId } : {}),
+        ...(f.salespersonId ? { salespersonId: f.salespersonId } : {}),
+      },
+      select: { id: true, businessName: true, salesperson: { select: { name: true } } },
+    }),
+  ]);
+
+  const firstBy = new Map(firstEver.map((x) => [x.customerId, x._min.invoiceDate]));
+  const owed = new Map<string, number>();
+  for (const sr of balances) {
+    const paid = sr.payments.filter((p) => p.date <= f.to).reduce((s, p) => s + p.amount, 0);
+    const bal = sr.amount - paid;
+    if (bal > 0) owed.set(sr.customerId, round2((owed.get(sr.customerId) ?? 0) + bal));
+  }
+
+  const map = new Map<string, CustomerRow>();
+  const ensure = (id: string, name: string, sp: string) => {
+    let r = map.get(id);
+    if (!r) {
+      const first = firstBy.get(id) ?? null;
+      r = {
+        key: id, label: name, sub: sp, salesperson: sp, marginPct: null,
+        outstanding: owed.get(id) ?? 0, lastSale: null, invoices: 0,
+        isNew: !!first && first >= f.from && first <= f.to,
+        ...emptyMeasure(),
+      };
+      map.set(id, r);
+    }
+    return r;
+  };
+
+  for (const sr of srs) {
+    const lines = f.category ? sr.deliveryReceipt.lines.filter((l) => l.product.category === f.category) : sr.deliveryReceipt.lines;
+    if (!lines.length) continue;
+    const r = ensure(sr.customer.id, sr.customer.businessName, sr.customer.salesperson?.name ?? "— Unassigned —");
+    r.invoices += 1;
+    if (!r.lastSale || sr.invoiceDate > r.lastSale) r.lastSale = sr.invoiceDate;
+    for (const l of lines) {
+      r.amount = round2(r.amount + l.qty * l.unitPrice);
+      r.cogs = round2(r.cogs + l.baseQty * (l.unitCostAtSale > 0 ? l.unitCostAtSale : l.product.unitCost));
+      r.grossProfit = round2(r.amount - r.cogs);
+      r.qtyPcs += l.baseQty;
+      const ppc = lineCartonSize(l, l.product);
+      if (ppc) r.qtyCtn = round2(r.qtyCtn + l.baseQty / ppc);
+    }
+  }
+  for (const c of customers) ensure(c.id, c.businessName, c.salesperson?.name ?? "— Unassigned —");
+
+  return [...map.values()]
+    .map((r) => ({ ...r, marginPct: r.amount ? round2((r.grossProfit / r.amount) * 100) : null }))
+    .sort((a, b) => b.amount - a.amount);
+}
+
+export type ProductRow = BreakdownRow & {
+  sku: string;
+  packSize: string;
+  category: string;
+  unitCost: number;
+  avgPrice: number | null;
+};
+
+/** Product profitability — quantity, cartons, cost, achieved price and margin. */
+export async function getProductPerformance(f: ExecFilters): Promise<ProductRow[]> {
+  const srs = await salesLines(f);
+  const map = new Map<string, ProductRow>();
+  for (const sr of srs) {
+    for (const l of sr.deliveryReceipt.lines) {
+      if (f.category && l.product.category !== f.category) continue;
+      const p = l.product;
+      let r = map.get(p.id);
+      if (!r) {
+        r = {
+          key: p.id, label: p.name, sub: p.sku, sku: p.sku, packSize: p.packSize, category: p.category,
+          unitCost: p.unitCost, avgPrice: null, marginPct: null, ...emptyMeasure(),
+        };
+        map.set(p.id, r);
+      }
+      r.amount = round2(r.amount + l.qty * l.unitPrice);
+      // the cost captured at delivery — changing a cost or price today never rewrites this
+      r.cogs = round2(r.cogs + l.baseQty * (l.unitCostAtSale > 0 ? l.unitCostAtSale : p.unitCost));
+      r.grossProfit = round2(r.amount - r.cogs);
+      r.qtyPcs += l.baseQty;
+      const ppc = lineCartonSize(l, p);
+      if (ppc) r.qtyCtn = round2(r.qtyCtn + l.baseQty / ppc);
+    }
+  }
+  return [...map.values()]
+    .map((r) => ({
+      ...r,
+      marginPct: r.amount ? round2((r.grossProfit / r.amount) * 100) : null,
+      avgPrice: r.qtyPcs ? round2(r.amount / r.qtyPcs) : null,
+    }))
+    .sort((a, b) => b.amount - a.amount);
+}
+
+export type StockRow = {
+  id: string;
+  sku: string;
+  name: string;
+  category: string;
+  company: string;
+  stockPcs: number;
+  stockCtn: number | null;
+  unitCost: number;
+  value: number;
+  reorderPoint: number;
+  soldPcs: number;
+  monthsCover: number | null;
+  movement: "Fast" | "Normal" | "Slow" | "None";
+  lowStock: boolean;
+  stockout: boolean;
+  lastMovement: Date | null;
+  ageDays: number | null;
+};
+
+/**
+ * Inventory performance at weighted average cost.
+ *
+ * Movement is judged on how long the stock on hand would last at the period's own selling
+ * rate — under two months is Fast, over six is Slow, nothing sold at all is No Movement.
+ * Ageing is days since the last stock movement of any kind.
+ */
+export async function getInventoryPerformance(f: ExecFilters): Promise<StockRow[]> {
+  const months = Math.max(1, (f.to.getTime() - f.from.getTime()) / (30 * 86400000));
+  const [products, sold, lastMoves] = await Promise.all([
+    prisma.product.findMany({
+      where: { companyId: { in: f.companyIds }, itemClass: "INVENTORY", ...(f.category ? { category: f.category } : {}) },
+      select: {
+        id: true, sku: true, name: true, category: true, stockQty: true, unitCost: true,
+        reorderPoint: true, piecesPerCarton: true, company: { select: { companyName: true } },
+      },
+      orderBy: { name: "asc" },
+    }),
+    prisma.dRLine.groupBy({
+      by: ["productId"],
+      where: {
+        deliveryReceipt: {
+          companyId: { in: f.companyIds },
+          status: { not: "Cancelled" },
+          deliveredAt: { gte: f.from, lte: f.to },
+        },
+      },
+      _sum: { baseQty: true },
+    }),
+    prisma.stockMovement.groupBy({
+      by: ["productId"],
+      where: { product: { companyId: { in: f.companyIds } } },
+      _max: { date: true },
+    }),
+  ]);
+
+  const soldBy = new Map(sold.map((x) => [x.productId, x._sum.baseQty ?? 0]));
+  const lastBy = new Map(lastMoves.map((x) => [x.productId, x._max.date]));
+  // stockQty is the CURRENT balance, so ageing is measured to today — a report run with a
+  // future end date must not make every product look months more stale than it is
+  const now = Math.min(f.to.getTime(), Date.now());
+
+  return products.map((p) => {
+    const ppc = displayCartonSize(p);
+    const soldPcs = soldBy.get(p.id) ?? 0;
+    const perMonth = soldPcs / months;
+    const monthsCover = perMonth > 0 ? round2(p.stockQty / perMonth) : null;
+    const last = lastBy.get(p.id) ?? null;
+    return {
+      id: p.id, sku: p.sku, name: p.name, category: p.category, company: p.company.companyName,
+      stockPcs: p.stockQty,
+      stockCtn: ppc ? round2(p.stockQty / ppc) : null,
+      unitCost: p.unitCost,
+      value: round2(p.stockQty * p.unitCost),
+      reorderPoint: p.reorderPoint,
+      soldPcs,
+      monthsCover,
+      movement: soldPcs === 0 ? "None" : monthsCover === null ? "Normal" : monthsCover < 2 ? "Fast" : monthsCover > 6 ? "Slow" : "Normal",
+      lowStock: p.stockQty > 0 && p.stockQty <= p.reorderPoint,
+      // running out within the month at the rate it has been selling
+      stockout: p.stockQty <= 0 || (perMonth > 0 && p.stockQty / perMonth < 1),
+      lastMovement: last,
+      ageDays: last ? Math.floor((now - last.getTime()) / 86400000) : null,
+    } as StockRow;
+  });
+}
+
+export type PurchasingMetrics = {
+  totalOrdered: number;
+  totalReceived: number;
+  outstandingValue: number;
+  openOrders: number;
+  bySupplier: { id: string; name: string; ordered: number; received: number; orders: number }[];
+  byCompany: { company: string; ordered: number; received: number }[];
+};
+
+/**
+ * Purchasing, from the purchase orders and goods received notes.
+ *
+ * Nothing here is a payable. There is no supplier bill in the system, and what a supplier
+ * is owed cannot be derived from a receipt alone — the payables figures stay blank until an
+ * Enter Bills module exists.
+ */
+export async function getPurchasingMetrics(f: ExecFilters): Promise<PurchasingMetrics> {
+  const pos = await prisma.purchaseOrder.findMany({
+    where: { companyId: { in: f.companyIds }, status: { not: "Draft" }, date: { gte: f.from, lte: f.to } },
+    select: {
+      id: true, status: true,
+      company: { select: { companyName: true } },
+      supplier: { select: { id: true, name: true } },
+      lines: { select: { qty: true, receivedQty: true, unitCost: true } },
+    },
+  });
+
+  let totalOrdered = 0, totalReceived = 0, outstandingValue = 0, openOrders = 0;
+  const bySupplier = new Map<string, { id: string; name: string; ordered: number; received: number; orders: number }>();
+  const byCompany = new Map<string, { company: string; ordered: number; received: number }>();
+
+  for (const po of pos) {
+    const ordered = po.lines.reduce((s, l) => s + l.qty * l.unitCost, 0);
+    const received = po.lines.reduce((s, l) => s + l.receivedQty * l.unitCost, 0);
+    const outstanding = po.lines.reduce((s, l) => s + Math.max(0, l.qty - l.receivedQty) * l.unitCost, 0);
+    totalOrdered = round2(totalOrdered + ordered);
+    totalReceived = round2(totalReceived + received);
+    if (!["Cancelled", "Closed"].includes(po.status) && outstanding > 0) {
+      outstandingValue = round2(outstandingValue + outstanding);
+      openOrders++;
+    }
+    const s = bySupplier.get(po.supplier.id) ?? { id: po.supplier.id, name: po.supplier.name, ordered: 0, received: 0, orders: 0 };
+    s.ordered = round2(s.ordered + ordered);
+    s.received = round2(s.received + received);
+    s.orders++;
+    bySupplier.set(po.supplier.id, s);
+
+    const c = byCompany.get(po.company.companyName) ?? { company: po.company.companyName, ordered: 0, received: 0 };
+    c.ordered = round2(c.ordered + ordered);
+    c.received = round2(c.received + received);
+    byCompany.set(po.company.companyName, c);
+  }
+
+  return {
+    totalOrdered, totalReceived, outstandingValue, openOrders,
+    bySupplier: [...bySupplier.values()].sort((a, b) => b.ordered - a.ordered),
+    byCompany: [...byCompany.values()],
+  };
+}
+
+export type CreditMetrics = { unapplied: number; credits: number; unappliedCount: number; creditCount: number };
+
+/** Money received or credited that is not yet sitting against an invoice. */
+export async function getCreditMetrics(f: ExecFilters): Promise<CreditMetrics> {
+  const cw = customerWhere(f);
+  const [payments, credits] = await Promise.all([
+    prisma.receivePayment.findMany({
+      where: { companyId: { in: f.companyIds }, status: "Posted", date: { lte: f.to }, ...(cw ? { customer: cw } : {}) },
+      select: { amount: true, applications: { select: { amount: true } }, refunds: { select: { amount: true, status: true } } },
+    }),
+    prisma.refundCredit.findMany({
+      where: { companyId: { in: f.companyIds }, type: "Credit", status: "Posted", date: { lte: f.to }, ...(cw ? { customer: cw } : {}) },
+      select: { amount: true, applications: { select: { amount: true } }, refundsDrawn: { select: { amount: true, status: true } } },
+    }),
+  ]);
+
+  let unapplied = 0, unappliedCount = 0, creditBal = 0, creditCount = 0;
+  for (const p of payments) {
+    const used = p.applications.reduce((s, a) => s + a.amount, 0) +
+      p.refunds.filter((r) => r.status === "Posted").reduce((s, r) => s + r.amount, 0);
+    const left = round2(p.amount - used);
+    if (left > 0) { unapplied = round2(unapplied + left); unappliedCount++; }
+  }
+  for (const c of credits) {
+    const used = c.applications.reduce((s, a) => s + a.amount, 0) +
+      c.refundsDrawn.filter((r) => r.status === "Posted").reduce((s, r) => s + r.amount, 0);
+    const left = round2(c.amount - used);
+    if (left > 0) { creditBal = round2(creditBal + left); creditCount++; }
+  }
+  return { unapplied, credits: creditBal, unappliedCount, creditCount };
+}
+
+export type Alert = { level: "red" | "amber" | "yellow" | "green"; title: string; detail: string; href?: string };
+
+/**
+ * Business alerts, raised only from figures already computed for this period, so the
+ * warnings can never disagree with the tiles above them.
+ */
+export function buildAlerts(input: {
+  ar: ArMetrics;
+  stock: StockRow[];
+  forecast: { totals: { achievementPct: number | null }; rows: { salesperson: string; achievementPct: number | null }[] };
+  customers: CustomerRow[];
+  credits: CreditMetrics;
+  purchasing: PurchasingMetrics;
+  sales: SalesMetrics;
+  prevSales: SalesMetrics;
+}): Alert[] {
+  const a: Alert[] = [];
+  const { ar, stock, forecast, customers, credits, purchasing, sales, prevSales } = input;
+
+  const out = stock.filter((s) => s.stockout);
+  if (out.length) {
+    const names = out.slice(0, 3).map((s) => s.name).join(", ");
+    a.push({ level: "red", title: "Stockout risk", detail: `${out.length} product(s) are out, or under a month of cover at the current rate — ${names}${out.length > 3 ? "…" : ""}`, href: "/inventory?stock=low" });
+  }
+
+  // the same set the Inventory panel counts — a product can honestly be both low and at
+  // risk of running out, and two figures for the same thing on one screen reads as a bug
+  const low = stock.filter((s) => s.lowStock);
+  if (low.length) a.push({ level: "red", title: "Low inventory", detail: `${low.length} product(s) at or below their reorder point.`, href: "/inventory?stock=low" });
+
+  if (ar.d90plus > 0) a.push({ level: "red", title: "Overdue customer accounts", detail: `${pesoText(ar.d90plus)} is more than 90 days past due, of ${pesoText(ar.overdue)} overdue in total.`, href: "/finance/ar" });
+  else if (ar.overdue > 0) a.push({ level: "red", title: "Overdue customer accounts", detail: `${pesoText(ar.overdue)} past due.`, href: "/finance/ar" });
+
+  const ach = forecast.totals.achievementPct;
+  if (ach != null && ach < 100) a.push({ level: "red", title: "Sales below forecast", detail: `Achievement is ${ach.toFixed(1)}% of plan for the period.`, href: "/reports/forecast" });
+  if (ach != null && ach >= 100) a.push({ level: "green", title: "Sales target achieved", detail: `Achievement is ${ach.toFixed(1)}% of plan.`, href: "/reports/forecast" });
+
+  const slow = stock.filter((s) => s.movement === "Slow" || s.movement === "None");
+  if (slow.length) {
+    const value = round2(slow.reduce((s, x) => s + x.value, 0));
+    a.push({ level: "amber", title: "Slow-moving inventory", detail: `${slow.length} product(s) worth ${pesoText(value)} have over six months of cover, or no sales at all this period.` });
+  }
+
+  const quiet = customers.filter((c) => c.amount === 0);
+  if (quiet.length) {
+    const names = quiet.slice(0, 3).map((c) => c.label).join(", ");
+    a.push({ level: "amber", title: "Customers with no recent sales", detail: `${quiet.length} account(s) bought nothing in this period: ${names}${quiet.length > 3 ? "…" : ""}`, href: "/customers" });
+  }
+
+  const weak = forecast.rows.filter((r) => r.achievementPct != null && r.achievementPct < 50);
+  if (weak.length) a.push({ level: "amber", title: "Declining salesperson performance", detail: `${weak.length} salesperson(s) below half of plan: ${weak.map((r) => r.salesperson).join(", ")}.` });
+
+  if (prevSales.netSales > 0 && sales.netSales < prevSales.netSales) {
+    const drop = growthPct(sales.netSales, prevSales.netSales) ?? 0;
+    a.push({ level: "amber", title: "Sales down on the previous period", detail: `Net sales are ${Math.abs(drop).toFixed(1)}% lower than the equivalent period before.` });
+  }
+
+  if (credits.unapplied > 0) a.push({ level: "yellow", title: "Unapplied payments", detail: `${pesoText(credits.unapplied)} across ${credits.unappliedCount} payment(s) is not yet applied to an invoice.`, href: "/payments" });
+  if (credits.credits > 0) a.push({ level: "yellow", title: "Customer credits outstanding", detail: `${pesoText(credits.credits)} of credit memos remain unused.`, href: "/refunds" });
+  if (purchasing.openOrders > 0) a.push({ level: "yellow", title: "Outstanding purchase orders", detail: `${purchasing.openOrders} order(s) worth ${pesoText(purchasing.outstandingValue)} still to arrive.`, href: "/reports/po-receiving?outstanding=1" });
+
+  return a;
+}
+
+export type RecentTx = { id: string; kind: string; ref: string; date: Date; party: string; company: string; amount: number; href: string };
+
+/** The latest documents across the modules, so the dashboard ends on something actionable. */
+export async function getRecentTransactions(f: ExecFilters, take = 8): Promise<RecentTx[]> {
+  const cw = customerWhere(f);
+  const [invoices, receipts] = await Promise.all([
+    prisma.salesReceipt.findMany({
+      where: { companyId: { in: f.companyIds }, status: { not: "Void" }, invoiceDate: { gte: f.from, lte: f.to }, ...(cw ? { customer: cw } : {}) },
+      orderBy: { invoiceDate: "desc" },
+      take,
+      select: { id: true, srNumber: true, invoiceDate: true, amount: true, customer: { select: { businessName: true } }, company: { select: { companyName: true } } },
+    }),
+    prisma.goodsReceipt.findMany({
+      where: { companyId: { in: f.companyIds }, status: "Posted", receivedDate: { gte: f.from, lte: f.to } },
+      orderBy: { receivedDate: "desc" },
+      take,
+      select: {
+        id: true, grnNumber: true, receivedDate: true,
+        company: { select: { companyName: true } },
+        purchaseOrder: { select: { supplier: { select: { name: true } } } },
+        lines: { select: { acceptedQty: true, unitCost: true } },
+      },
+    }),
+  ]);
+
+  const rows: RecentTx[] = [
+    ...invoices.map((x) => ({
+      id: x.id, kind: "Invoice", ref: x.srNumber, date: x.invoiceDate,
+      party: x.customer.businessName, company: x.company.companyName, amount: x.amount, href: `/invoices/${x.id}`,
+    })),
+    ...receipts.map((x) => ({
+      id: x.id, kind: "Goods Received", ref: x.grnNumber, date: x.receivedDate,
+      party: x.purchaseOrder.supplier.name, company: x.company.companyName,
+      amount: round2(x.lines.reduce((s, l) => s + l.acceptedQty * l.unitCost, 0)), href: `/receiving/${x.id}`,
+    })),
+  ];
+  return rows.sort((a, b) => b.date.getTime() - a.date.getTime()).slice(0, take);
+}
