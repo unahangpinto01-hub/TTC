@@ -10,6 +10,7 @@ export default async function ReportsHub() {
   const today = now.toISOString().slice(0, 10);
 
   const reports = [
+    { title: "Executive Dashboard", desc: "One screen for the whole business — KPIs against the previous period, sales trend, forecast achievement by salesperson, and Teamagro vs Trigreen", href: `/executive?from=${yearStart}&to=${today}`, label: "Open Dashboard" },
     { title: "Sales Report", desc: "By customer, product, and region", href: `/reports/sales?from=${monthStart}&to=${today}`, alt: `/reports/sales?from=${yearStart}&to=${today}` },
     { title: "Sales Journal", desc: "Chronological register of every posted invoice, by product line", href: `/reports/sales-journal?from=${monthStart}&to=${today}`, alt: `/reports/sales-journal?from=${yearStart}&to=${today}` },
     { title: "Monthly Sales per Region", desc: "Products sold per month with totals, filtered by region", href: "/reports/sales-monthly", label: "Open Report" },

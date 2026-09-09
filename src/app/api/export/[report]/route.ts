@@ -6,6 +6,10 @@ import { cartonBreakdown, displayCartonSize, ctnValue, lineCartonSize } from "@/
 import { getActiveCompany, allowedCompanies } from "@/lib/company";
 import { scopeIds } from "@/lib/report-scope";
 import { getReceivingReport, getPOReceivingStatus, getSupplierReceivingHistory } from "@/lib/receiving-reports";
+import {
+  getSalesMetrics, getArMetrics, getCollectionMetrics, getInventoryMetrics,
+  getMonthlyTrend, getForecastVsActual, getCompanyComparison, previousPeriod, growthPct,
+} from "@/lib/executive";
 import { prisma } from "@/lib/db";
 
 export async function GET(req: NextRequest, { params }: { params: { report: string } }) {
@@ -20,6 +24,104 @@ export async function GET(req: NextRequest, { params }: { params: { report: stri
   const tag = `${range.from.toISOString().slice(0, 10)}_${range.to.toISOString().slice(0, 10)}`;
 
   switch (params.report) {
+    case "executive": {
+      const f = {
+        from: range.from, to: range.to, companyIds: scope.ids,
+        salespersonId: sp.salesperson || undefined,
+        customerId: sp.customer || undefined,
+        area: sp.area || undefined,
+        category: sp.category || undefined,
+      };
+      const prev = previousPeriod(f);
+      const year = range.to.getFullYear();
+      const throughMonth = range.from.getFullYear() === year ? range.to.getMonth() + 1 : 12;
+      const [sales, prior, ar, trend, fc, cmp] = await Promise.all([
+        getSalesMetrics(f),
+        getSalesMetrics({ ...f, from: prev.from, to: prev.to }),
+        getArMetrics(f),
+        getMonthlyTrend(year, f),
+        getForecastVsActual(f, year, throughMonth),
+        getCompanyComparison(f, year, throughMonth),
+      ]);
+      const col = await getCollectionMetrics(f, sales.grossSales);
+      const inv = await getInventoryMetrics(f, sales.cogs);
+      const g = (a: number, b: number) => growthPct(a, b) ?? "";
+
+      const rows: (string | number)[][] = [
+        ["EXECUTIVE DASHBOARD", tag, scope.label],
+        [`Compared against ${prev.from.toISOString().slice(0, 10)} — ${prev.to.toISOString().slice(0, 10)}`],
+        [sp.category ? `Category: ${sp.category}` : "", sp.area ? `Area: ${sp.area}` : ""],
+        [],
+        ["KEY FIGURES"],
+        ["Measure", "This period", "Previous period", "Change %"],
+        ["Gross Sales", sales.grossSales, prior.grossSales, g(sales.grossSales, prior.grossSales)],
+        ["Freight", sales.freight, prior.freight, g(sales.freight, prior.freight)],
+        ["Net Sales", sales.netSales, prior.netSales, g(sales.netSales, prior.netSales)],
+        ["Cost of Goods Sold", sales.cogs, prior.cogs, g(sales.cogs, prior.cogs)],
+        ["Gross Profit", sales.grossProfit, prior.grossProfit, g(sales.grossProfit, prior.grossProfit)],
+        ["Gross Margin %", sales.marginPct ?? "", prior.marginPct ?? "", ""],
+        ["Sales Orders", sales.orders, prior.orders, g(sales.orders, prior.orders)],
+        ["Sales Invoices", sales.invoices, prior.invoices, g(sales.invoices, prior.invoices)],
+        ["Average Order Value", sales.avgOrderValue ?? "", prior.avgOrderValue ?? "", ""],
+        ["Quantity Sold (PCS)", sales.qtyPcs, prior.qtyPcs, g(sales.qtyPcs, prior.qtyPcs)],
+        ["Quantity Sold (CTN)", sales.qtyCtn, prior.qtyCtn, g(sales.qtyCtn, prior.qtyCtn)],
+        ["Accounts Receivable", ar.total, "", ""],
+        ["  Overdue", ar.overdue, "", ""],
+        ["Collections", col.collected, "", ""],
+        ["Collection Rate %", col.rate ?? "", "", ""],
+        ["Inventory Value", inv.value, "", ""],
+        ["Inventory Turnover", inv.turnover ?? "", "", ""],
+        ["Forecast", fc.totals.forecastValue, "", ""],
+        ["Actual Sales (forecast scope)", fc.totals.actualValue, "", ""],
+        ["Forecast Achievement %", fc.totals.achievementPct ?? "", "", ""],
+        [],
+        ["AR AGEING"],
+        ["Current", "1-30", "31-60", "61-90", "Over 90", "Total"],
+        [ar.current, ar.d1_30, ar.d31_60, ar.d61_90, ar.d90plus, ar.total],
+        [],
+        [`MONTHLY SALES TREND ${year}`],
+        ["Month", "Net Sales", "COGS", "Gross Profit", "Invoices"],
+        ...trend.map((m) => [m.month, m.netSales, m.cogs, m.grossProfit, m.invoices]),
+        [],
+        ["SALES VS FORECAST BY SALESPERSON"],
+        ["Quantities are normalised to the 1,000-ml equivalent before comparing."],
+        ["Salesperson", "Area", "Forecast Qty", "Actual Qty", "Forecast", "Actual Sales", "Variance", "Achievement %"],
+        ...fc.rows.map((r) => [
+          r.salesperson, r.area, r.forecastQty, r.actualQty, r.forecastValue, r.actualValue, r.variance, r.achievementPct ?? "",
+        ]),
+        ["TOTAL", "", fc.totals.forecastQty, fc.totals.actualQty, fc.totals.forecastValue, fc.totals.actualValue, fc.totals.variance, fc.totals.achievementPct ?? ""],
+        [],
+        ["COMPANY COMPARISON"],
+        ["Metric", ...cmp.map((c) => c.company), ...(cmp.length > 1 ? ["Combined"] : [])],
+        ...([
+          ["Net Sales", (c: (typeof cmp)[number]) => c.netSales],
+          ["Gross Profit", (c: (typeof cmp)[number]) => c.grossProfit],
+          ["Gross Margin %", (c: (typeof cmp)[number]) => c.marginPct ?? 0],
+          ["Customers", (c: (typeof cmp)[number]) => c.customers],
+          ["Collections", (c: (typeof cmp)[number]) => c.collections],
+          ["Accounts Receivable", (c: (typeof cmp)[number]) => c.ar],
+          ["Inventory Value", (c: (typeof cmp)[number]) => c.inventory],
+          ["Sales Forecast", (c: (typeof cmp)[number]) => c.forecastValue],
+        ] as [string, (c: (typeof cmp)[number]) => number][]).map(([label, pick]) => [
+          label,
+          ...cmp.map(pick),
+          ...(cmp.length > 1
+            ? [label === "Gross Margin %"
+                ? (() => { const ns = cmp.reduce((s, c) => s + c.netSales, 0); const gp = cmp.reduce((s, c) => s + c.grossProfit, 0); return ns ? Math.round((gp / ns) * 1000) / 10 : 0; })()
+                // a customer buying from both companies is one customer, not two
+                : label === "Customers" ? sales.customers
+                : Math.round(cmp.reduce((s, c) => s + pick(c), 0) * 100) / 100]
+            : []),
+        ]),
+        [],
+        ["NOTES"],
+        ["Only posted, non-void invoices are included."],
+        ["Sales are attributed through each customer's current salesperson — no sales document stores one."],
+        ["Forecasts carry no approval status, so every forecast in scope for the year is included."],
+        ...(col.collected ? [] : [["No customer payments have been recorded yet, so collections are zero."]]),
+      ];
+      return sheetResponse(rows, "Executive", `executive-dashboard-${tag}.xlsx`);
+    }
     case "sales": {
       const r = await getSalesReport(range, scope.ids, sp.province ? { province: sp.province } : undefined);
       const rows: (string | number)[][] = [
