@@ -6,7 +6,8 @@ import { fmtDateTime } from "@/lib/format";
 import { REPORTS, REPORT_MODULES } from "@/lib/report-registry";
 import { storedReportPerm, reportPerm } from "@/lib/report-access";
 import { getPerm } from "@/lib/permissions";
-import { saveReportPermissions } from "../actions";
+import { saveReportPermissions, saveReportLevelPolicy } from "../actions";
+import { getReportPolicy } from "@/lib/report-policy";
 import { getAuditTrail } from "@/lib/salespeople";
 
 const LEVELS = [
@@ -24,12 +25,13 @@ const LEVELS = [
 export default async function ReportPermissionsPage({
   searchParams,
 }: {
-  searchParams: { user?: string; module?: string; report?: string; company?: string; saved?: string };
+  searchParams: { user?: string; module?: string; report?: string; company?: string; saved?: string; policy?: string };
 }) {
   // Super Admin only — everyone else is bounced to the dashboard by requireStaff
   const viewer = await requireStaff(["SUPER_ADMIN"]);
 
-  const [users, companies, audit] = await Promise.all([
+  const [policy, users, companies, audit] = await Promise.all([
+    getReportPolicy(),
     prisma.user.findMany({
       where: { role: { notIn: ["SUPER_ADMIN", "DEALER"] } },
       orderBy: [{ name: "asc" }],
@@ -85,6 +87,60 @@ export default async function ReportPermissionsPage({
       {searchParams.saved === "none" && (
         <p className="mb-3 rounded-lg bg-gray-100 px-3 py-2 text-sm text-gray-700">Nothing changed.</p>
       )}
+      {searchParams.policy === "ok" && (
+        <p className="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+          ✔ Access level rules saved. Every report and export follows them from now on.
+        </p>
+      )}
+      {searchParams.policy === "none" && (
+        <p className="mb-3 rounded-lg bg-gray-100 px-3 py-2 text-sm text-gray-700">The level rules were already set that way.</p>
+      )}
+
+      {/* ------------------------------------------------- what each level may do */}
+      <form action={saveReportLevelPolicy} className="card mb-4">
+        <h2 className="font-semibold text-emerald-900">What each access level can do</h2>
+        <p className="mb-3 text-sm text-gray-600">
+          The three levels are fixed, but what they mean is yours to set. Viewing and filtering always come with access;
+          these switches decide the rest. Super Admin is unaffected by them.
+        </p>
+        <table className="w-full max-w-xl text-sm">
+          <thead className="border-b border-gray-200">
+            <tr>
+              <th className="py-1 text-left">Level</th>
+              <th className="py-1 text-center">View &amp; filter</th>
+              <th className="py-1 text-center">Print / Save as PDF</th>
+              <th className="py-1 text-center">Export to Excel</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            <tr>
+              <td className="py-2 font-medium">No Access</td>
+              <td className="py-2 text-center text-gray-300">✕</td>
+              <td className="py-2 text-center text-gray-300">✕</td>
+              <td className="py-2 text-center text-gray-300">✕</td>
+            </tr>
+            <tr>
+              <td className="py-2 font-medium">Read Only</td>
+              <td className="py-2 text-center text-emerald-700">✔ always</td>
+              <td className="py-2 text-center"><input type="checkbox" name="ro_print" defaultChecked={policy.READ_ONLY.print} className="h-4 w-4" /></td>
+              <td className="py-2 text-center"><input type="checkbox" name="ro_export" defaultChecked={policy.READ_ONLY.export} className="h-4 w-4" /></td>
+            </tr>
+            <tr>
+              <td className="py-2 font-medium">Read/Write</td>
+              <td className="py-2 text-center text-emerald-700">✔ always</td>
+              <td className="py-2 text-center"><input type="checkbox" name="rw_print" defaultChecked={policy.READ_WRITE.print} className="h-4 w-4" /></td>
+              <td className="py-2 text-center"><input type="checkbox" name="rw_export" defaultChecked={policy.READ_WRITE.export} className="h-4 w-4" /></td>
+            </tr>
+          </tbody>
+        </table>
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <button className="btn-primary" type="submit">💾 Save Level Rules</button>
+          <span className="text-xs text-gray-500">
+            The Excel export is refused by the server, not merely hidden. Unticking Print hides the button, but a browser
+            can always print a page it is showing — treat that one as a nudge, not a lock.
+          </span>
+        </div>
+      </form>
 
       <p className="mb-3 text-sm text-gray-600">
         Access is granted per user, per report. Anything not granted is <strong>No Access</strong>, so a report added to
@@ -194,7 +250,7 @@ export default async function ReportPermissionsPage({
           <div className="mt-3 flex flex-wrap items-center gap-3">
             <button className="btn-primary" type="submit">💾 Save Permissions</button>
             <span className="text-xs text-gray-500">
-              {rows.length} row(s) shown. Read Only can view, filter and print; Read/Write may also export to Excel.
+              {rows.length} row(s) shown. Read Only and Read/Write do whatever the level rules above allow.
             </span>
           </div>
         )}
@@ -213,8 +269,8 @@ export default async function ReportPermissionsPage({
       </div>
 
       <p className="mt-3 text-xs text-gray-500">
-        Printing cannot be prevented by any application, so Read Only still allows Print / Save as PDF. The Excel export
-        is what Read/Write controls, and it is refused by the server as well as hidden in the page.
+        Export permission is enforced by the server as well as hidden in the page, so knowing the download URL gains
+        nothing. Printing is a browser function and cannot be truly prevented by any application.
       </p>
     </div>
   );

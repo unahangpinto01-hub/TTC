@@ -63,8 +63,12 @@ export default async function SalesJournalPage({ searchParams }: { searchParams:
   return (
     <div className="print-page">
       <PageHeader title="Sales Journal">
-        <a href={`/api/export/sales-journal?${qs.toString()}`} className="btn-secondary no-print">⬇ Excel</a>
-        <span className="no-print"><PrintButton /></span>
+        {user.canExport && (
+          <a href={`/api/export/sales-journal?${qs.toString()}`} className="btn-secondary no-print">⬇ Excel</a>
+        )}
+        {user.canPrint && (
+          <span className="no-print"><PrintButton /></span>
+        )}
       </PageHeader>
 
       <form method="GET" className="no-print mb-4 flex flex-wrap items-end gap-2">

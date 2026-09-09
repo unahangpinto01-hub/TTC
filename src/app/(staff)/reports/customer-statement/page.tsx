@@ -53,7 +53,9 @@ export default async function CustomerStatementPage({
     <div className="print-page">
       <div className="no-print mb-3 flex items-center justify-between">
         <BackButton />
-        <PrintButton />
+        {user.canPrint && (
+          <PrintButton />
+        )}
       </div>
       <div className="mb-4">
         <h1 className="text-2xl font-bold">{scope.company.companyName}</h1>

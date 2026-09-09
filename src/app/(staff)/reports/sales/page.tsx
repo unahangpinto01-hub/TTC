@@ -29,8 +29,12 @@ export default async function SalesReportPage({
     <div className="print-page">
       <PageHeader title="Sales Report">
         <a href="/reports/sales-monthly" className="btn-secondary no-print">📅 Monthly per Region</a>
-        <a href={`/api/export/sales?${qs.toString()}`} className="btn-secondary no-print">⬇ Excel</a>
-        <span className="no-print"><PrintButton /></span>
+        {user.canExport && (
+          <a href={`/api/export/sales?${qs.toString()}`} className="btn-secondary no-print">⬇ Excel</a>
+        )}
+        {user.canPrint && (
+          <span className="no-print"><PrintButton /></span>
+        )}
       </PageHeader>
 
       <form method="GET" className="no-print mb-4 flex flex-wrap items-end gap-2">

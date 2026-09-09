@@ -9,7 +9,7 @@ import { PrintButton, BackButton } from "@/components/print-button";
 import { getCategoryNames } from "@/lib/categories";
 
 export default async function CountSheetPage({ searchParams }: { searchParams: { category?: string } }) {
-  await requireReport("count-sheet");
+  const user = await requireReport("count-sheet");
   const company = await getActiveCompany();
   const CATEGORIES = await getCategoryNames();
   const category = searchParams.category || "";
@@ -32,8 +32,10 @@ export default async function CountSheetPage({ searchParams }: { searchParams: {
             </select>
             <button className="btn-secondary" type="submit">Apply</button>
           </form>
-          <a href={`/api/export/count-sheet${category ? `?category=${encodeURIComponent(category)}` : ""}`} className="btn-secondary">⬇ Excel</a>
-          <PrintButton />
+          {user.canExport && (
+            <a href={`/api/export/count-sheet${category ? `?category=${encodeURIComponent(category)}` : ""}`} className="btn-secondary">⬇ Excel</a>
+          )}
+          {user.canPrint && <PrintButton />}
         </div>
       </div>
 

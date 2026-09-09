@@ -27,8 +27,12 @@ export default async function CollectionsReportPage({
   return (
     <div className="print-page">
       <PageHeader title="Collections Report">
-        <a href={`/api/export/collections?${qs.toString()}`} className="btn-secondary no-print">⬇ Excel</a>
-        <span className="no-print"><PrintButton /></span>
+        {user.canExport && (
+          <a href={`/api/export/collections?${qs.toString()}`} className="btn-secondary no-print">⬇ Excel</a>
+        )}
+        {user.canPrint && (
+          <span className="no-print"><PrintButton /></span>
+        )}
       </PageHeader>
 
       <form method="GET" className="no-print mb-4 flex flex-wrap items-end gap-2">

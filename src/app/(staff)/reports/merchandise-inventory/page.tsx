@@ -90,8 +90,12 @@ export default async function MerchandiseInventoryPage({
             </label>
             <button className="btn-secondary" type="submit">Apply</button>
           </form>
-          <a href={`/api/export/merchandise-inventory?${exportParams.toString()}`} className="btn-secondary">⬇ Excel</a>
-          <PrintButton />
+          {user.canExport && (
+            <a href={`/api/export/merchandise-inventory?${exportParams.toString()}`} className="btn-secondary">⬇ Excel</a>
+          )}
+          {user.canPrint && (
+            <PrintButton />
+          )}
         </div>
       </div>
 

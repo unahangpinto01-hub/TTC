@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { requirePerm } from "@/lib/auth";
+import { canExportReport } from "@/lib/report-access";
 import { resolveReportScope } from "@/lib/report-scope";
 import { CompanyFilter, CompanyTag } from "@/components/company-filter";
 import { getArAging } from "@/lib/reports";
@@ -10,12 +11,16 @@ import { PrintButton } from "@/components/print-button";
 export default async function ArAgingPage({ searchParams }: { searchParams: { company?: string } }) {
   const user = await requirePerm("ar");
   const scope = await resolveReportScope(user, searchParams.company);
+  // the AR module page carries the AR Aging report's export, so the report policy governs it
+  const canExport = await canExportReport(user, "ar-aging");
   const { rows, totals } = await getArAging(scope.ids);
 
   return (
     <div className="print-page">
       <PageHeader title="AR Aging Report">
-        <a href={`/api/export/ar-aging?company=${scope.value}`} className="btn-secondary no-print">⬇ Excel</a>
+        {canExport && (
+          <a href={`/api/export/ar-aging?company=${scope.value}`} className="btn-secondary no-print">⬇ Excel</a>
+        )}
         <span className="no-print"><PrintButton /></span>
       </PageHeader>
       <form method="GET" className="no-print mb-4 flex flex-wrap items-end gap-2">

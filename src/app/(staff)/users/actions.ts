@@ -10,6 +10,7 @@ import { notifyUser } from "@/lib/notify";
 import { logAudit } from "@/lib/salespeople";
 import { REPORTS, reportPermKey } from "@/lib/report-registry";
 import { storedReportPerm } from "@/lib/report-access";
+import { getReportPolicy, saveReportPolicy, type ReportPolicy } from "@/lib/report-policy";
 
 const ACCESS_LEVELS = ["NONE", "READ_WRITE", "READ_ONLY"];
 
@@ -78,6 +79,53 @@ export async function updateUserPerms(formData: FormData) {
   await prisma.user.update({ where: { id }, data: { permsJson: JSON.stringify(perms) } });
   revalidatePath(`/users/${id}`);
   redirect(`/users/${id}`);
+}
+
+/**
+ * Set what each report access level is allowed to do (Super Admin only).
+ *
+ * The three levels are fixed, but their meaning is policy rather than code: this decides
+ * whether Read Only and Read/Write may export a report to Excel, and whether the Print
+ * button is offered. Super Admin is exempt from the result, so a policy saved by mistake
+ * can never lock out the person who has to correct it.
+ */
+export async function saveReportLevelPolicy(formData: FormData) {
+  const actor = await requireStaffWrite(["SUPER_ADMIN"]);
+  await requireStepUp("/users/report-permissions");
+
+  const before = await getReportPolicy();
+  const on = (name: string) => formData.get(name) === "on";
+  const next: ReportPolicy = {
+    READ_ONLY: { export: on("ro_export"), print: on("ro_print") },
+    READ_WRITE: { export: on("rw_export"), print: on("rw_print") },
+  };
+
+  const moved: string[] = [];
+  for (const level of ["READ_ONLY", "READ_WRITE"] as const) {
+    for (const act of ["export", "print"] as const) {
+      if (before[level][act] !== next[level][act]) {
+        moved.push(
+          `${level === "READ_ONLY" ? "Read Only" : "Read/Write"} ${act === "export" ? "Excel export" : "Print button"}: ` +
+          `${before[level][act] ? "allowed" : "not allowed"} → ${next[level][act] ? "allowed" : "not allowed"}`
+        );
+      }
+    }
+  }
+  if (!moved.length) redirect("/users/report-permissions?policy=none");
+
+  await saveReportPolicy(next, actor.id);
+  await logAudit({
+    entity: "ReportPermission",
+    entityId: "ALL",
+    action: "POLICY_CHANGED",
+    detail: `Access level rules — ${moved.join("; ")}`,
+    actorName: actor.name,
+    actorEmail: actor.email,
+  });
+
+  revalidatePath("/users/report-permissions");
+  revalidatePath("/reports");
+  redirect("/users/report-permissions?policy=ok");
 }
 
 /**

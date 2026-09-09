@@ -104,8 +104,12 @@ export default async function PriceListPage({ searchParams }: { searchParams: SP
             </label>
             <button className="btn-secondary" type="submit">Apply</button>
           </form>
-          <a href={`/api/export/price-list?${params.toString()}`} className="btn-secondary">⬇ Excel</a>
-          <PrintButton />
+          {user.canExport && (
+            <a href={`/api/export/price-list?${params.toString()}`} className="btn-secondary">⬇ Excel</a>
+          )}
+          {user.canPrint && (
+            <PrintButton />
+          )}
         </div>
       </div>
 

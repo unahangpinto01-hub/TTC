@@ -349,7 +349,9 @@ export default async function ForecastReportPage({ searchParams }: { searchParam
     <div className="print-page">
       <div className="no-print mb-3 flex items-center justify-between">
         <BackButton />
-        <PrintButton />
+        {user.canPrint && (
+          <PrintButton />
+        )}
       </div>
 
       <div className="mb-4">

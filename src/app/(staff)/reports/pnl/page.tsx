@@ -17,8 +17,12 @@ export default async function PnlPage({ searchParams }: { searchParams: { from?:
   return (
     <div className="print-page mx-auto max-w-2xl">
       <PageHeader title="Income Statement (P&L)">
-        <a href={`/api/export/pnl?from=${fromStr}&to=${toStr}&company=${scope.value}`} className="btn-secondary no-print">⬇ Excel</a>
-        <span className="no-print"><PrintButton /></span>
+        {user.canExport && (
+          <a href={`/api/export/pnl?from=${fromStr}&to=${toStr}&company=${scope.value}`} className="btn-secondary no-print">⬇ Excel</a>
+        )}
+        {user.canPrint && (
+          <span className="no-print"><PrintButton /></span>
+        )}
       </PageHeader>
 
       <form method="GET" className="no-print mb-4 flex flex-wrap items-end gap-2">

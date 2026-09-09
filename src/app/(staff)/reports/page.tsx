@@ -63,7 +63,7 @@ export default async function ReportsHub() {
                       {r.perm === "READ_ONLY" && (
                         <span
                           className="shrink-0 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-semibold text-gray-500"
-                          title="You can view, filter and print this report. Excel export needs Read/Write access."
+                          title="You can view and filter this report. What else Read Only may do is set by the level rules under Users → Report Permissions."
                         >
                           READ ONLY
                         </span>

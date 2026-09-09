@@ -21,8 +21,12 @@ export default async function DeliveryPerformancePage({ searchParams }: { search
   return (
     <div className="print-page mx-auto max-w-2xl">
       <PageHeader title="Delivery Performance">
-        <a href={`/api/export/delivery-performance?from=${fromStr}&to=${toStr}&company=${scope.value}`} className="btn-secondary no-print">⬇ Excel</a>
-        <span className="no-print"><PrintButton /></span>
+        {user.canExport && (
+          <a href={`/api/export/delivery-performance?from=${fromStr}&to=${toStr}&company=${scope.value}`} className="btn-secondary no-print">⬇ Excel</a>
+        )}
+        {user.canPrint && (
+          <span className="no-print"><PrintButton /></span>
+        )}
       </PageHeader>
 
       <form method="GET" className="no-print mb-4 flex flex-wrap items-end gap-2">

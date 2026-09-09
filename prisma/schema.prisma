@@ -40,6 +40,7 @@ model User {
   receivedPayments ReceivePayment[]
   rcCreated      RefundCredit[]  @relation("RCCreated")
   rcApproved     RefundCredit[]  @relation("RCApproved")
+  appSettings    AppSetting[]
 }
 
 /// Server-side sessions: the cookie holds a random token; only its SHA-256 hash is stored.
@@ -860,6 +861,16 @@ model Company {
   notifications    Notification[]
 
   @@map("CompanySetting")
+}
+
+/// System-wide settings the Super Admin controls from the app, so policy lives in the
+/// database rather than in the source. One row per setting, value held as JSON text.
+model AppSetting {
+  key         String   @id
+  value       String
+  updatedAt   DateTime @updatedAt
+  updatedById String?
+  updatedBy   User?    @relation(fields: [updatedById], references: [id])
 }
 
 model DocumentCounter {

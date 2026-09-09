@@ -29,8 +29,12 @@ export default async function POReceivingStatusPage({
       <div className="no-print mb-3 flex items-center justify-between">
         <BackButton />
         <div className="flex gap-2">
-          <a href={`/api/export/po-receiving?${qs}`} className="btn-secondary">⬇ Excel</a>
-          <PrintButton />
+          {user.canExport && (
+            <a href={`/api/export/po-receiving?${qs}`} className="btn-secondary">⬇ Excel</a>
+          )}
+          {user.canPrint && (
+            <PrintButton />
+          )}
         </div>
       </div>
 

@@ -35,8 +35,12 @@ export default async function MonthlySalesPage({ searchParams }: { searchParams:
         <BackButton />
         <div className="flex flex-wrap items-center gap-2">
           <Link href="/reports/sales" className="btn-secondary">Summary view</Link>
-          <a href={`/api/export/sales-monthly?year=${year}${region ? `&region=${region}` : ""}${province ? `&province=${encodeURIComponent(province)}` : ""}`} className="btn-secondary">⬇ Excel</a>
-          <PrintButton />
+          {user.canExport && (
+            <a href={`/api/export/sales-monthly?year=${year}${region ? `&region=${region}` : ""}${province ? `&province=${encodeURIComponent(province)}` : ""}`} className="btn-secondary">⬇ Excel</a>
+          )}
+          {user.canPrint && (
+            <PrintButton />
+          )}
         </div>
       </div>
 

@@ -167,8 +167,12 @@ export default async function ExecutiveDashboard({
   return (
     <div className="print-page">
       <PageHeader title="Executive Dashboard">
-        <a href={`/api/export/executive?${filterQuery}`} className="btn-secondary no-print">⬇ Excel</a>
-        <span className="no-print"><PrintButton /></span>
+        {user.canExport && (
+          <a href={`/api/export/executive?${filterQuery}`} className="btn-secondary no-print">⬇ Excel</a>
+        )}
+        {user.canPrint && (
+          <span className="no-print"><PrintButton /></span>
+        )}
       </PageHeader>
 
       {/* ---------------------------------------------------------- global filters */}

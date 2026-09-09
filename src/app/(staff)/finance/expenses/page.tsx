@@ -1,4 +1,5 @@
 import { requirePerm } from "@/lib/auth";
+import { canExportReport } from "@/lib/report-access";
 import { resolveReportScope } from "@/lib/report-scope";
 import { CompanyFilter } from "@/components/company-filter";
 import { getExpenseReport, parseRange } from "@/lib/reports";
@@ -11,6 +12,8 @@ const CATEGORIES = ["Fuel", "Salaries", "Utilities", "Freight", "Rent", "Supplie
 
 export default async function ExpensesPage({ searchParams }: { searchParams: { from?: string; to?: string; company?: string } }) {
   const user = await requirePerm("expenses");
+  // the Expenses page carries the Expense Report's export, so the report policy governs it
+  const canExport = await canExportReport(user, "expenses");
   const scope = await resolveReportScope(user, searchParams.company);
   const range = parseRange(searchParams);
   const { expenses, total, byCategory, byCompany } = await getExpenseReport(range, scope.ids);
@@ -21,7 +24,9 @@ export default async function ExpensesPage({ searchParams }: { searchParams: { f
   return (
     <div>
       <PageHeader title="Expenses">
-        <a href={`/api/export/expenses?from=${fromStr}&to=${toStr}&company=${scope.value}`} className="btn-secondary">⬇ Excel</a>
+        {canExport && (
+          <a href={`/api/export/expenses?from=${fromStr}&to=${toStr}&company=${scope.value}`} className="btn-secondary">⬇ Excel</a>
+        )}
       </PageHeader>
 
       <form method="GET" className="mb-4 flex flex-wrap items-end gap-2">

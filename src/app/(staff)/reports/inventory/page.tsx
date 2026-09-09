@@ -27,9 +27,15 @@ export default async function InventoryReportPage({ searchParams }: { searchPara
   return (
     <div className="print-page">
       <PageHeader title="Inventory Movement Report">
-        <a href={`/api/export/inventory-movement?from=${fromStr}&to=${toStr}&company=${scope.value}`} className="btn-secondary no-print">⬇ Movements Excel</a>
-        <a href={`/api/export/stock-on-hand?company=${scope.value}`} className="btn-secondary no-print">⬇ Stock on Hand Excel</a>
-        <span className="no-print"><PrintButton /></span>
+        {user.canExport && (
+          <a href={`/api/export/inventory-movement?from=${fromStr}&to=${toStr}&company=${scope.value}`} className="btn-secondary no-print">⬇ Movements Excel</a>
+        )}
+        {user.canExport && (
+          <a href={`/api/export/stock-on-hand?company=${scope.value}`} className="btn-secondary no-print">⬇ Stock on Hand Excel</a>
+        )}
+        {user.canPrint && (
+          <span className="no-print"><PrintButton /></span>
+        )}
       </PageHeader>
 
       <form method="GET" className="no-print mb-4 flex flex-wrap items-end gap-2">

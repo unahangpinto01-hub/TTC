@@ -58,7 +58,9 @@ export default async function SalesVsForecastPage({
     <div className="print-page">
       <div className="no-print mb-3 flex items-center justify-between">
         <Link href="/reports" className="inline-flex items-center gap-1 text-sm font-medium text-emerald-700 hover:underline">← Back to Reports</Link>
-        <PrintButton />
+        {user.canPrint && (
+          <PrintButton />
+        )}
       </div>
       <PageHeader title="Sales vs Forecast by Area" />
       <p className="mb-3 hidden text-sm text-gray-600 print:block">

@@ -28,9 +28,9 @@ export async function GET(req: NextRequest, { params }: { params: { report: stri
   if (reportPerm(user, def.key) === "NONE") {
     return new Response(`Access Denied — you do not have access to the ${def.title}.`, { status: 403 });
   }
-  if (!canExportReport(user, def.key)) {
+  if (!(await canExportReport(user, def.key))) {
     return new Response(
-      `Access Denied — exporting the ${def.title} needs Read/Write access; yours is Read Only.`,
+      `Access Denied — your access level is not allowed to export the ${def.title}.`,
       { status: 403 }
     );
   }

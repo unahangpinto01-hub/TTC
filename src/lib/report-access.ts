@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { requireStaff, type SessionUser } from "./auth";
 import { getPerm, type PermLevel } from "./permissions";
 import { REPORTS, reportByKey, reportPermKey, type ReportDef } from "./report-registry";
+import { getReportPolicy, mayExport, mayPrint } from "./report-policy";
 
 /**
  * Report access, in one place.
@@ -59,10 +60,15 @@ export function reportPerm(user: PermUser, key: string): PermLevel {
 
 export const canViewReport = (user: PermUser, key: string) => reportPerm(user, key) !== NONE;
 
-/** Excel export is the Read/Write action: reading a report on screen is one thing, taking
-    the whole dataset out of the building is another. Printing cannot be prevented by any
-    application, so it is not gated here. */
-export const canExportReport = (user: PermUser, key: string) => reportPerm(user, key) === RW;
+/**
+ * Whether this user may download the report, under the CURRENT policy.
+ *
+ * What each level may do is a Super Admin setting rather than a rule in this file, so the
+ * policy has to be read before the question can be answered.
+ */
+export async function canExportReport(user: PermUser, key: string): Promise<boolean> {
+  return mayExport(user.role, reportPerm(user, key), await getReportPolicy());
+}
 
 /** Every report this user may open, in registry order — the Reports hub reads this. */
 export function visibleReports(user: PermUser): (ReportDef & { perm: PermLevel })[] {
@@ -73,9 +79,17 @@ export function visibleReports(user: PermUser): (ReportDef & { perm: PermLevel }
  * Page guard. Bounces to /denied when the report is not granted, exactly as the module
  * guards do — the UI hiding the link is a convenience, this is the control.
  */
-export async function requireReport(key: string): Promise<SessionUser & { perm: PermLevel; canExport: boolean }> {
+export async function requireReport(
+  key: string
+): Promise<SessionUser & { perm: PermLevel; canExport: boolean; canPrint: boolean }> {
   const user = await requireStaff();
   const perm = reportPerm(user, key);
   if (perm === NONE) redirect("/denied");
-  return { ...user, perm, canExport: perm === RW };
+  const policy = await getReportPolicy();
+  return {
+    ...user,
+    perm,
+    canExport: mayExport(user.role, perm, policy),
+    canPrint: mayPrint(user.role, perm, policy),
+  };
 }
