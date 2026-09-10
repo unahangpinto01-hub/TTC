@@ -80,9 +80,12 @@ export async function GET(req: NextRequest, { params }: { params: { report: stri
         [],
         ["KEY FIGURES"],
         ["Measure", "This period", "Previous period", "Change %"],
-        ["Gross Sales", sales.grossSales, prior.grossSales, g(sales.grossSales, prior.grossSales)],
-        ["Freight", sales.freight, prior.freight, g(sales.freight, prior.freight)],
-        ["Net Sales", sales.netSales, prior.netSales, g(sales.netSales, prior.netSales)],
+        ["Product Sales", sales.components.productSales, prior.components.productSales, g(sales.components.productSales, prior.components.productSales)],
+        ["Less: Returns / Credit Memos", sales.components.returns, prior.components.returns, ""],
+        ["Net Product Sales", sales.netSales, prior.netSales, g(sales.netSales, prior.netSales)],
+        ["Freight Charges", sales.freight, prior.freight, g(sales.freight, prior.freight)],
+        ["Other Charges", sales.otherCharges, prior.otherCharges, ""],
+        ["Total Customer Billing", sales.components.totalBilling, prior.components.totalBilling, g(sales.components.totalBilling, prior.components.totalBilling)],
         ["Cost of Goods Sold", sales.cogs, prior.cogs, g(sales.cogs, prior.cogs)],
         ["Gross Profit", sales.grossProfit, prior.grossProfit, g(sales.grossProfit, prior.grossProfit)],
         ["Gross Margin %", sales.marginPct ?? "", prior.marginPct ?? "", ""],
@@ -188,6 +191,15 @@ export async function GET(req: NextRequest, { params }: { params: { report: stri
       const r = await getSalesReport(range, scope.ids, sp.province ? { province: sp.province } : undefined);
       const rows: (string | number)[][] = [
         ["SALES REPORT", tag, scope.label, sp.province ? `Province: ${sp.province}` : ""],
+        ["Freight and other charges are billed to the customer but are not product revenue — every ranking below is product sales only."],
+        [],
+        ["SALES COMPONENTS"],
+        ["Gross Product Sales", r.components.productSales],
+        ["Less: Returns / Credit Memos", r.components.returns],
+        ["Net Product Sales", r.components.netProductSales],
+        ["Freight Charges", r.components.freight],
+        ["Other Charges", r.components.otherCharges],
+        ["Total Customer Billing", r.components.totalBilling],
         [],
         ...(scope.combined ? [["BY COMPANY"], ["Company", "Invoices", "Amount"], ...r.byCompany.map((c) => [c.name, c.count, c.amount]), []] : []),
         ["INVOICES"],
@@ -195,7 +207,7 @@ export async function GET(req: NextRequest, { params }: { params: { report: stri
         ...r.invoices.map((sr) => [sr.invoiceDate.toISOString().slice(0, 10), ...(scope.combined ? [sr.company.companyName] : []), sr.srNumber, sr.customer.businessName, sr.amount]),
         [],
         ["BY CUSTOMER"],
-        ["Customer", "Region", "Invoices", "Amount"],
+        ["Customer", "Region", "Invoices", "Product Sales"],
         ...r.byCustomer.map((c) => [c.name, c.region, c.count, c.amount]),
         [],
         ["BY PRODUCT"],
@@ -208,7 +220,7 @@ export async function GET(req: NextRequest, { params }: { params: { report: stri
         [],
         ["GOODS", "", "", r.goods],
         ["FREIGHT (billed to customers)", "", "", r.freight],
-        ["TOTAL", "", "", r.total],
+        ["TOTAL PRODUCT SALES", "", "", r.components.productSales],
       ];
       return sheetResponse(rows, "Sales", `sales-report-${tag}.xlsx`);
     }
@@ -235,18 +247,37 @@ export async function GET(req: NextRequest, { params }: { params: { report: stri
       return sheetResponse(rows, "COA", `chart-of-accounts.xlsx`);
     }
     case "expenses": {
-      const r = await getExpenseReport(range, scope.ids);
+      const year = Number(sp.year) || 0;
+      const month = Number(sp.month) || 0;
+      const r = await getExpenseReport(range, scope.ids, year ? { year, month: month || null } : undefined);
+      const heading = year ? `Accounting period: ${month ? month + "/" : ""}${year}` : `Voucher dates ${tag}`;
+      const d = (x: Date | null) => (x ? x.toISOString().slice(0, 10) : "");
       const rows: (string | number)[][] = [
-        ["EXPENSE REPORT", tag, scope.label],
+        ["EXPENSE VOUCHER REPORT", heading, scope.label],
+        ["Selected on the accounting period, which comes from the voucher date — not from when the voucher was encoded."],
         [],
-        ["Date", "Category", "Notes", "Amount"],
-        ...r.expenses.map((e) => [e.date.toISOString().slice(0, 10), e.category, e.notes ?? "", e.amount]),
+        ["Voucher No.", "Voucher Date", "Actual Expense Date", "Date Received", "Encoded Date", "Accounting Period",
+         ...(scope.combined ? ["Company"] : []), "Payee", "Category", "Description", "Entered in a later year", "Amount"],
+        ...r.expenses.map((x) => [
+          x.voucherNo ?? "",
+          d(x.voucherDate),
+          d(x.date),
+          d(x.receivedDate),
+          d(x.createdAt),
+          x.accountingYear ? `${x.accountingMonth}/${x.accountingYear}` : "",
+          ...(scope.combined ? [x.company.companyName] : []),
+          x.payee ?? "",
+          x.category,
+          x.notes ?? "",
+          x.priorYearEntry ? "YES" : "",
+          x.amount,
+        ]),
         [],
         ["BY CATEGORY"],
-        ...r.byCategory.map((c) => [c.category, "", "", c.amount]),
-        ["TOTAL", "", "", r.total],
+        ...r.byCategory.map((c) => [c.category, "", "", "", "", "", ...(scope.combined ? [""] : []), "", "", "", "", c.amount]),
+        ["TOTAL", "", "", "", "", "", ...(scope.combined ? [""] : []), "", "", "", "", r.total],
       ];
-      return sheetResponse(rows, "Expenses", `expense-report-${tag}.xlsx`);
+      return sheetResponse(rows, "Expense Vouchers", `expense-vouchers-${year || tag}.xlsx`);
     }
     case "pnl": {
       const r = await getPnl(range, scope.ids);
@@ -482,12 +513,16 @@ export async function GET(req: NextRequest, { params }: { params: { report: stri
       const rows: (string | number)[][] = [
         ["CUSTOMER REPORT", tag, scope.label, sp.province ? `Province: ${sp.province}` : "All provinces"],
         [],
-        ["Customer", ...(scope.combined ? ["Company"] : []), "Region", "Province", "Invoices", "Sales", "Collected", "Balance"],
-        ...rows2.map((x) => [x.customer, ...(scope.combined ? [x.company] : []), x.region, x.province, x.invoices, x.sales, x.collected, x.balance]),
+        ["Customer", ...(scope.combined ? ["Company"] : []), "Region", "Province", "Invoices", "Product Sales", "Freight", "Other Charges", "Total Billed", "Collected", "Balance"],
+        ...rows2.map((x) => [x.customer, ...(scope.combined ? [x.company] : []), x.region, x.province, x.invoices,
+          x.sales, x.freight, x.otherCharges, x.totalBilling, x.collected, x.balance]),
         [],
         ["TOTAL", ...(scope.combined ? [""] : []), "", "",
           rows2.reduce((s2, x) => s2 + x.invoices, 0),
           Math.round(rows2.reduce((s2, x) => s2 + x.sales, 0) * 100) / 100,
+          Math.round(rows2.reduce((s2, x) => s2 + x.freight, 0) * 100) / 100,
+          Math.round(rows2.reduce((s2, x) => s2 + x.otherCharges, 0) * 100) / 100,
+          Math.round(rows2.reduce((s2, x) => s2 + x.totalBilling, 0) * 100) / 100,
           Math.round(rows2.reduce((s2, x) => s2 + x.collected, 0) * 100) / 100,
           Math.round(rows2.reduce((s2, x) => s2 + x.balance, 0) * 100) / 100],
       ];

@@ -92,7 +92,7 @@ export async function convertToSO(formData: FormData) {
   if (order.companyId !== company.id) redirect("/denied");
   if (order.status !== "Pending") redirect(`/orders/${orderId}`);
 
-  const soNumber = await nextDocNumber("SO", order.companyId);
+  const soNumber = await nextDocNumber("SO", order.companyId, order.orderDate);
   const so = await prisma.salesOrder.create({
     data: {
       companyId: order.companyId,

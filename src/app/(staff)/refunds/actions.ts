@@ -77,7 +77,7 @@ export async function createRefundCredit(formData: FormData) {
   const customerId = String(formData.get("customerId") || "");
   if (!customerId) err(null, "Pick a customer.");
   const e = await readEntry(formData, company.id, null);
-  const rcNumber = await nextDocNumber(e.type === "Credit" ? "CM" : "RF", company.id);
+  const rcNumber = await nextDocNumber(e.type === "Credit" ? "CM" : "RF", company.id, e.date);
   const rc = await prisma.refundCredit.create({
     data: {
       companyId: company.id,

@@ -66,14 +66,16 @@ export async function createGRN(formData: FormData) {
     if (dupe) redirect(`/receiving/new?po=${poId}&error=duplicate&ref=${encodeURIComponent(dupe.grnNumber)}`);
   }
 
-  const grnNumber = await nextDocNumber("GRN", company.id);
+  // the receipt's own date decides its number series, so it is resolved first
+  const receivedDate = parseEffectiveDate(String(formData.get("receivedDate") || ""));
+  const grnNumber = await nextDocNumber("GRN", company.id, receivedDate);
   const grn = await prisma.goodsReceipt.create({
     data: {
       companyId: company.id,
       grnNumber,
       purchaseOrderId: poId,
       status: "Draft",
-      receivedDate: parseEffectiveDate(String(formData.get("receivedDate") || "")),
+      receivedDate,
       warehouse: String(formData.get("warehouse") || "").trim() || null,
       deliveryRefNo,
       supplierInvoiceNo: String(formData.get("supplierInvoiceNo") || "").trim() || null,

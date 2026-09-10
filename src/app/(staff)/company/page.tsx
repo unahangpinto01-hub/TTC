@@ -11,6 +11,12 @@ export default async function CompanyPage({ searchParams }: { searchParams: { sa
   const company = await getActiveCompany(user);
   const readOnly = user.perm !== "READ_WRITE";
   // signatory pickers list the active employee master — never a hard-coded name
+  // income accounts to map the billing components to — the Chart of Accounts is the source
+  const incomeAccounts = await prisma.gLAccount.findMany({
+    where: { status: "Active", statement: "IS" },
+    orderBy: { code: "asc" },
+    select: { id: true, code: true, description: true },
+  });
   const staff = await prisma.employee.findMany({
     where: { status: "Active" },
     select: { id: true, name: true, position: true },
@@ -117,6 +123,41 @@ export default async function CompanyPage({ searchParams }: { searchParams: { sa
         ) : (
           <LogoField currentLogo={company.logoDataUrl} />
         )}
+
+        <div>
+          <p className="mb-1 font-semibold">Sales Account Mapping</p>
+          <p className="mb-3 text-xs text-gray-500">
+            Which Chart of Accounts entry each part of an invoice credits. Freight and other charges are billed to the
+            customer but are not product revenue, so they are credited separately — an account left unset simply shows
+            as unset in the Ledger rather than being folded into Sales.
+          </p>
+          <div className="grid gap-3 sm:grid-cols-3">
+            {([
+              ["glSalesId", "Product Sales", company.glSalesId],
+              ["glFreightId", "Freight Income", company.glFreightId],
+              ["glOtherId", "Other Income", company.glOtherId],
+            ] as const).map(([field, label, current]) => (
+              <div key={field}>
+                <label className="label">{label}</label>
+                {readOnly ? (
+                  <p className="text-sm font-semibold">
+                    {(() => {
+                      const a = incomeAccounts.find((x) => x.id === current);
+                      return a ? `${a.code} ${a.description}` : "— not set —";
+                    })()}
+                  </p>
+                ) : (
+                  <select name={field} defaultValue={current ?? ""} className="input">
+                    <option value="">— not set —</option>
+                    {incomeAccounts.map((a) => (
+                      <option key={a.id} value={a.id}>{a.code} · {a.description}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
 
         <div>
           <p className="mb-1 font-semibold">Delivery Receipt Signatories</p>

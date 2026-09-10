@@ -64,6 +64,24 @@ export default async function InvoicingQueuePage() {
                       />
                     </label>
                     <label className="flex items-center gap-1.5 whitespace-nowrap text-xs text-gray-600">
+                      Other Charges
+                      <input
+                        name="otherCharges"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        placeholder="0.00"
+                        className="input w-24 py-1 text-right"
+                        title="Any non-product charge billed on this invoice. Billed to the customer, but never counted as product sales."
+                      />
+                    </label>
+                    <input
+                      name="otherChargesNote"
+                      placeholder="what for"
+                      className="input w-28 py-1 text-xs"
+                      title="What the other charge is for"
+                    />
+                    <label className="flex items-center gap-1.5 whitespace-nowrap text-xs text-gray-600">
                       <input type="checkbox" name="applyVat" defaultChecked /> Apply 12% VAT
                     </label>
                     <button className="btn-primary" type="submit">Convert to SR →</button>

@@ -141,7 +141,7 @@ export async function generateDR(formData: FormData) {
   // markDelivered dates the stock OUT entries on this when it's in the past.
   const drDate = parseEffectiveDate(String(formData.get("drDate") || ""));
 
-  const drNumber = await nextDocNumber("DR", so.companyId);
+  const drNumber = await nextDocNumber("DR", so.companyId, drDate);
   const dr = await prisma.deliveryReceipt.create({
     data: {
       companyId: so.companyId,

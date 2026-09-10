@@ -50,7 +50,7 @@ export async function createPO(formData: FormData) {
   const parsed = dateRaw ? new Date(`${dateRaw}T12:00:00`) : null;
   const date = parsed && !Number.isNaN(parsed.getTime()) ? parsed : new Date();
 
-  const poNumber = await nextDocNumber("PO", company.id);
+  const poNumber = await nextDocNumber("PO", company.id, date);
   const po = await prisma.purchaseOrder.create({
     data: { companyId: company.id, poNumber, supplierId, status: "Draft", date, lines: { create: lineData } },
   });

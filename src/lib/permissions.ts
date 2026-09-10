@@ -22,6 +22,8 @@ export const FUNCTIONS = [
   ["expenses", "Expenses"],
   ["ledger", "Ledger"],
   ["reports", "Reports"],
+  ["voucherNumber", "Edit Voucher Number"],
+  ["priorPeriod", "Prior-Period Adjustment"],
   ["hr", "HR (Employees / Payroll / Evaluations)"],
   ["users", "User Management"],
   ["company", "Company Details"],
@@ -38,12 +40,12 @@ const ALL_RW = Object.fromEntries(FUNCTIONS.map(([k]) => [k, RW])) as Record<FnK
 /** Defaults applied when a user has no explicit permission for a function. */
 export const ROLE_DEFAULTS: Record<string, Record<FnKey, PermLevel>> = {
   SUPER_ADMIN: { ...ALL_RW },
-  ADMIN: { ...ALL_RW, users: NO, company: NO },
+  ADMIN: { ...ALL_RW, users: NO, company: NO, voucherNumber: NO, priorPeriod: NO },
   CLERK: {
     dashboard: RW, notifications: RW, orders: RW, salesOrders: RW, schedule: RW,
     deliveries: RW, invoicing: NO, invoices: RO, forecast: RO, customers: RW,
     inventory: RO, purchaseOrders: RO, suppliers: RO, ar: NO, receivePayments: NO, refundsCredits: NO, coa: NO, expenses: NO,
-    ledger: NO, reports: NO, hr: NO, users: NO, company: NO,
+    ledger: NO, reports: NO, voucherNumber: NO, priorPeriod: NO, hr: NO, users: NO, company: NO,
   },
 };
 

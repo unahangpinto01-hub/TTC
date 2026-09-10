@@ -26,7 +26,12 @@ export async function convertDRtoSR(formData: FormData) {
 
   // freight from the sales order is billed in full on its (single) invoice
   const freightCharge = dr.salesOrder.freightCharge;
-  const amount = round2(dr.lines.reduce((s, l) => s + l.qty * l.unitPrice, 0) + freightCharge);
+  // any other charge billed on this invoice — kept apart from product revenue everywhere
+  const otherCharges = round2(Math.max(0, Number(formData.get("otherCharges")) || 0));
+  const otherChargesNote = String(formData.get("otherChargesNote") || "").trim() || null;
+  const productSales = round2(dr.lines.reduce((s, l) => s + l.qty * l.unitPrice, 0));
+  // TOTAL INVOICE AMOUNT = product sales + freight + other charges
+  const amount = round2(productSales + freightCharge + otherCharges);
   const term = dr.salesOrder.term;
   const termDays = term === "COD" ? 0 : Number(term);
   const invoiceDate = parseEffectiveDate(String(formData.get("invoiceDate") || ""));
@@ -34,11 +39,13 @@ export async function convertDRtoSR(formData: FormData) {
   dueDate.setDate(dueDate.getDate() + termDays);
 
   const vatApplied = formData.get("applyVat") === "on";
-  const srNumber = await nextDocNumber("SR", dr.companyId);
+  const srNumber = await nextDocNumber("SR", dr.companyId, invoiceDate);
   const sr = await prisma.salesReceipt.create({
     data: {
       companyId: dr.companyId,
       srNumber,
+      otherCharges,
+      otherChargesNote,
       deliveryReceiptId: drId,
       customerId: dr.salesOrder.customerId,
       amount,

@@ -53,13 +53,43 @@ export default async function SalesReportPage({
 
       <p className="mb-4 text-sm text-gray-600">
         <span className="font-semibold">{scope.label}</span> · {fmtDate(range.from)} – {fmtDate(range.to)}
-        {province ? ` · Province: ${province}` : ""} · Total invoiced sales:{" "}
-        <span className="text-lg font-bold text-emerald-800">{peso(r.total)}</span>
-        {r.freight > 0 && (
-          <span className="text-gray-500"> (Goods {peso(r.goods)} + Freight {peso(r.freight)})</span>
+        {province ? ` · Province: ${province}` : ""} · Product sales:{" "}
+        <span className="text-lg font-bold text-emerald-800">{peso(r.components.productSales)}</span>
+        {r.total !== r.components.productSales && (
+          <span className="text-gray-500"> of {peso(r.total)} billed</span>
         )}{" "}
         · {r.invoices.length} invoice(s)
       </p>
+
+      {/* the components of what the customer was billed, kept apart */}
+      <div className="card mb-4 max-w-md">
+        <h2 className="mb-2 font-semibold text-emerald-900">Sales Components</h2>
+        <table className="w-full text-sm">
+          <tbody className="divide-y divide-gray-100">
+            <tr><td className="py-1.5">Gross Product Sales</td><td className="py-1.5 text-right font-semibold">{peso(r.components.productSales)}</td></tr>
+            <tr>
+              <td className="py-1.5 text-gray-600">Less: Returns / Credit Memos</td>
+              <td className={`py-1.5 text-right ${r.components.returns ? "text-red-600" : "text-gray-300"}`}>
+                {r.components.returns ? `(${peso(r.components.returns)})` : "—"}
+              </td>
+            </tr>
+            <tr className="border-t border-gray-300">
+              <td className="py-1.5 font-semibold">Net Product Sales</td>
+              <td className="py-1.5 text-right font-bold text-emerald-800">{peso(r.components.netProductSales)}</td>
+            </tr>
+            <tr><td className="py-1.5 text-gray-600">Freight Charges</td><td className={`py-1.5 text-right ${r.components.freight ? "" : "text-gray-300"}`}>{r.components.freight ? peso(r.components.freight) : "—"}</td></tr>
+            <tr><td className="py-1.5 text-gray-600">Other Charges</td><td className={`py-1.5 text-right ${r.components.otherCharges ? "" : "text-gray-300"}`}>{r.components.otherCharges ? peso(r.components.otherCharges) : "—"}</td></tr>
+            <tr className="border-t-2 border-gray-400">
+              <td className="py-2 font-bold">Total Customer Billing</td>
+              <td className="py-2 text-right font-bold">{peso(r.components.totalBilling)}</td>
+            </tr>
+          </tbody>
+        </table>
+        <p className="mt-2 text-xs text-gray-500">
+          Freight and other charges are billed to the customer but are not product revenue. Every ranking below — by
+          customer, product and region — is product sales only.
+        </p>
+      </div>
 
       {/* combined view: each company's own total, then the grand total */}
       {scope.combined && (

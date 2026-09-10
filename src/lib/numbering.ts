@@ -11,10 +11,20 @@ const PREFIX: Record<string, string> = {
   RF: "RF", // customer refund (refunds & credits)
 };
 
-/** Atomic per-company, per-type, per-year sequential numbering: SO-2026-00001.
-    Each company runs its own sequence; the printed letterhead identifies the issuer. */
-export async function nextDocNumber(docType: "SO" | "DR" | "SR" | "PO" | "GRN" | "PR" | "CM" | "RF", companyId: string): Promise<string> {
-  const year = new Date().getFullYear();
+/**
+ * Atomic per-company, per-type, per-year sequential numbering: SO-2026-00001.
+ * Each company runs its own sequence; the printed letterhead identifies the issuer.
+ *
+ * The year comes from the DOCUMENT'S OWN DATE, not from the day it was typed in. A December
+ * delivery encoded in January belongs to December's series — taking the year from the clock
+ * would hand it a January number and break the sequence at every year end.
+ */
+export async function nextDocNumber(
+  docType: "SO" | "DR" | "SR" | "PO" | "GRN" | "PR" | "CM" | "RF",
+  companyId: string,
+  docDate?: Date | null
+): Promise<string> {
+  const year = (docDate ?? new Date()).getFullYear();
   const counter = await prisma.documentCounter.upsert({
     where: { docType_year_companyId: { docType, year, companyId } },
     create: { docType, year, companyId, lastNumber: 1 },

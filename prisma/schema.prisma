@@ -41,6 +41,7 @@ model User {
   rcCreated      RefundCredit[]  @relation("RCCreated")
   rcApproved     RefundCredit[]  @relation("RCApproved")
   appSettings    AppSetting[]
+  periodChanges  AccountingPeriod[]
 }
 
 /// Server-side sessions: the cookie holds a random token; only its SHA-256 hash is stored.
@@ -356,8 +357,14 @@ model SalesReceipt {
   deliveryReceipt   DeliveryReceipt @relation(fields: [deliveryReceiptId], references: [id])
   customerId        String
   customer          Customer        @relation(fields: [customerId], references: [id])
+  /// TOTAL INVOICE AMOUNT — product sales + freight + other charges.
+  /// Never the product-sales figure: reports that measure product performance read the
+  /// invoice lines, and the two components below, rather than this total.
   amount            Float
-  freightCharge     Float           @default(0) // freight portion included in amount (shown as its own line on the invoice)
+  freightCharge     Float           @default(0) // delivery charge billed to the customer
+  /// any non-product charge billed on the invoice, kept apart from product revenue
+  otherCharges      Float           @default(0)
+  otherChargesNote  String?
   term              String
   vatApplied        Boolean         @default(true) // false = VAT-exempt / non-VAT sale
   invoiceDate       DateTime        @default(now())
@@ -611,19 +618,65 @@ model POLine {
   grnLines GRNLine[]
 }
 
+/// An expense voucher.
+///
+/// Four dates that are deliberately NOT the same thing:
+///   voucherDate   decides the accounting year, the period and the number series
+///   date          the actual date on the invoice or receipt
+///   receivedDate  when the company received the document
+///   createdAt     when it was typed into the BMS
+/// A late-December invoice received in January is voucher-dated 31 December, so it keeps a
+/// December number and lands in the December period, however long afterwards it is encoded.
 model Expense {
   id        String   @id @default(cuid())
   companyId String
   company   Company  @relation(fields: [companyId], references: [id])
+  /// ACTUAL EXPENSE DATE — what the invoice or receipt itself says
   date      DateTime @default(now())
   category  String // Fuel | Salaries | Utilities | Freight | Rent | Supplies | Others
   amount    Float
   notes     String?
   userId    String?
   user      User?    @relation(fields: [userId], references: [id])
+
+  /// EV-TTC-2026-000001 — unique per company, never reused
+  voucherNo      String?
+  /// drives the number series, the accounting year and the accounting period
+  voucherDate    DateTime @default(now())
+  /// when the document reached the company
+  receivedDate   DateTime?
+  payee          String?
+  /// derived from voucherDate and stored so reports can group and index on them
+  accountingYear  Int @default(0)
+  accountingMonth Int @default(0)
+  /// true when the voucher was encoded in a later calendar year than it is dated —
+  /// the year-end cutoff case, called out in the audit trail
+  priorYearEntry Boolean  @default(false)
+  /// ENCODED DATE/TIME
+  createdAt      DateTime @default(now())
   // which GL account this expense books to — picked from the Chart of Accounts
   glAccountId String?
   glAccount   GLAccount? @relation(fields: [glAccountId], references: [id])
+
+  @@unique([companyId, voucherNo])
+  @@index([companyId, accountingYear, accountingMonth])
+}
+
+/// Accounting period control, one row per company/year/month that has been moved off Open.
+/// A period with no row is Open — periods are not created in advance, they are only closed.
+model AccountingPeriod {
+  id         String   @id @default(cuid())
+  companyId  String
+  company    Company  @relation(fields: [companyId], references: [id])
+  year       Int
+  month      Int // 1-12
+  status     String   @default("Open") // Open | Closing | Locked
+  note       String?
+  changedById String?
+  changedBy   User?   @relation(fields: [changedById], references: [id])
+  updatedAt  DateTime @updatedAt
+
+  @@unique([companyId, year, month])
 }
 
 /// Chart of Accounts: the single GL account master for the whole BMS. Shared by both
@@ -645,6 +698,9 @@ model GLAccount {
 
   cashAccounts CashAccount[]
   expenses     Expense[]
+  salesFor     Company[] @relation("GLSales")
+  freightFor   Company[] @relation("GLFreight")
+  otherFor     Company[] @relation("GLOther")
 }
 
 model Employee {
@@ -823,6 +879,9 @@ model AuditLog {
 model Company {
   id                  String    @id @default(cuid())
   companyName         String    @default("")
+  /// Short code used inside document numbers (EV-TTC-2026-000001). Set on Company Details;
+  /// falls back to the first letters of the name only when it has never been filled in.
+  code                String    @default("")
   address             String    @default("Philippines")
   mobileNo            String    @default("")
   telephoneNo         String    @default("")
@@ -843,10 +902,19 @@ model Company {
   drCheckedBy         Employee? @relation("DRDefaultChecked", fields: [drCheckedById], references: [id])
   drApprovedById      String?
   drApprovedBy        Employee? @relation("DRDefaultApproved", fields: [drApprovedById], references: [id])
+  // which Chart of Accounts entry each billing component credits — picked, never hard-coded,
+  // so freight income stops being lumped into product sales in the ledger
+  glSalesId           String?
+  glSales             GLAccount? @relation("GLSales", fields: [glSalesId], references: [id])
+  glFreightId         String?
+  glFreight           GLAccount? @relation("GLFreight", fields: [glFreightId], references: [id])
+  glOtherId           String?
+  glOther             GLAccount? @relation("GLOther", fields: [glOtherId], references: [id])
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 
   products         Product[]
+  accountingPeriods AccountingPeriod[]
   incomingOrders   IncomingOrder[]
   salesOrders      SalesOrder[]
   deliveryReceipts DeliveryReceipt[]

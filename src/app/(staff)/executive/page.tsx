@@ -226,8 +226,8 @@ export default async function ExecutiveDashboard({
 
       {/* ------------------------------------------------------------- row 1: KPIs */}
       <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
-        <Kpi label="Gross Sales" value={peso(sales.grossSales)} sub={`incl. ${peso(sales.freight)} freight`} delta={growthPct(sales.grossSales, prevSales.grossSales)} />
-        <Kpi label="Net Sales" value={peso(sales.netSales)} sub="goods only" delta={growthPct(sales.netSales, prevSales.netSales)} />
+        <Kpi label="Product Sales" value={peso(sales.components.productSales)} sub="products only — the primary figure" delta={growthPct(sales.components.productSales, prevSales.components.productSales)} />
+        <Kpi label="Net Product Sales" value={peso(sales.netSales)} sub={sales.components.returns ? `less ${peso(sales.components.returns)} returns` : "no returns"} delta={growthPct(sales.netSales, prevSales.netSales)} />
         <Kpi label="Gross Profit" value={peso(sales.grossProfit)} sub={`margin ${pct(sales.marginPct)}`} delta={growthPct(sales.grossProfit, prevSales.grossProfit)} />
         <Kpi label="Accounts Receivable" value={peso(ar.total)} sub={`${peso(ar.overdue)} overdue`} invert />
         <Kpi label="Collections" value={peso(collections.collected)} sub={collections.collected ? `rate ${pct(collections.rate)}` : "no payments recorded yet"} delta={growthPct(collections.collected, prevCollections.collected)} muted={!collections.collected} />
@@ -238,6 +238,9 @@ export default async function ExecutiveDashboard({
         <Kpi label="Sales Orders" value={num(sales.orders)} delta={growthPct(sales.orders, prevSales.orders)} comparable={hasPrior} />
         <Kpi label="Sales Invoices" value={num(sales.invoices)} delta={growthPct(sales.invoices, prevSales.invoices)} comparable={hasPrior} />
         <Kpi label="Average Order Value" value={sales.avgOrderValue == null ? "—" : peso(sales.avgOrderValue)} delta={growthPct(sales.avgOrderValue ?? 0, prevSales.avgOrderValue ?? 0)} comparable={hasPrior} />
+        <Kpi label="Freight Charges" value={peso(sales.freight)} sub="billed, not product revenue" delta={growthPct(sales.freight, prevSales.freight)} />
+        <Kpi label="Other Charges" value={peso(sales.otherCharges)} sub="billed, not product revenue" delta={growthPct(sales.otherCharges, prevSales.otherCharges)} muted={!sales.otherCharges} />
+        <Kpi label="Total Customer Billing" value={peso(sales.components.totalBilling)} sub="products + freight + other" delta={growthPct(sales.components.totalBilling, prevSales.components.totalBilling)} />
         <Kpi label="Cost of Goods Sold" value={peso(sales.cogs)} sub={`${num(sales.qtyPcs)} PCS · ${num(sales.qtyCtn)} CTN`} invert delta={growthPct(sales.cogs, prevSales.cogs)} />
         <Kpi label="Inventory Value" value={peso(inventory.value)} sub={`${num(inventory.pcs)} PCS · ${num(inventory.ctn)} CTN`} />
         <Kpi label="Inventory Turnover" value={inventory.turnover == null ? "—" : `${inventory.turnover.toFixed(2)}×`} sub="COGS ÷ closing stock" />
@@ -430,6 +433,11 @@ export default async function ExecutiveDashboard({
         <p className="font-semibold">What these figures do and do not cover</p>
         <ul className="mt-1 list-inside list-disc space-y-0.5 text-xs">
           <li>Only posted, non-void invoices count. Drafts and voided documents are excluded everywhere.</li>
+          <li>
+            Every ranking — by product, customer, salesperson and area — and the forecast comparison use{" "}
+            <strong>product sales</strong>. Freight and other charges are billed to the customer but are not product
+            revenue, so they are shown on their own and never inflate a product, a customer or a salesperson.
+          </li>
           <li>
             Sales are attributed through each customer&rsquo;s <strong>current</strong> salesperson. No sales document
             stores one, so reassigning an account moves its past sales with it. Forecast rows keep the salesperson they

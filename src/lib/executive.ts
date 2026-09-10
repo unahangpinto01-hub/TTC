@@ -18,6 +18,7 @@
 import { prisma } from "./db";
 import { packSizeToMl, isForecastBasePack, provincesForArea } from "./forecast-units";
 import { displayCartonSize, lineCartonSize } from "./units";
+import { componentsOf, emptyComponents, addComponents, type SalesComponents } from "./sales-components";
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
@@ -75,8 +76,13 @@ export function growthPct(now: number, before: number): number | null {
 }
 
 export type SalesMetrics = {
+  /** TOTAL CUSTOMER BILLING — product sales + freight + other charges */
   grossSales: number;
   freight: number;
+  otherCharges: number;
+  /** the full billing breakdown, from the one service that defines it */
+  components: SalesComponents;
+  /** NET PRODUCT SALES — product lines less posted credit memos. The primary sales figure. */
   netSales: number;
   cogs: number;
   grossProfit: number;
@@ -108,7 +114,9 @@ export async function getSalesMetrics(f: ExecFilters): Promise<SalesMetrics> {
       id: true,
       amount: true,
       freightCharge: true,
+      otherCharges: true,
       customerId: true,
+      refundCredits: { select: { amount: true, status: true, type: true } },
       deliveryReceipt: {
         select: {
           lines: {
@@ -122,7 +130,10 @@ export async function getSalesMetrics(f: ExecFilters): Promise<SalesMetrics> {
     },
   });
 
-  let grossSales = 0, freight = 0, goods = 0, cogs = 0, qtyPcs = 0, qtyCtn = 0;
+  let goods = 0, cogs = 0, qtyPcs = 0, qtyCtn = 0;
+  // freight and other charges are billed to the customer but are NOT product revenue —
+  // they are totalled here and never added into the product figures below
+  const components = emptyComponents();
   const customers = new Set<string>();
   for (const sr of srs) {
     const lines = f.category
@@ -133,9 +144,15 @@ export async function getSalesMetrics(f: ExecFilters): Promise<SalesMetrics> {
 
     const lineGoods = lines.reduce((s, l) => s + l.qty * l.unitPrice, 0);
     goods += lineGoods;
-    // with a category filter the invoice total is not the right gross — use the lines
-    grossSales += f.category ? lineGoods : sr.amount;
-    if (!f.category) freight += sr.freightCharge;
+    if (f.category) {
+      // narrowed to one category, so only the matching product lines count and the
+      // invoice-level charges are left out of the picture entirely
+      components.productSales = round2(components.productSales + lineGoods);
+      components.netProductSales = round2(components.netProductSales + lineGoods);
+      components.totalBilling = round2(components.totalBilling + lineGoods);
+    } else {
+      addComponents(components, sr);
+    }
 
     for (const l of lines) {
       // the cost captured at delivery, so changing a product's cost today never
@@ -150,7 +167,8 @@ export async function getSalesMetrics(f: ExecFilters): Promise<SalesMetrics> {
   const invoices = f.category
     ? srs.filter((sr) => sr.deliveryReceipt.lines.some((l) => l.product.category === f.category)).length
     : srs.length;
-  const netSales = round2(goods);
+  // net product sales: the lines, less any credit memo posted against those invoices
+  const netSales = round2(goods - components.returns);
   const orders = await prisma.salesOrder.count({
     where: {
       companyId: { in: f.companyIds },
@@ -161,15 +179,17 @@ export async function getSalesMetrics(f: ExecFilters): Promise<SalesMetrics> {
   });
 
   return {
-    grossSales: round2(grossSales),
-    freight: round2(freight),
+    grossSales: components.totalBilling,
+    freight: components.freight,
+    otherCharges: components.otherCharges,
+    components,
     netSales,
     cogs: round2(cogs),
     grossProfit: round2(netSales - cogs),
     marginPct: netSales ? round2(((netSales - cogs) / netSales) * 100) : null,
     invoices,
     orders,
-    avgOrderValue: invoices ? round2(grossSales / invoices) : null,
+    avgOrderValue: invoices ? round2(components.totalBilling / invoices) : null,
     qtyPcs,
     qtyCtn: round2(qtyCtn),
     customers: customers.size,

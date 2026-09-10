@@ -69,7 +69,7 @@ export async function createReceivePayment(formData: FormData) {
     if (!acct) err(null, "Pick a valid cash/bank account.");
   }
 
-  const prNumber = await nextDocNumber("PR", company.id);
+  const prNumber = await nextDocNumber("PR", company.id, e.date);
   const rp = await prisma.receivePayment.create({
     data: {
       companyId: company.id,

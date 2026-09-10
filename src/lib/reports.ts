@@ -1,4 +1,5 @@
 import { prisma } from "./db";
+import { componentsOf, sumComponents, type SalesComponents } from "./sales-components";
 import { lineCartonSize } from "./units";
 
 export type Range = { from: Date; to: Date };
@@ -35,6 +36,7 @@ export async function getSalesReport({ from, to }: Range, companyIds: string[], 
       company: { select: { companyName: true } },
       customer: true,
       deliveryReceipt: { include: { lines: { include: { product: true } } } },
+      refundCredits: { select: { amount: true, status: true, type: true } },
     },
     orderBy: { invoiceDate: "asc" },
   });
@@ -45,20 +47,21 @@ export async function getSalesReport({ from, to }: Range, companyIds: string[], 
   const byRegion = new Map<string, number>();
   // per-company subtotals, so a combined report shows each company and a grand total
   const byCompany = new Map<string, { name: string; count: number; amount: number }>();
-  let total = 0;
-  let freight = 0; // billed to the customer, inside the invoice amounts — split out for display
+  // Every "amount" below is PRODUCT SALES — the invoice lines. Freight and other charges
+  // are billed to the customer but are not product revenue, so they never fold into a
+  // customer, region or company ranking; they are carried in `components` instead.
+  let components = sumComponents(srs);
 
   for (const sr of srs) {
-    total += sr.amount;
-    freight += sr.freightCharge;
+    const productSales = componentsOf(sr).productSales;
     const c = byCustomer.get(sr.customerId) ?? { name: sr.customer.businessName, region: sr.customer.region, count: 0, amount: 0 };
     c.count++;
-    c.amount = round2(c.amount + sr.amount);
+    c.amount = round2(c.amount + productSales);
     byCustomer.set(sr.customerId, c);
-    byRegion.set(sr.customer.region, round2((byRegion.get(sr.customer.region) ?? 0) + sr.amount));
+    byRegion.set(sr.customer.region, round2((byRegion.get(sr.customer.region) ?? 0) + productSales));
     const co = byCompany.get(sr.companyId) ?? { name: sr.company.companyName, count: 0, amount: 0 };
     co.count++;
-    co.amount = round2(co.amount + sr.amount);
+    co.amount = round2(co.amount + productSales);
     byCompany.set(sr.companyId, co);
     for (const l of sr.deliveryReceipt.lines) {
       const key = l.product.parentItem?.trim() || l.product.name;
@@ -76,9 +79,14 @@ export async function getSalesReport({ from, to }: Range, companyIds: string[], 
 
   return {
     invoices: srs,
-    total: round2(total),
-    freight: round2(freight),
-    goods: round2(total - freight),
+    /** the whole billing breakdown — product, returns, freight, other, total */
+    components,
+    /** TOTAL CUSTOMER BILLING: product sales + freight + other charges */
+    total: components.totalBilling,
+    freight: components.freight,
+    otherCharges: components.otherCharges,
+    /** PRODUCT SALES — the primary figure for measuring product performance */
+    goods: components.productSales,
     byCustomer: [...byCustomer.values()].sort((a, b) => b.amount - a.amount),
     byProduct: [...byProduct.values()].sort((a, b) => b.amount - a.amount),
     byRegion: [...byRegion.entries()].map(([region, amount]) => ({ region, amount })).sort((a, b) => b.amount - a.amount),
@@ -140,10 +148,29 @@ export async function getMonthlyProductSales(year: number, companyIds: string[],
   );
 }
 
-export async function getExpenseReport({ from, to }: Range, companyIds: string[]) {
+/**
+ * Expense vouchers for an accounting period.
+ *
+ * Selected on the ACCOUNTING PERIOD, which comes from the voucher date — so December 2026
+ * returns every voucher dated into December, including those encoded the following January.
+ * Passing a date range instead still works and reads the voucher date, never the encoding
+ * date, so a late entry can never fall out of the month it belongs to.
+ */
+export async function getExpenseReport(
+  { from, to }: Range,
+  companyIds: string[],
+  period?: { year: number; month?: number | null }
+) {
+  const where: any = { companyId: { in: companyIds } };
+  if (period?.year) {
+    where.accountingYear = period.year;
+    if (period.month) where.accountingMonth = period.month;
+  } else {
+    where.voucherDate = { gte: from, lte: to };
+  }
   const expenses = await prisma.expense.findMany({
-    where: { companyId: { in: companyIds }, date: { gte: from, lte: to } },
-    orderBy: { date: "desc" },
+    where,
+    orderBy: [{ voucherDate: "desc" }, { voucherNo: "desc" }],
     include: { company: { select: { companyName: true } }, user: { select: { name: true } } },
   });
   const byCategory = new Map<string, number>();
@@ -367,21 +394,48 @@ export async function getDeliveryPerformance({ from, to }: Range, companyIds: st
 /** Journal-style ledger entries derived from sales, purchases, expenses, collections. */
 export async function getLedger({ from, to }: Range, companyIds: string[]) {
   const [srs, payments, expenses, poIns] = await Promise.all([
-    prisma.salesReceipt.findMany({ where: { companyId: { in: companyIds }, status: { not: "Void" }, invoiceDate: { gte: from, lte: to } }, include: { company: { select: { companyName: true } }, customer: true } }),
+    prisma.salesReceipt.findMany({
+      where: { companyId: { in: companyIds }, status: { not: "Void" }, invoiceDate: { gte: from, lte: to } },
+      include: {
+        company: {
+          select: {
+            companyName: true,
+            glSales: { select: { code: true, description: true } },
+            glFreight: { select: { code: true, description: true } },
+            glOther: { select: { code: true, description: true } },
+          },
+        },
+        customer: true,
+        deliveryReceipt: { select: { lines: { select: { qty: true, unitPrice: true } } } },
+      },
+    }),
     prisma.payment.findMany({ where: { date: { gte: from, lte: to }, salesReceipt: { companyId: { in: companyIds } } }, include: { salesReceipt: { include: { company: { select: { companyName: true } }, customer: true } } } }),
     prisma.expense.findMany({ where: { companyId: { in: companyIds }, date: { gte: from, lte: to } }, include: { company: { select: { companyName: true } } } }),
     prisma.stockMovement.findMany({ where: { date: { gte: from, lte: to }, type: "IN", refType: "PO", product: { companyId: { in: companyIds } } }, include: { product: { include: { company: { select: { companyName: true } } } } } }),
   ]);
+  // An invoice is not one credit to "Sales": the products, the freight and any other
+  // charge are different revenue and are credited to the accounts chosen on Company
+  // Details. Lumping them together overstated product sales in the ledger.
   const entries = [
-    ...srs.map((sr) => ({
-      date: sr.invoiceDate,
-      company: sr.company.companyName,
-      ref: sr.srNumber,
-      description: `Sale on account — ${sr.customer.businessName}`,
-      debit: "Accounts Receivable",
-      credit: "Sales",
-      amount: sr.amount,
-    })),
+    ...srs.flatMap((sr) => {
+      const productSales = round2(sr.deliveryReceipt.lines.reduce((s, l) => s + l.qty * l.unitPrice, 0));
+      const base = {
+        date: sr.invoiceDate,
+        company: sr.company.companyName,
+        ref: sr.srNumber,
+        debit: "Accounts Receivable",
+      };
+      const acct = (a: { code: string; description: string } | null, fallback: string) =>
+        a ? `${a.code} ${a.description}` : fallback;
+      const rows = [];
+      if (productSales !== 0)
+        rows.push({ ...base, description: `Product sales — ${sr.customer.businessName}`, credit: acct(sr.company.glSales, "Sales"), amount: productSales });
+      if (sr.freightCharge !== 0)
+        rows.push({ ...base, description: `Freight charged — ${sr.customer.businessName}`, credit: acct(sr.company.glFreight, "Freight Income (account not set)"), amount: round2(sr.freightCharge) });
+      if (sr.otherCharges !== 0)
+        rows.push({ ...base, description: `Other charges — ${sr.customer.businessName}`, credit: acct(sr.company.glOther, "Other Income (account not set)"), amount: round2(sr.otherCharges) });
+      return rows;
+    }),
     ...payments.map((p) => ({
       date: p.date,
       company: p.salesReceipt.company.companyName,
@@ -476,11 +530,16 @@ export async function getCollections({ from, to }: Range, companyIds: string[], 
 export async function getCustomerReport({ from, to }: Range, companyIds: string[]) {
   const srs = await prisma.salesReceipt.findMany({
     where: { companyId: { in: companyIds }, status: { not: "Void" }, invoiceDate: { gte: from, lte: to } },
-    include: { company: { select: { companyName: true } }, customer: true, payments: true },
+    include: {
+      company: { select: { companyName: true } }, customer: true, payments: true,
+      deliveryReceipt: { select: { lines: { select: { qty: true, unitPrice: true } } } },
+      refundCredits: { select: { amount: true, status: true, type: true } },
+    },
   });
   const map = new Map<string, {
     key: string; customerId: string; customer: string; company: string; region: string; province: string;
-    invoices: number; sales: number; collected: number; balance: number;
+    invoices: number; sales: number; freight: number; otherCharges: number; totalBilling: number;
+    collected: number; balance: number;
   }>();
   for (const sr of srs) {
     // customers are shared, but their figures stay attributed to the company that billed them
@@ -488,10 +547,16 @@ export async function getCustomerReport({ from, to }: Range, companyIds: string[
     const row = map.get(key) ?? {
       key, customerId: sr.customerId, customer: sr.customer.businessName, company: sr.company.companyName,
       region: sr.customer.region, province: sr.customer.province,
-      invoices: 0, sales: 0, collected: 0, balance: 0,
+      invoices: 0, sales: 0, freight: 0, otherCharges: 0, totalBilling: 0, collected: 0, balance: 0,
     };
     row.invoices++;
-    row.sales = round2(row.sales + sr.amount);
+    // "Sales" here is PRODUCT sales — a customer's freight does not make them a bigger
+    // buyer. What they were billed altogether is carried beside it.
+    const c = componentsOf(sr);
+    row.sales = round2(row.sales + c.productSales);
+    row.freight = round2(row.freight + c.freight);
+    row.otherCharges = round2(row.otherCharges + c.otherCharges);
+    row.totalBilling = round2(row.totalBilling + c.totalBilling);
     const paid = sr.payments.reduce((s, p) => s + p.amount, 0);
     row.collected = round2(row.collected + paid);
     row.balance = round2(row.balance + (sr.amount - paid));
@@ -503,6 +568,9 @@ export async function getCustomerReport({ from, to }: Range, companyIds: string[
     totals: {
       invoices: rows.reduce((s, r) => s + r.invoices, 0),
       sales: round2(rows.reduce((s, r) => s + r.sales, 0)),
+      freight: round2(rows.reduce((s, r) => s + r.freight, 0)),
+      otherCharges: round2(rows.reduce((s, r) => s + r.otherCharges, 0)),
+      totalBilling: round2(rows.reduce((s, r) => s + r.totalBilling, 0)),
       collected: round2(rows.reduce((s, r) => s + r.collected, 0)),
       balance: round2(rows.reduce((s, r) => s + r.balance, 0)),
     },

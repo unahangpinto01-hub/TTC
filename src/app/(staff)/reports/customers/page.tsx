@@ -26,6 +26,9 @@ export default async function CustomerReportPage({
     ? {
         invoices: rows.reduce((s, x) => s + x.invoices, 0),
         sales: Math.round(rows.reduce((s, x) => s + x.sales, 0) * 100) / 100,
+        freight: Math.round(rows.reduce((s, x) => s + x.freight, 0) * 100) / 100,
+        otherCharges: Math.round(rows.reduce((s, x) => s + x.otherCharges, 0) * 100) / 100,
+        totalBilling: Math.round(rows.reduce((s, x) => s + x.totalBilling, 0) * 100) / 100,
         collected: Math.round(rows.reduce((s, x) => s + x.collected, 0) * 100) / 100,
         balance: Math.round(rows.reduce((s, x) => s + x.balance, 0) * 100) / 100,
       }
@@ -75,7 +78,10 @@ export default async function CustomerReportPage({
               <th className="table-th">Region</th>
               <th className="table-th">Province</th>
               <th className="table-th text-right">Invoices</th>
-              <th className="table-th text-right">Sales</th>
+              <th className="table-th text-right">Product Sales</th>
+              <th className="table-th text-right">Freight</th>
+              <th className="table-th text-right">Other</th>
+              <th className="table-th text-right">Total Billed</th>
               <th className="table-th text-right">Collected</th>
               <th className="table-th text-right">Balance</th>
             </tr>
@@ -90,7 +96,10 @@ export default async function CustomerReportPage({
                 <td className="table-td text-sm text-gray-600">{x.region}</td>
                 <td className="table-td text-sm text-gray-600">{x.province}</td>
                 <td className="table-td text-right">{x.invoices}</td>
-                <td className="table-td text-right">{peso(x.sales)}</td>
+                <td className="table-td text-right font-semibold">{peso(x.sales)}</td>
+                <td className={`table-td text-right ${x.freight ? "text-gray-600" : "text-gray-300"}`}>{x.freight ? peso(x.freight) : "—"}</td>
+                <td className={`table-td text-right ${x.otherCharges ? "text-gray-600" : "text-gray-300"}`}>{x.otherCharges ? peso(x.otherCharges) : "—"}</td>
+                <td className="table-td text-right">{peso(x.totalBilling)}</td>
                 <td className="table-td text-right text-emerald-700">{peso(x.collected)}</td>
                 <td className={`table-td text-right font-semibold ${x.balance > 0 ? "text-red-600" : "text-gray-400"}`}>{peso(x.balance)}</td>
               </tr>
@@ -104,6 +113,9 @@ export default async function CustomerReportPage({
               <td className="table-td" colSpan={scope.combined ? 4 : 3}>{scope.combined ? "COMBINED GRAND TOTAL" : "TOTAL"}</td>
               <td className="table-td text-right">{totals.invoices}</td>
               <td className="table-td text-right text-emerald-800">{peso(totals.sales)}</td>
+              <td className="table-td text-right">{totals.freight ? peso(totals.freight) : "—"}</td>
+              <td className="table-td text-right">{totals.otherCharges ? peso(totals.otherCharges) : "—"}</td>
+              <td className="table-td text-right">{peso(totals.totalBilling)}</td>
               <td className="table-td text-right text-emerald-700">{peso(totals.collected)}</td>
               <td className="table-td text-right text-red-600">{peso(totals.balance)}</td>
             </tr>

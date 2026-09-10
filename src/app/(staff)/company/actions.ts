@@ -42,6 +42,15 @@ export async function updateCompany(formData: FormData) {
     if (!emp) redirect("/company?error=signatory");
     update[field] = emp.id;
   }
+  // which account each billing component credits — an unknown or inactive account is
+  // rejected rather than silently stored, and blank simply means "not set"
+  for (const field of ["glSalesId", "glFreightId", "glOtherId"]) {
+    const raw = String(formData.get(field) || "");
+    if (!raw) { update[field] = null; continue; }
+    const acct = await prisma.gLAccount.findFirst({ where: { id: raw, status: "Active" }, select: { id: true } });
+    if (!acct) redirect("/company?error=glaccount");
+    update[field] = acct.id;
+  }
   if (removeLogo) {
     update.logoDataUrl = null;
   } else if (logo) {
