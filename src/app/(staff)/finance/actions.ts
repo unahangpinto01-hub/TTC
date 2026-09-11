@@ -60,6 +60,8 @@ export async function recordPayment(formData: FormData) {
 export async function createExpense(formData: FormData) {
   const user = await requirePermWrite("expenses");
   const company = await getActiveCompany(user);
+  // retired: non-inventory expenses are entered as supplier bills now; the vouchers stay as history
+  if (process.env.EXPENSE_VOUCHERS_ENABLED !== "1") redirect("/bills/expense/new");
 
   const glAccountId = String(formData.get("glAccountId") || "") || null;
   if (glAccountId && !(await prisma.gLAccount.findFirst({ where: { id: glAccountId, status: "Active" } }))) {

@@ -13,6 +13,7 @@ import { TERMS, postBlockers, billEditBlocker, billVoidBlocker, outstandingOf } 
 import { matchBillLines } from "@/lib/bill-matching";
 import { BillEditor, type EditorLine } from "./bill-editor";
 import { saveBill, postBill, voidBill } from "../actions";
+import { ExpenseBillDetail, loadExpenseBill } from "./expense-detail";
 
 const ERRORS: Record<string, string> = {
   locked: "This bill is no longer editable — only a Draft can be changed.",
@@ -37,6 +38,14 @@ export default async function BillDetailPage({
   params: { id: string };
   searchParams: { error?: string; saved?: string; posted?: string };
 }) {
+  const kindRow = await prisma.supplierBill.findUnique({ where: { id: params.id }, select: { kind: true } });
+  if (kindRow?.kind === "EXPENSE") {
+    const eUser = await requirePerm("expenses");
+    const eCompany = await getActiveCompany(eUser);
+    const eBill = await loadExpenseBill(params.id);
+    if (!eBill || eBill.companyId !== eCompany.id) notFound();
+    return <ExpenseBillDetail bill={eBill} user={eUser} companyName={eCompany.companyName} searchParams={searchParams} />;
+  }
   const user = await requirePerm("bills");
   const company = await getActiveCompany(user);
   const bill = await prisma.supplierBill.findUnique({

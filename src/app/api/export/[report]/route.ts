@@ -275,7 +275,11 @@ export async function GET(req: NextRequest, { params }: { params: { report: stri
           x.amount,
         ]),
         [],
-        ["BY CATEGORY"],
+        ["NON-INVENTORY BILLS (accrued expenses, ex-VAT)"],
+        ["Bill No.", "Bill Date", "Due Date", "", "", "Accounting Period", ...(scope.combined ? ["Company"] : []), "Supplier", "Account", "Description", "Status", "Amount"],
+        ...r.bills.map((b) => [b.billNo, d(b.billDate), d(b.dueDate), "", "", b.accountingYear ? `${b.accountingMonth}/${b.accountingYear}` : "", ...(scope.combined ? [b.company] : []), b.supplier, b.account, b.description, b.status, b.amount]),
+        [],
+        ["BY CATEGORY / ACCOUNT"],
         ...r.byCategory.map((c) => [c.category, "", "", "", "", "", ...(scope.combined ? [""] : []), "", "", "", "", c.amount]),
         ["TOTAL", "", "", "", "", "", ...(scope.combined ? [""] : []), "", "", "", "", r.total],
       ];

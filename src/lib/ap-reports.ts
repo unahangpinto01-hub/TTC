@@ -160,6 +160,7 @@ export type PurchaseFilters = { supplierId?: string; status?: string; q?: string
 async function liveBills(range: Range, companyIds: string[], f: PurchaseFilters) {
   const where: any = {
     companyId: { in: companyIds },
+    kind: "INVENTORY",
     billDate: { gte: range.from, lte: range.to },
     status: { in: f.status && LIVE_BILL_STATUSES.includes(f.status) ? [f.status] : LIVE_BILL_STATUSES },
   };

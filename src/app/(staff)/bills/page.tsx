@@ -16,7 +16,7 @@ export default async function BillsListPage({
   const company = await getActiveCompany(user);
   const canEdit = user.perm === "READ_WRITE";
 
-  const where: any = { companyId: company.id };
+  const where: any = { companyId: company.id, kind: "INVENTORY" };
   if ((BILL_STATUSES as readonly string[]).includes(searchParams.status ?? "")) where.status = searchParams.status;
   const q = searchParams.q?.trim();
   if (q) {

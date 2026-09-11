@@ -8,11 +8,13 @@ import { PrintButton, BackButton } from "@/components/print-button";
 import { FitOnePageLetter } from "@/components/print-fit";
 
 export default async function BillPrintPage({ params }: { params: { id: string } }) {
-  const user = await requirePerm("bills");
+  const kindRow = await prisma.supplierBill.findUnique({ where: { id: params.id }, select: { kind: true } });
+  const user = await requirePerm(kindRow?.kind === "EXPENSE" ? "expenses" : "bills");
   const company = await getActiveCompany(user);
   const bill = await prisma.supplierBill.findUnique({
     where: { id: params.id },
     include: {
+      expenseLines: { include: { glAccount: { select: { code: true, description: true } } }, orderBy: { id: "asc" } },
       supplier: true,
       purchaseOrder: { select: { poNumber: true } },
       goodsReceipt: { select: { grnNumber: true, deliveryRefNo: true } },
@@ -63,7 +65,7 @@ export default async function BillPrintPage({ params }: { params: { id: string }
             </div>
             <div className="text-right">
               <h2 className="text-lg font-bold uppercase tracking-wide text-gray-800">Bill Voucher</h2>
-              <p className="text-[10px] uppercase tracking-wide text-gray-500">Enter Bills Against Inventory</p>
+              <p className="text-[10px] uppercase tracking-wide text-gray-500">{bill.kind === "EXPENSE" ? "Enter Bills — Non-Inventory" : "Enter Bills Against Inventory"}</p>
               <p className="font-mono text-sm font-semibold text-emerald-800">{bill.billNo}</p>
               <p className="text-xs text-gray-500">{fmtDate(bill.billDate)}</p>
               <p className="text-xs font-semibold uppercase text-gray-600">{bill.status}</p>
@@ -79,6 +81,40 @@ export default async function BillPrintPage({ params }: { params: { id: string }
             ))}
           </dl>
 
+          {bill.kind === "EXPENSE" ? (
+            <table className="mb-4 w-full border-2 border-gray-800 text-sm">
+              <thead>
+                <tr className="border-b-2 border-gray-800 text-left">
+                  <th className="px-2 py-2">#</th>
+                  <th className="px-2 py-2">Account</th>
+                  <th className="px-2 py-2">Description</th>
+                  <th className="px-2 py-2 text-right">Amount</th>
+                  <th className="px-2 py-2 text-right">Tax</th>
+                  <th className="px-2 py-2 text-right">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {bill.expenseLines.map((l, i) => (
+                  <tr key={l.id} className="border-b border-gray-300">
+                    <td className="px-2 py-1.5 text-gray-400">{i + 1}</td>
+                    <td className="px-2 py-1.5"><span className="font-mono text-xs">{l.glAccount.code}</span> {l.glAccount.description}</td>
+                    <td className="px-2 py-1.5">{l.description}</td>
+                    <td className="px-2 py-1.5 text-right">{peso(l.amount)}</td>
+                    <td className="px-2 py-1.5 text-right">{l.taxAmount ? peso(l.taxAmount) : "—"}</td>
+                    <td className="px-2 py-1.5 text-right font-semibold">{peso(l.amount + l.taxAmount)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="border-t-2 border-gray-800 font-bold">
+                  <td colSpan={3} className="px-2 py-2 text-right">TOTAL</td>
+                  <td className="px-2 py-2 text-right">{peso(bill.subtotal)}</td>
+                  <td className="px-2 py-2 text-right">{bill.inputVat ? peso(bill.inputVat) : "—"}</td>
+                  <td className="px-2 py-2 text-right">{peso(bill.total)}</td>
+                </tr>
+              </tfoot>
+            </table>
+          ) : (
           <table className="mb-4 w-full border-2 border-gray-800 text-sm">
             <thead>
               <tr className="border-b-2 border-gray-800 text-left">
@@ -130,14 +166,21 @@ export default async function BillPrintPage({ params }: { params: { id: string }
               </tr>
             </tfoot>
           </table>
+          )}
 
           <div className="mb-6 flex justify-end">
             <table className="w-72 text-sm">
               <tbody>
+                {bill.kind === "EXPENSE" ? (
+                  <tr><td className="py-0.5 text-gray-600">Subtotal (ex-VAT)</td><td className="py-0.5 text-right">{peso(bill.subtotal)}</td></tr>
+                ) : (
+                  <>
                 <tr><td className="py-0.5 text-gray-600">Product cost</td><td className="py-0.5 text-right">{peso(bill.subtotal)}</td></tr>
                 <tr><td className="py-0.5 text-gray-600">Freight</td><td className="py-0.5 text-right">{peso(bill.freight)}</td></tr>
                 <tr><td className="py-0.5 text-gray-600">Other purchasing costs</td><td className="py-0.5 text-right">{peso(bill.otherCosts)}</td></tr>
                 <tr className="border-t border-gray-400"><td className="py-0.5 font-semibold">Inventory cost</td><td className="py-0.5 text-right font-semibold">{peso(bill.subtotal + bill.freight + bill.otherCosts)}</td></tr>
+                  </>
+                )}
                 <tr><td className="py-0.5 text-gray-600">Input VAT {bill.vatRate ? "12%" : "(none)"}</td><td className="py-0.5 text-right">{bill.inputVat ? peso(bill.inputVat) : "—"}</td></tr>
                 <tr className="border-t-2 border-gray-800"><td className="py-1 font-bold">TOTAL PAYABLE</td><td className="py-1 text-right text-base font-bold">{peso(bill.total)}</td></tr>
               </tbody>
@@ -146,9 +189,10 @@ export default async function BillPrintPage({ params }: { params: { id: string }
 
           {bill.memo && <p className="mb-4 text-xs text-gray-600"><span className="font-semibold">Memo:</span> {bill.memo}</p>}
           <p className="mb-6 text-xs text-gray-500">
-            Terms: {bill.terms}. On posting this bill debits Inventory for the product cost plus allocated freight and other
-            purchasing costs, debits Input VAT, and credits Accounts Payable for the total. Goods are carried at weighted
-            average cost. Payment is recorded separately through Pay Bills.
+            Terms: {bill.terms}. {bill.kind === "EXPENSE"
+              ? "On posting this bill debits the accounts listed, debits Input VAT, and credits Accounts Payable for the total. It does not affect inventory."
+              : "On posting this bill debits Inventory for the product cost plus allocated freight and other purchasing costs, debits Input VAT, and credits Accounts Payable for the total. Goods are carried at weighted average cost."}{" "}
+            Payment is recorded separately through Pay Bills.
           </p>
 
           <div className="flex border-2 border-gray-800" style={{ breakInside: "avoid", height: "1.6in" }}>

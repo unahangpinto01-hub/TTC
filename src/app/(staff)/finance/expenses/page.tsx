@@ -50,7 +50,7 @@ export default async function ExpensesPage({
   const now = new Date();
   const year = Number(searchParams.year) || now.getFullYear();
   const month = Number(searchParams.month) || 0; // 0 = whole year
-  const { expenses, total, byCategory } = await getExpenseReport(range, scope.ids, { year, month: month || null });
+  const { expenses, bills, billsTotal, total, byCategory } = await getExpenseReport(range, scope.ids, { year, month: month || null });
 
   const [company, cutoff] = await Promise.all([
     prisma.company.findUniqueOrThrow({ where: { id: scope.company.id }, select: { code: true, companyName: true } }),
@@ -112,7 +112,7 @@ export default async function ExpensesPage({
           <p className="text-xs text-gray-500">{month ? periodLabel(year, month) : `Year ${year}`}</p>
           <p className="text-lg font-bold">{peso(total)}</p>
           <p className="text-xs text-gray-500">
-            {expenses.length} voucher(s)
+            {expenses.length} voucher(s){bills.length ? ` + ${bills.length} bill line(s) (${peso(billsTotal)})` : ""}
             {shownStatus && shownStatus !== "Open" && (
               <span className={shownStatus === "Locked" ? "ml-1 font-semibold text-red-600" : "ml-1 font-semibold text-amber-600"}>
                 · {shownStatus}
@@ -183,11 +183,50 @@ export default async function ExpensesPage({
             Vouchers are listed by <span className="font-semibold">accounting period</span>, which comes from the voucher
             date — a December voucher encoded in January appears under December, not January.
           </p>
+
+          {bills.length > 0 && (
+            <>
+              <h2 className="mb-2 mt-6 font-semibold">Non-inventory bills in the period <span className="text-sm font-normal text-gray-500">(accrued expenses, ex-VAT)</span></h2>
+              <div className="card overflow-x-auto p-0">
+                <table className="w-full min-w-[900px]">
+                  <thead className="border-b border-gray-200 bg-gray-50">
+                    <tr>
+                      <th className="table-th">Bill No.</th><th className="table-th">Bill Date</th><th className="table-th">Period</th><th className="table-th">Supplier</th>
+                      <th className="table-th">Account</th><th className="table-th">Description</th><th className="table-th">Status</th><th className="table-th text-right">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {bills.map((b) => (
+                      <tr key={b.id} className="hover:bg-gray-50">
+                        <td className="table-td"><a href={`/bills/${b.billId}`} className="font-mono text-xs font-semibold text-emerald-700 hover:underline">{b.billNo}</a></td>
+                        <td className="table-td whitespace-nowrap text-sm">{fmtDate(b.billDate)}</td>
+                        <td className="table-td whitespace-nowrap text-xs text-gray-600">{b.accountingYear ? periodLabel(b.accountingYear, b.accountingMonth) : "—"}</td>
+                        <td className="table-td text-sm">{b.supplier}</td>
+                        <td className="table-td text-sm">{b.account}</td>
+                        <td className="table-td text-sm text-gray-600">{b.description || "—"}</td>
+                        <td className="table-td text-xs">{b.status}</td>
+                        <td className="table-td text-right font-semibold">{peso(b.amount)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot className="border-t border-gray-200 bg-gray-50 font-bold"><tr><td className="table-td" colSpan={7}>TOTAL</td><td className="table-td text-right">{peso(billsTotal)}</td></tr></tfoot>
+                </table>
+              </div>
+            </>
+          )}
         </div>
 
         {/* ---------------------------------------------------------- new voucher */}
         <div className="space-y-4">
-          <form action={createExpense} className="card h-fit space-y-3">
+          <div className="card h-fit space-y-2 border-amber-200 bg-amber-50/60">
+            <h2 className="font-semibold text-amber-900">Expense vouchers have been replaced</h2>
+            <p className="text-sm text-amber-900">
+              Non-inventory expenses are now entered as supplier bills — Finance → <a href="/bills/expense" className="font-semibold underline">Enter Bills — Non-Inventory</a> —
+              which book the expense, raise the payable, and are settled through a Disbursement Voucher and Payment. The vouchers below stay as history.
+            </p>
+            <a href="/bills/expense/new" className="btn-primary inline-block">+ New Non-Inventory Bill</a>
+          </div>
+          <form action={createExpense} className="hidden card h-fit space-y-3">
             <h2 className="font-semibold">New Expense Voucher</h2>
             <p className="text-xs text-gray-500">
               Next number: <span className="font-mono font-semibold">EV-{companyCode(company)}-{dp.year}-…</span> — drawn

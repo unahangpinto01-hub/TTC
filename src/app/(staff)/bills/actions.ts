@@ -11,12 +11,16 @@ import { recomputeStockChain } from "@/lib/stock";
 import { convertToBaseUnit, parseUnit, UnitError } from "@/lib/units";
 import { checkVoucherDate, periodOf, periodLabel } from "@/lib/vouchers";
 import {
-  computeBill, dueDateFor, nextBillNo, postBlockers, billEditBlocker, billVoidBlocker,
+  computeBill, computeExpenseBill, dueDateFor, nextBillNo, postBlockers, billEditBlocker, billVoidBlocker,
   DEFAULT_TERMS, TERMS, round2,
 } from "@/lib/bills";
+import { requireStaff } from "@/lib/auth";
 import { matchBillLines, refreshInvoiceStatus, unbilledOnReceipt } from "@/lib/bill-matching";
 
 const POSTERS = ["SUPER_ADMIN", "ADMIN"];
+
+/** Inventory bills live under the Bills permission, non-inventory ones under Expenses. */
+const permFor = (kind: string) => (kind === "EXPENSE" ? "expenses" : "bills") as "expenses" | "bills";
 
 const money = (n: unknown) => round2(Math.max(0, Number(n) || 0));
 
@@ -361,7 +365,7 @@ export async function saveBill(formData: FormData) {
  * an Admin's recorded reason.
  */
 export async function postBill(formData: FormData) {
-  const user = await requirePermWrite("bills");
+  const user = await requireStaff();
   if (!POSTERS.includes(user.role)) redirect("/denied");
   const company = await getActiveCompany(user);
   const id = String(formData.get("id"));
@@ -371,13 +375,16 @@ export async function postBill(formData: FormData) {
       supplier: true,
       goodsReceipt: { include: { lines: { include: { poLine: true } } } },
       lines: { include: { product: true }, orderBy: { id: "asc" } },
+      expenseLines: { include: { glAccount: { select: { description: true } } } },
     },
   });
   if (!bill || bill.companyId !== company.id) redirect("/bills");
+  if (getPerm(user, permFor(bill.kind)) !== "READ_WRITE") redirect("/denied");
   if (bill.status !== "Draft") redirect(`/bills/${id}?error=locked`);
 
+  const isExpense = bill.kind === "EXPENSE";
   const match = bill.goodsReceiptId ? await matchBillLines(prisma, bill) : null;
-  const blockers = await postBlockers(bill, match ? { status: match.status, overrideReason: bill.overrideReason } : undefined);
+  const blockers = await postBlockers(bill, match ? { status: match.status, overrideReason: bill.overrideReason } : undefined, isExpense ? bill.expenseLines : undefined);
   if (blockers.length) redirect(`/bills/${id}?error=blocked`);
 
   const reason = String(formData.get("periodReason") || "").trim();
@@ -396,7 +403,7 @@ export async function postBill(formData: FormData) {
 
   try {
     await prisma.$transaction(async (tx) => {
-      for (const line of bill.lines) {
+      for (const line of isExpense ? [] : bill.lines) {
         // stock and cost are read inside the transaction — another posting may have moved them
         const product = await tx.product.findUniqueOrThrow({ where: { id: line.productId } });
         const grnLine = grn?.lines.find((g) => g.id === line.grnLineId) ?? null;
@@ -486,7 +493,10 @@ export async function postBill(formData: FormData) {
     entityId: id,
     action: "POSTED",
     detail:
-      `${bill.billNo} posted · ${periodLabel(year, month)} · Dr Inventory ₱${round2(bill.subtotal + bill.freight + bill.otherCosts).toFixed(2)}` +
+      `${bill.billNo} posted · ${periodLabel(year, month)} · ` +
+      (isExpense
+        ? bill.expenseLines.map((l) => `Dr ${l.glAccount.description} ₱${l.amount.toFixed(2)}`).join(" · ")
+        : `Dr Inventory ₱${round2(bill.subtotal + bill.freight + bill.otherCosts).toFixed(2)}`) +
       (bill.inputVat ? ` · Dr Input VAT ₱${bill.inputVat.toFixed(2)}` : "") +
       ` · Cr Accounts Payable ₱${bill.total.toFixed(2)} (${bill.supplier.name}, due ${bill.dueDate.toDateString()})` +
       (match ? ` · match ${match.status}${match.unbilledAfter > 0 ? ` (${match.unbilledAfter} still unbilled on ${grn?.grnNumber})` : ""}` : "") +
@@ -512,7 +522,7 @@ export async function postBill(formData: FormData) {
  * again — and because that undoes an accounting entry, it needs a fresh sign-in and a reason.
  */
 export async function voidBill(formData: FormData) {
-  const user = await requirePermWrite("bills");
+  const user = await requireStaff();
   if (!POSTERS.includes(user.role)) redirect("/denied");
   const company = await getActiveCompany(user);
   const id = String(formData.get("id"));
@@ -522,6 +532,7 @@ export async function voidBill(formData: FormData) {
     include: { goodsReceipt: { select: { id: true, grnNumber: true } }, lines: { include: { product: true } } },
   });
   if (!bill || bill.companyId !== company.id) redirect("/bills");
+  if (getPerm(user, permFor(bill.kind)) !== "READ_WRITE") redirect("/denied");
   const blocker = billVoidBlocker(bill);
   if (blocker) redirect(`/bills/${id}?error=voidblocked`);
   if (reason.length < 5) redirect(`/bills/${id}?error=voidreason`);
@@ -584,4 +595,112 @@ export async function voidBill(formData: FormData) {
   revalidatePath("/bills");
   if (bill.goodsReceiptId) revalidatePath(`/receiving/${bill.goodsReceiptId}`);
   redirect(`/bills/${id}`);
+}
+
+
+/* ------------------------------------------------------------------ non-inventory bills */
+
+function expenseRows(formData: FormData) {
+  const lineIds = formData.getAll("lineId").map(String);
+  const accounts = formData.getAll("glAccountId").map(String);
+  const descriptions = formData.getAll("description").map((v) => String(v || "").trim());
+  const amounts = formData.getAll("amount").map((v) => round2(Math.max(0, Number(v) || 0)));
+  const rows: { id: string | null; glAccountId: string; description: string; amount: number }[] = [];
+  for (let i = 0; i < lineIds.length; i++) {
+    if (!accounts[i] && amounts[i] <= 0 && !descriptions[i]) continue; // a blank row is not a line
+    rows.push({ id: lineIds[i] || null, glAccountId: accounts[i] ?? "", description: descriptions[i] ?? "", amount: amounts[i] ?? 0 });
+  }
+  return rows;
+}
+
+/** Start a non-inventory bill: supplier and dates now, the expense lines on its page. */
+export async function createExpenseBill(formData: FormData) {
+  const user = await requirePermWrite("expenses");
+  const company = await getActiveCompany(user);
+  const h = header(formData);
+  const billDate = formDate(formData.get("billDate")) ?? new Date();
+  const dueDate = formDate(formData.get("dueDate")) ?? dueDateFor(billDate, h.terms);
+  const supplierId = String(formData.get("supplierId") || "");
+  const supplier = supplierId ? await prisma.supplier.findUnique({ where: { id: supplierId }, select: { id: true, name: true } }) : null;
+  if (!supplier) redirect("/bills/expense/new?error=supplier");
+
+  const billNo = await nextBillNo(company.id, billDate);
+  const bill = await prisma.supplierBill.create({
+    data: {
+      companyId: company.id, billNo, kind: "EXPENSE", supplierId: supplier.id,
+      supplierInvoiceNo: h.supplierInvoiceNo, invoiceUnavailable: h.invoiceUnavailable,
+      billDate, dueDate, terms: h.terms, memo: h.memo, status: "Draft", matchStatus: "None", createdById: user.id,
+    },
+  });
+  await logAudit({ entity: "SupplierBill", entityId: bill.id, action: "CREATED", detail: `${billNo} (non-inventory) raised for ${supplier.name}`, actorName: user.name, actorEmail: user.email, companyId: company.id });
+  redirect(`/bills/${bill.id}`);
+}
+
+/** Save a Draft non-inventory bill: header and the account lines. */
+export async function saveExpenseBill(formData: FormData) {
+  const user = await requirePermWrite("expenses");
+  const company = await getActiveCompany(user);
+  const id = String(formData.get("id"));
+  const bill = await prisma.supplierBill.findUnique({
+    where: { id },
+    include: { supplier: true, expenseLines: { include: { glAccount: { select: { code: true, description: true } } }, orderBy: { id: "asc" } } },
+  });
+  if (!bill || bill.companyId !== company.id || bill.kind !== "EXPENSE") redirect("/bills/expense");
+  if (billEditBlocker(bill)) redirect(`/bills/${id}?error=locked`);
+
+  const h = header(formData);
+  const billDate = formDate(formData.get("billDate")) ?? bill.billDate;
+  const dueDate = formDate(formData.get("dueDate")) ?? dueDateFor(billDate, h.terms);
+  const changes: string[] = [];
+
+  let supplierId = bill.supplierId;
+  const askedSupplier = String(formData.get("supplierId") || "");
+  if (askedSupplier && askedSupplier !== bill.supplierId) {
+    const s = await prisma.supplier.findUnique({ where: { id: askedSupplier }, select: { id: true, name: true } });
+    if (!s) redirect(`/bills/${id}?error=supplier`);
+    changes.push(`Supplier: ${bill.supplier.name} → ${s.name}`);
+    supplierId = s.id;
+  }
+
+  const rows = expenseRows(formData);
+  // every account named must exist and be active — an unknown account is never stored
+  const accountIds = [...new Set(rows.map((r) => r.glAccountId).filter(Boolean))];
+  const accounts = await prisma.gLAccount.findMany({ where: { id: { in: accountIds }, status: "Active" }, select: { id: true, code: true, description: true } });
+  if (accounts.length !== accountIds.length) redirect(`/bills/${id}?error=account`);
+  const nameOf = (gid: string) => { const a = accounts.find((x) => x.id === gid); return a ? `${a.code} ${a.description}` : "(no account)"; };
+
+  const math = computeExpenseBill(rows, h.vatRate);
+  for (const r of rows) {
+    const before = r.id ? bill.expenseLines.find((l) => l.id === r.id) : null;
+    if (!before) { changes.push(`Added ${nameOf(r.glAccountId)} — ${r.description || "(no description)"} ₱${r.amount.toFixed(2)}`); continue; }
+    if (before.glAccountId !== r.glAccountId) changes.push(`Account: ${before.glAccount.code} ${before.glAccount.description} → ${nameOf(r.glAccountId)}`);
+    if (Math.abs(before.amount - r.amount) > 0.004) changes.push(`${r.description || before.description}: ₱${before.amount.toFixed(2)} → ₱${r.amount.toFixed(2)}`);
+    if (before.description !== r.description) changes.push(`Description: "${before.description}" → "${r.description}"`);
+  }
+  for (const l of bill.expenseLines) if (!rows.some((r) => r.id === l.id)) changes.push(`Removed ${l.glAccount.description} ₱${l.amount.toFixed(2)}`);
+  if ((bill.supplierInvoiceNo ?? "") !== (h.supplierInvoiceNo ?? "")) changes.push(`Reference: ${bill.supplierInvoiceNo ?? "(none)"} → ${h.supplierInvoiceNo ?? "(none)"}`);
+  if (bill.billDate.toDateString() !== billDate.toDateString()) changes.push(`Bill date: ${bill.billDate.toDateString()} → ${billDate.toDateString()}`);
+  if (bill.dueDate.toDateString() !== dueDate.toDateString()) changes.push(`Due date: ${bill.dueDate.toDateString()} → ${dueDate.toDateString()}`);
+  if (Math.abs(bill.total - math.total) > 0.004) changes.push(`Total: ${bill.total.toFixed(2)} → ${math.total.toFixed(2)}`);
+
+  await prisma.$transaction(async (tx) => {
+    const keep = rows.filter((r) => r.id).map((r) => r.id!);
+    await tx.supplierBillExpenseLine.deleteMany({ where: { billId: id, id: { notIn: keep } } });
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i];
+      const data = { glAccountId: r.glAccountId, description: r.description, amount: r.amount, taxAmount: math.lines[i].taxAmount };
+      if (r.id) await tx.supplierBillExpenseLine.update({ where: { id: r.id }, data });
+      else await tx.supplierBillExpenseLine.create({ data: { billId: id, ...data } });
+    }
+    await tx.supplierBill.update({
+      where: { id },
+      data: {
+        supplierId, supplierInvoiceNo: h.supplierInvoiceNo, invoiceUnavailable: h.invoiceUnavailable, billDate, dueDate, terms: h.terms, memo: h.memo,
+        subtotal: math.subtotal, freight: 0, otherCosts: 0, vatRate: h.vatRate, inputVat: math.inputVat, total: math.total,
+      },
+    });
+  });
+  await logAudit({ entity: "SupplierBill", entityId: id, action: "EDITED", detail: changes.length ? `${bill.billNo} — ${changes.join("; ")}` : `${bill.billNo} saved (no change)`, actorName: user.name, actorEmail: user.email, companyId: company.id });
+  revalidatePath(`/bills/${id}`);
+  redirect(`/bills/${id}?saved=ok`);
 }

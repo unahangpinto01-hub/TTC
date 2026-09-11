@@ -584,10 +584,10 @@ model GoodsReceipt {
 
   /// Pending | Entered | Partial | Billed | Discrepancy — how the supplier bills stand against this
   /// receipt. Kept in step by bill-matching.ts whenever a bill against it changes.
-  invoiceStatus     String    @default("Pending")
+  invoiceStatus     String  @default("Pending")
   /// true when a Super Admin marked the receipt as billed and settled outside the BMS (before
   /// Enter Bills existed) — it counts as Billed and no bill is expected for it
-  billedOutside     Boolean   @default(false)
+  billedOutside     Boolean @default(false)
   billedOutsideNote String?
 
   lines GRNLine[]
@@ -714,14 +714,15 @@ model GLAccount {
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
-  cashAccounts CashAccount[]
-  expenses     Expense[]
-  salesFor     Company[]     @relation("GLSales")
-  freightFor   Company[]     @relation("GLFreight")
-  otherFor     Company[]     @relation("GLOther")
-  inventoryFor Company[]     @relation("GLInventory")
-  payablesFor  Company[]     @relation("GLPayables")
-  inputVatFor  Company[]     @relation("GLInputVat")
+  cashAccounts            CashAccount[]
+  expenses                Expense[]
+  salesFor                Company[]                 @relation("GLSales")
+  freightFor              Company[]                 @relation("GLFreight")
+  otherFor                Company[]                 @relation("GLOther")
+  inventoryFor            Company[]                 @relation("GLInventory")
+  payablesFor             Company[]                 @relation("GLPayables")
+  inputVatFor             Company[]                 @relation("GLInputVat")
+  SupplierBillExpenseLine SupplierBillExpenseLine[]
 }
 
 model Employee {
@@ -993,6 +994,9 @@ model SupplierBill {
   companyId          String
   company            Company        @relation(fields: [companyId], references: [id])
   billNo             String // unique per company (@@unique below)
+  /// INVENTORY (goods, matched to a receipt, re-costs stock) | EXPENSE (non-inventory: utilities, rent,
+  /// repairs, fees — booked straight to expense accounts, never to stock)
+  kind               String         @default("INVENTORY")
   supplierId         String
   supplier           Supplier       @relation(fields: [supplierId], references: [id])
   supplierInvoiceNo  String?
@@ -1026,16 +1030,16 @@ model SupplierBill {
   /// what the receipt behind this bill had already put into inventory (its accepted qty ×
   /// receiving cost), fixed at posting. The ledger books the bill as clearing that amount
   /// and moving only the difference into inventory. 0 for a bill that stocked the goods itself.
-  receiptCost        Float         @default(0)
+  receiptCost     Float  @default(0)
 
   /// None | Matched | Partial | Over — the bill's quantities against what its receipt still had to bill
-  matchStatus        String        @default("None")
+  matchStatus     String  @default("None")
   /// what the clerk noted about a difference from the receipt (to raise with the supplier)
-  discrepancyNote    String?
+  discrepancyNote String?
   /// an Admin's reason for posting quantities above what was received
-  overrideReason     String?
-  overrideById       String?
-  paidAmount      Float  @default(0)
+  overrideReason  String?
+  overrideById    String?
+  paidAmount      Float   @default(0)
 
   accountingYear  Int     @default(0)
   accountingMonth Int     @default(0)
@@ -1054,7 +1058,8 @@ model SupplierBill {
   voidedAt    DateTime?
   voidReason  String?
 
-  lines SupplierBillLine[]
+  lines        SupplierBillLine[]
+  expenseLines SupplierBillExpenseLine[]
 
   @@unique([companyId, billNo])
   @@index([companyId, status, dueDate])
@@ -1094,4 +1099,20 @@ model SupplierBillLine {
 
   @@index([billId])
   @@index([productId])
+}
+
+/// A line of a non-inventory supplier bill: which account it is charged to and for how much.
+model SupplierBillExpenseLine {
+  id          String       @id @default(cuid())
+  billId      String
+  bill        SupplierBill @relation(fields: [billId], references: [id], onDelete: Cascade)
+  glAccountId String
+  glAccount   GLAccount    @relation(fields: [glAccountId], references: [id])
+  description String
+  /// ex-VAT amount charged to the account
+  amount      Float
+  /// input VAT on this line
+  taxAmount   Float        @default(0)
+
+  @@index([billId])
 }

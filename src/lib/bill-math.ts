@@ -103,3 +103,27 @@ export function statusForPayment(total: number, paid: number): "Posted" | "Parti
   if (paid + 0.005 >= total) return "Paid";
   return "Partially Paid";
 }
+
+/* ------------------------------------------------------------------ non-inventory bills */
+
+export type ExpenseLineIn = { amount: number };
+export type ExpenseBillMath = { lines: { taxAmount: number }[]; subtotal: number; inputVat: number; total: number };
+
+/**
+ * A non-inventory bill: each line is charged to an account ex-VAT; input VAT at 12% is
+ * added on top when the supplier is VAT-registered; the total is what is owed.
+ */
+export function computeExpenseBill(lines: ExpenseLineIn[], vatRate: number): ExpenseBillMath {
+  const rate = vatRate > 0 ? VAT : 0;
+  const amounts = lines.map((l) => round2(Math.max(0, l.amount || 0)));
+  const subtotal = round2(amounts.reduce((s, a) => s + a, 0));
+  const inputVat = lines.length ? round2(subtotal * rate) : 0;
+  let taxed = 0;
+  const out = amounts.map((a, i) => {
+    const last = i === amounts.length - 1;
+    const taxAmount = rate > 0 ? (last ? round2(inputVat - taxed) : round2(a * rate)) : 0;
+    taxed = round2(taxed + taxAmount);
+    return { taxAmount };
+  });
+  return { lines: out, subtotal, inputVat, total: round2(subtotal + inputVat) };
+}

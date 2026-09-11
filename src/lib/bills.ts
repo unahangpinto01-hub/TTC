@@ -3,7 +3,7 @@ import { nextSeriesNo } from "./vouchers";
 import { round2 } from "./bill-math";
 
 export {
-  VAT, round2, TERMS, DEFAULT_TERMS, ALLOCATION_BASES, termsDays, dueDateFor, computeBill, statusForPayment,
+  VAT, round2, TERMS, DEFAULT_TERMS, ALLOCATION_BASES, termsDays, dueDateFor, computeBill, computeExpenseBill, statusForPayment,
 } from "./bill-math";
 export type { LineMathIn, LineMathOut, BillMath } from "./bill-math";
 
@@ -67,11 +67,32 @@ export async function postBlockers(
     lines: LineForCheck[];
   },
   /** how the bill sits against its receipt, when it has one */
-  match?: { status: string; overrideReason: string | null }
+  match?: { status: string; overrideReason: string | null },
+  /** a non-inventory bill's lines — checked instead of the product lines */
+  expenseLines?: { amount: number; glAccountId: string; description: string }[]
 ): Promise<string[]> {
   const out: string[] = [];
   if (match?.status === "Over" && !(match.overrideReason ?? "").trim())
     out.push("Invoice quantity exceeds the quantity received. An Admin must record a reason for approving it before it can post.");
+  if (expenseLines) {
+    if (!bill.supplierId) out.push("Supplier is required.");
+    if (!bill.billDate) out.push("Bill date is required.");
+    const inv0 = (bill.supplierInvoiceNo ?? "").trim();
+    if (!inv0 && !bill.invoiceUnavailable) out.push("Supplier invoice or reference number is required, unless it is marked as not available.");
+    if (!expenseLines.length) out.push("At least one expense line is required.");
+    for (const l of expenseLines) {
+      if (!l.glAccountId) out.push(`"${l.description || "(no description)"}": choose the account it is charged to.`);
+      if (l.amount <= 0) out.push(`"${l.description || "(no description)"}": amount must be greater than zero.`);
+    }
+    if (inv0 && bill.supplierId) {
+      const dupe = await prisma.supplierBill.findFirst({
+        where: { id: { not: bill.id }, supplierId: bill.supplierId, supplierInvoiceNo: { equals: inv0, mode: "insensitive" }, status: { not: "Void" } },
+        select: { billNo: true },
+      });
+      if (dupe) out.push(`Supplier reference ${inv0} is already on bill ${dupe.billNo}.`);
+    }
+    return out;
+  }
   if (!bill.supplierId) out.push("Supplier is required.");
   if (!bill.billDate) out.push("Bill date is required.");
   const inv = (bill.supplierInvoiceNo ?? "").trim();

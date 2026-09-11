@@ -169,11 +169,29 @@ export async function getExpenseReport(
   } else {
     where.voucherDate = { gte: from, lte: to };
   }
-  const expenses = await prisma.expense.findMany({
-    where,
-    orderBy: [{ voucherDate: "desc" }, { voucherNo: "desc" }],
-    include: { company: { select: { companyName: true } }, user: { select: { name: true } } },
-  });
+  // non-inventory supplier bills are the accrued expenses of the period; the same period rule applies
+  const billWhere: any = { companyId: { in: companyIds }, kind: "EXPENSE", status: { in: LIVE_BILL_STATUSES } };
+  if (period?.year) {
+    billWhere.accountingYear = period.year;
+    if (period.month) billWhere.accountingMonth = period.month;
+  } else {
+    billWhere.billDate = { gte: from, lte: to };
+  }
+  const [expenses, billLines] = await Promise.all([
+    prisma.expense.findMany({
+      where,
+      orderBy: [{ voucherDate: "desc" }, { voucherNo: "desc" }],
+      include: { company: { select: { companyName: true } }, user: { select: { name: true } } },
+    }),
+    prisma.supplierBillExpenseLine.findMany({
+      where: { bill: billWhere },
+      include: {
+        glAccount: { select: { code: true, description: true } },
+        bill: { select: { id: true, billNo: true, billDate: true, dueDate: true, status: true, supplierInvoiceNo: true, accountingYear: true, accountingMonth: true, companyId: true, supplier: { select: { name: true } }, company: { select: { companyName: true } } } },
+      },
+      orderBy: [{ bill: { billDate: "desc" } }, { id: "asc" }],
+    }),
+  ]);
   const byCategory = new Map<string, number>();
   const byCompany = new Map<string, { name: string; amount: number }>();
   let total = 0;
@@ -184,8 +202,24 @@ export async function getExpenseReport(
     co.amount = round2(co.amount + e.amount);
     byCompany.set(e.companyId, co);
   }
+  // a bill line is an expense under its account's name (ex-VAT — the VAT is a receivable, not a cost)
+  const bills = billLines.map((l) => ({
+    id: l.id, billId: l.bill.id, billNo: l.bill.billNo, billDate: l.bill.billDate, dueDate: l.bill.dueDate, status: l.bill.status,
+    supplier: l.bill.supplier.name, reference: l.bill.supplierInvoiceNo, account: `${l.glAccount.code} ${l.glAccount.description}`,
+    category: l.glAccount.description, description: l.description, amount: l.amount, taxAmount: l.taxAmount,
+    accountingYear: l.bill.accountingYear, accountingMonth: l.bill.accountingMonth, companyId: l.bill.companyId, company: l.bill.company.companyName,
+  }));
+  for (const b of bills) {
+    total += b.amount;
+    byCategory.set(b.category, round2((byCategory.get(b.category) ?? 0) + b.amount));
+    const co = byCompany.get(b.companyId) ?? { name: b.company, amount: 0 };
+    co.amount = round2(co.amount + b.amount);
+    byCompany.set(b.companyId, co);
+  }
   return {
     expenses,
+    bills,
+    billsTotal: round2(bills.reduce((s, b) => s + b.amount, 0)),
     total: round2(total),
     byCategory: [...byCategory.entries()].map(([category, amount]) => ({ category, amount })).sort((a, b) => b.amount - a.amount),
     byCompany: [...byCompany.values()].sort((a, b) => b.amount - a.amount),
@@ -424,6 +458,7 @@ export async function getLedger({ from, to }: Range, companyIds: string[]) {
       where: { companyId: { in: companyIds }, status: { in: LIVE_BILL_STATUSES }, billDate: { gte: from, lte: to } },
       include: {
         supplier: { select: { name: true } },
+        expenseLines: { include: { glAccount: { select: { code: true, description: true } } } },
         company: {
           select: {
             companyName: true,
@@ -496,6 +531,13 @@ export async function getLedger({ from, to }: Range, companyIds: string[]) {
       const rows = [];
       const inventory = round2(b.subtotal + b.freight + b.otherCosts);
       const who = `${b.supplier.name}${b.supplierInvoiceNo ? ` (Inv ${b.supplierInvoiceNo})` : ""}`;
+      if (b.kind === "EXPENSE") {
+        for (const l of b.expenseLines)
+          rows.push({ ...base, description: `${l.description || l.glAccount.description} — ${who}`, debit: `${l.glAccount.code} ${l.glAccount.description}`, amount: round2(l.amount) });
+        if (b.inputVat !== 0)
+          rows.push({ ...base, description: `Input VAT — ${b.supplier.name}`, debit: acctOf(b.company.glInputVat, "Input VAT (account not set)"), amount: round2(b.inputVat) });
+        return rows;
+      }
       if (b.receiptCost > 0) {
         rows.push({ ...base, description: `Receipt billed — ${who}`, debit: "Goods Received Not Billed", amount: round2(b.receiptCost) });
         const diff = round2(inventory - b.receiptCost);
