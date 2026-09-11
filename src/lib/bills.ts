@@ -56,16 +56,22 @@ type LineForCheck = {
  * Why a bill may not be posted yet — every reason, not just the first, so the user fixes
  * the whole document in one pass. An empty list means it can post.
  */
-export async function postBlockers(bill: {
-  id: string;
-  companyId: string;
-  supplierId: string | null;
-  billDate: Date | null;
-  supplierInvoiceNo: string | null;
-  invoiceUnavailable: boolean;
-  lines: LineForCheck[];
-}): Promise<string[]> {
+export async function postBlockers(
+  bill: {
+    id: string;
+    companyId: string;
+    supplierId: string | null;
+    billDate: Date | null;
+    supplierInvoiceNo: string | null;
+    invoiceUnavailable: boolean;
+    lines: LineForCheck[];
+  },
+  /** how the bill sits against its receipt, when it has one */
+  match?: { status: string; overrideReason: string | null }
+): Promise<string[]> {
   const out: string[] = [];
+  if (match?.status === "Over" && !(match.overrideReason ?? "").trim())
+    out.push("Invoice quantity exceeds the quantity received. An Admin must record a reason for approving it before it can post.");
   if (!bill.supplierId) out.push("Supplier is required.");
   if (!bill.billDate) out.push("Bill date is required.");
   const inv = (bill.supplierInvoiceNo ?? "").trim();

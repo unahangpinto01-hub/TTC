@@ -169,7 +169,7 @@ export async function GET(req: NextRequest, { params }: { params: { entity: stri
         where: {
           companyId: { in: companyIds },
           ...(sp.get("billable") === "1"
-            ? { status: "Posted", bills: { none: { status: { not: "Void" } } } }
+            ? { status: "Posted", invoiceStatus: { notIn: ["Billed"] } }
             : {}),
           ...(sp.get("supplier") ? { purchaseOrder: { supplierId: sp.get("supplier")! } } : {}),
           ...(q ? { OR: [{ grnNumber: starts(q) }, { deliveryRefNo: starts(q) }, { purchaseOrder: { poNumber: starts(q) } }] } : {}),

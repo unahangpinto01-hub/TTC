@@ -8,7 +8,9 @@ import { qtyLabel, lineCartonSize, ctnValue } from "@/lib/units";
 import { CtnEquiv } from "@/components/qty";
 import { PageHeader, StatusBadge } from "@/components/ui";
 import { getAuditTrail } from "@/lib/salespeople";
-import { saveGRNLines, setGRNStatus, postGRN, voidGRN } from "../actions";
+import { saveGRNLines, setGRNStatus, postGRN, voidGRN, markReceiptBilledOutside } from "../actions";
+import { unbilledOnReceipt } from "@/lib/bill-matching";
+import { InvoiceBadge } from "@/components/invoice-badge";
 
 const ERRORS: Record<string, string> = {
   locked: "This receipt is no longer editable — only a Draft can be changed.",
@@ -38,12 +40,15 @@ export default async function GRNDetailPage({
       createdBy: { select: { name: true } },
       postedBy: { select: { name: true } },
       lines: { include: { product: true, poLine: true }, orderBy: { id: "asc" } },
-      bills: { select: { id: true, billNo: true, status: true, total: true }, orderBy: { billDate: "desc" } },
+      bills: { select: { id: true, billNo: true, status: true, total: true, billDate: true, supplierInvoiceNo: true, matchStatus: true }, orderBy: { billDate: "desc" } },
     },
   });
   if (!grn || grn.companyId !== company.id) notFound(); // company isolation
   const audit = await getAuditTrail("GoodsReceipt", params.id, 30);
   const liveBill = grn.bills.find((b) => b.status !== "Void") ?? null;
+  const open = grn.status === "Posted" ? await unbilledOnReceipt(prisma, grn.id) : [];
+  const toBill = open.reduce((s, l) => s + l.remainingPcs, 0);
+  const toBillValue = open.reduce((s, l) => s + l.remainingValue, 0);
 
   const canEdit = user.perm === "READ_WRITE" && grn.status === "Draft";
   const canApprove = ["SUPER_ADMIN", "ADMIN"].includes(user.role) && user.perm === "READ_WRITE";
@@ -65,11 +70,9 @@ export default async function GRNDetailPage({
       </Link>
       <PageHeader title={`Receiving ${grn.grnNumber}`}>
         <StatusBadge status={grn.status} />
-        {grn.status === "Posted" && !liveBill && user.perm === "READ_WRITE" && (
-          <Link href={`/bills/new?grn=${grn.id}`} className="btn-primary">🧾 Enter Bill</Link>
-        )}
-        {liveBill && (
-          <Link href={`/bills/${liveBill.id}`} className="btn-secondary">Bill {liveBill.billNo} · {liveBill.status}</Link>
+        {grn.status === "Posted" && <InvoiceBadge status={grn.invoiceStatus} />}
+        {grn.status === "Posted" && toBill > 0 && !grn.billedOutside && user.perm === "READ_WRITE" && (
+          <Link href={`/bills/new?grn=${grn.id}`} className="btn-primary">🧾 Enter Bill{grn.bills.some((b) => b.status !== "Void") ? " for the rest" : ""}</Link>
         )}
         <Link href={`/receiving/${grn.id}/print`} className="btn-secondary">🖨 Print GRN</Link>
       </PageHeader>
@@ -142,6 +145,7 @@ export default async function GRNDetailPage({
                 <th className="table-th text-right">Received</th>
                 <th className="table-th text-right">Rejected</th>
                 <th className="table-th text-right">Accepted</th>
+                {grn.status === "Posted" && <th className="table-th text-right">Billed / To bill</th>}
                 <th className="table-th text-right">Accepted (PCS)</th>
                 <th className="table-th text-right">Equivalent (CTN)</th>
                 <th className="table-th text-right">Unit Cost</th>
@@ -176,6 +180,14 @@ export default async function GRNDetailPage({
                       )}
                     </td>
                     <td className="table-td text-right font-semibold text-emerald-700">{l.acceptedQty || "—"}</td>
+                    {grn.status === "Posted" && (() => {
+                      const o = open.find((x) => x.id === l.id);
+                      return (
+                        <td className="table-td text-right text-sm">
+                          {o ? <>{o.billed.toLocaleString()} / <span className={o.remaining > 0 ? "font-semibold text-amber-700" : "text-gray-400"}>{o.remaining.toLocaleString()}</span></> : "—"}
+                        </td>
+                      );
+                    })()}
                     <td className="table-td text-right text-sm">{l.acceptedBaseQty.toLocaleString()}</td>
                     <td className="table-td text-right text-sm">
                       <CtnEquiv basePcs={l.acceptedBaseQty} ppc={ppc} />
@@ -277,6 +289,38 @@ export default async function GRNDetailPage({
         </div>
       )}
 
+      {grn.status === "Posted" && !grn.billedOutside && !grn.bills.some((b) => b.status !== "Void") && user.role === "SUPER_ADMIN" && (
+        <form action={markReceiptBilledOutside} className="card mb-4 flex flex-wrap items-center gap-2 border-dashed">
+          <input type="hidden" name="id" value={grn.id} />
+          <span className="text-sm font-semibold">Billed outside the BMS?</span>
+          <input name="note" placeholder="e.g. invoice paid on paper before Enter Bills existed" className="input w-80 py-1 text-sm" />
+          <button className="btn-secondary" type="submit">Mark as billed outside</button>
+          <span className="text-xs text-gray-500">Super Admin only. The receipt stops appearing in Received but Not Yet Billed; no bill will be expected for it.</span>
+        </form>
+      )}
+
+      {grn.bills.length > 0 && (
+        <div className="card mb-4 overflow-x-auto p-0">
+          <table className="w-full">
+            <thead className="border-b border-gray-200 bg-gray-50">
+              <tr><th className="table-th">Supplier Bill</th><th className="table-th">Date</th><th className="table-th">Supplier Invoice</th><th className="table-th">Match</th><th className="table-th text-right">Total</th><th className="table-th">Status</th></tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {grn.bills.map((b) => (
+                <tr key={b.id} className={b.status === "Void" ? "opacity-50" : ""}>
+                  <td className="table-td"><Link href={`/bills/${b.id}`} className="font-mono text-xs font-semibold text-emerald-700 hover:underline">{b.billNo}</Link></td>
+                  <td className="table-td text-sm">{fmtDate(b.billDate)}</td>
+                  <td className="table-td text-xs text-gray-600">{b.supplierInvoiceNo ?? "—"}</td>
+                  <td className={`table-td text-xs font-semibold ${b.matchStatus === "Over" ? "text-red-600" : b.matchStatus === "Partial" ? "text-amber-700" : "text-emerald-700"}`}>{b.matchStatus === "None" ? "—" : b.matchStatus}</td>
+                  <td className="table-td text-right">{peso(b.total)}</td>
+                  <td className="table-td"><StatusBadge status={b.status} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="card text-sm">
           <p className="mb-2 font-semibold">Document</p>
@@ -285,7 +329,7 @@ export default async function GRNDetailPage({
               ["Company", company.companyName],
               ["Created by", `${grn.createdBy?.name ?? "—"} · ${fmtDateTime(grn.createdAt)}`],
               ["Posted by", grn.postedAt ? `${grn.postedBy?.name ?? "—"} · ${fmtDateTime(grn.postedAt)}` : "not posted"],
-              ["Supplier bill", liveBill ? `${liveBill.billNo} · ${liveBill.status}` : grn.status === "Posted" ? "not yet entered — the payable is not on the books" : "after posting"],
+              ["Invoice status", grn.status !== "Posted" ? "after posting" : grn.billedOutside ? `Billed and settled outside the BMS${grn.billedOutsideNote ? ` — ${grn.billedOutsideNote}` : ""}` : `${grn.invoiceStatus}${toBill > 0 ? ` — ${toBill.toLocaleString()} PCS still to bill (₱${toBillValue.toLocaleString("en-PH", { minimumFractionDigits: 2 })} at receiving cost)` : ""}`],
               ["Warehouse", grn.warehouse ?? "—"],
               ["Supplier DR", grn.deliveryRefNo ?? "—"],
               ["Supplier Invoice", grn.supplierInvoiceNo ?? "—"],

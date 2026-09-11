@@ -10,6 +10,7 @@ import { SearchSelect } from "@/components/search-select";
 import { getAuditTrail } from "@/lib/salespeople";
 import { checkVoucherDate, periodLabel, periodOf } from "@/lib/vouchers";
 import { TERMS, postBlockers, billEditBlocker, billVoidBlocker, outstandingOf } from "@/lib/bills";
+import { matchBillLines } from "@/lib/bill-matching";
 import { BillEditor, type EditorLine } from "./bill-editor";
 import { saveBill, postBill, voidBill } from "../actions";
 
@@ -72,7 +73,8 @@ export default async function BillDetailPage({
   const canEdit = canWrite && !billEditBlocker(bill);
   const canApprove = canWrite && ["SUPER_ADMIN", "ADMIN"].includes(user.role);
   const isDraft = bill.status === "Draft";
-  const blockers = isDraft ? await postBlockers(bill) : [];
+  const match = bill.goodsReceiptId ? await matchBillLines(prisma, bill) : null;
+  const blockers = isDraft ? await postBlockers(bill, match ? { status: match.status, overrideReason: bill.overrideReason } : undefined) : [];
   const period = periodOf(bill.billDate);
   const periodCheck = isDraft
     ? await checkVoucherDate({ companyId: company.id, voucherDate: bill.billDate, canPriorPeriod: getPerm(user, "priorPeriod") !== "NONE", noun: "bill" })
@@ -96,13 +98,19 @@ export default async function BillDetailPage({
     batchNo: l.batchNo ?? "",
     expDate: l.expDate ? l.expDate.toISOString().slice(0, 10) : "",
     batches: batches.get(l.productId) ?? [],
+    received: match?.lines.find((m) => m.grnLineId === l.grnLineId)?.accepted ?? null,
+    remaining: match?.lines.find((m) => m.grnLineId === l.grnLineId)?.remaining ?? null,
   }));
+  const matchLabel = { None: "", Matched: "Matches receipt", Partial: "Partial — receipt stays open", Over: "⚠ Exceeds receipt" }[match?.status ?? "None"] ?? "";
 
   return (
     <div>
       <Link href="/bills" className="mb-3 inline-flex items-center gap-1 text-sm font-medium text-emerald-700 hover:underline">← Back to Bills</Link>
       <PageHeader title={`Bill ${bill.billNo}`}>
         <StatusBadge status={bill.status} />
+        {match && matchLabel && (
+          <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${match.status === "Over" ? "bg-red-100 text-red-700" : match.status === "Partial" ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-800"}`}>{matchLabel}</span>
+        )}
         <Link href={`/bills/${bill.id}/print`} className="btn-secondary">🖨 Print Bill</Link>
       </PageHeader>
 
@@ -124,6 +132,21 @@ export default async function BillDetailPage({
       )}
       {bill.periodReason && (
         <p className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800"><span className="font-semibold">Prior-period adjustment:</span> {bill.periodReason}</p>
+      )}
+      {match && match.status !== "Matched" && match.status !== "None" && (
+        <div className={`mb-3 rounded-lg px-3 py-2 text-sm ${match.status === "Over" ? "bg-red-50 text-red-700" : "bg-amber-50 text-amber-800"}`}>
+          <p className="font-semibold">{match.status === "Over" ? "Invoice quantity exceeds the quantity received." : "Invoice covers less than was received."}</p>
+          <p className="text-xs">
+            {match.lines.filter((m) => m.qty !== m.remaining).map((m) => {
+              const l = bill.lines.find((x) => x.grnLineId === m.grnLineId);
+              return `${l?.product.name ?? "?"}: invoice ${m.qty}, received ${m.accepted}${m.billedElsewhere ? `, ${m.billedElsewhere} on earlier bills` : ""} → ${m.qty > m.remaining ? `over by ${m.qty - m.remaining}` : `${m.remaining - m.qty} left unbilled`}`;
+            }).join(" · ")}
+            {match.status === "Over"
+              ? " The receipt is not changed. Ask the supplier for a corrected invoice, or an Admin records a reason below to approve the excess."
+              : " The receipt stays open; enter the supplier's next invoice against it when it arrives."}
+          </p>
+          {bill.overrideReason && <p className="mt-1 text-xs"><span className="font-semibold">Approved over-billing:</span> {bill.overrideReason}</p>}
+        </div>
       )}
 
       <div className="mb-4 grid grid-cols-2 gap-3 text-sm md:grid-cols-4">
@@ -196,6 +219,18 @@ export default async function BillDetailPage({
             <label className="label">Memo / Remarks</label>
             <input name="memo" defaultValue={bill.memo ?? ""} disabled={!canEdit} className="input" />
           </div>
+          {bill.goodsReceiptId && (
+            <div className="sm:col-span-2">
+              <label className="label">Discrepancy note <span className="font-normal text-gray-400">(what to raise with the supplier)</span></label>
+              <input name="discrepancyNote" defaultValue={bill.discrepancyNote ?? ""} disabled={!canEdit} className="input" placeholder="e.g. invoice shows 80 CTN, 100 CTN received — corrected invoice requested" />
+            </div>
+          )}
+          {bill.goodsReceiptId && canEdit && canApprove && match?.status === "Over" && (
+            <div className="sm:col-span-2">
+              <label className="label text-red-700">Approve over-billing — reason (Admin)</label>
+              <input name="overrideReason" defaultValue={bill.overrideReason ?? ""} className="input border-red-300" placeholder="why the excess is accepted (saved with your name)" />
+            </div>
+          )}
         </div>
 
         <BillEditor

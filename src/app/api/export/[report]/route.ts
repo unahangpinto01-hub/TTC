@@ -7,6 +7,7 @@ import { getActiveCompany, allowedCompanies } from "@/lib/company";
 import { scopeIds } from "@/lib/report-scope";
 import { getReceivingReport, getPOReceivingStatus, getSupplierReceivingHistory } from "@/lib/receiving-reports";
 import { getApAging, getSupplierStatement, getPurchaseReport, getPurchaseByProduct, getPurchaseBySupplier } from "@/lib/ap-reports";
+import { getUnbilledReceipts, getInvoiceDiscrepancies, getThreeWayMatch, getSupplierPriceHistory } from "@/lib/purchasing-reports";
 import {
   getSalesMetrics, getArMetrics, getCollectionMetrics, getInventoryMetrics,
   getMonthlyTrend, getForecastVsActual, getCompanyComparison, previousPeriod, growthPct,
@@ -763,6 +764,65 @@ export async function GET(req: NextRequest, { params }: { params: { report: stri
         ["TOTAL", ...(scope.combined ? [""] : []), rep.totals.bills, rep.totals.pcs, rep.totals.subtotal, rep.totals.freight, rep.totals.inputVat, rep.totals.total, rep.totals.paid, rep.totals.outstanding, ""],
       ];
       return sheetResponse(rows, "By Supplier", `purchase-by-supplier-${tag}.xlsx`);
+    }
+    case "unbilled-receipts": {
+      const rep = await getUnbilledReceipts(scope.ids);
+      const rows: (string | number)[][] = [
+        ["RECEIVED BUT NOT YET BILLED", "as of " + rep.asOf.toISOString().slice(0, 10), scope.label],
+        [],
+        ["Received", "Days", "GRN No.", ...(scope.combined ? ["Company"] : []), "Supplier", "PO No.", "Supplier DR", "Invoice Status", "Unbilled PCS", "Value (receiving cost)"],
+        ...rep.rows.map((r) => [r.receivedDate.toISOString().slice(0, 10), r.days, r.grnNumber, ...(scope.combined ? [r.company] : []), r.supplier, r.poNumber, r.deliveryRefNo ?? "", r.invoiceStatus, r.remainingPcs, r.remainingValue]),
+        [],
+        ["TOTAL", "", "", ...(scope.combined ? [""] : []), "", "", "", "", rep.totals.pcs, rep.totals.value],
+        [],
+        ["LINE DETAIL"],
+        ["GRN No.", "SKU", "Product", "Pack Size", "Unit", "Accepted", "Billed", "Unbilled", "Unbilled PCS", "Unbilled CTN", "Receiving Cost", "Unbilled Value"],
+        ...rep.rows.flatMap((r) => r.lines.map((l) => [r.grnNumber, l.sku, l.name, l.packSize, l.unit, l.accepted, l.billed, l.remaining, l.remainingPcs, l.remainingCtn ?? "N/A", l.unitCost, l.remainingValue])),
+      ];
+      return sheetResponse(rows, "Unbilled", `received-not-billed-${rep.asOf.toISOString().slice(0, 10)}.xlsx`);
+    }
+    case "invoice-discrepancies": {
+      const rep = await getInvoiceDiscrepancies(range, scope.ids);
+      const rows: (string | number)[][] = [
+        ["SUPPLIER INVOICE DISCREPANCIES", tag, scope.label],
+        [],
+        ["Bill Date", "Bill No.", ...(scope.combined ? ["Company"] : []), "Supplier", "Supplier Invoice", "GRN No.", "Received", "Difference", "Product", "Unit", "Invoice Qty", "Received Qty", "On Other Bills", "Difference Qty", "Note", "Approval", "Bill Total", "Status"],
+        ...rep.rows.flatMap((r) => (r.lines.length ? r.lines : [null]).map((l) => [
+          r.billDate.toISOString().slice(0, 10), r.billNo, ...(scope.combined ? [r.company] : []), r.supplier, r.supplierInvoiceNo ?? "", r.grnNumber, r.receivedDate.toISOString().slice(0, 10),
+          r.matchStatus === "Over" ? "Invoice exceeds receipt" : "Invoice short of receipt",
+          l?.product ?? "", l?.unit ?? "", l?.invoiceQty ?? "", l?.receivedQty ?? "", l?.billedElsewhere ?? "", l?.difference ?? "", r.discrepancyNote ?? "", r.overrideReason ?? "", r.total, r.status,
+        ])),
+      ];
+      return sheetResponse(rows, "Discrepancies", `invoice-discrepancies-${tag}.xlsx`);
+    }
+    case "po-receiving-invoice": {
+      const rep = await getThreeWayMatch(range, scope.ids, { supplierId: sp.supplier || undefined, onlyOpen: sp.open === "1" });
+      const rows: (string | number)[][] = [
+        ["PO vs RECEIVING vs INVOICE", tag, scope.label],
+        [],
+        ["PO Date", "PO No.", "PO Status", ...(scope.combined ? ["Company"] : []), "Supplier", "SKU", "Product", "Unit", "Ordered", "PO Unit Cost", "Ordered Value", "Received", "Received Value", "Invoiced", "Invoiced Value", "Landed Value", "Qty Variance", "Cost Variance", "Receipts", "Bills", "Status"],
+        ...rep.rows.map((r) => [
+          r.poDate.toISOString().slice(0, 10), r.poNumber, r.poStatus, ...(scope.combined ? [r.company] : []), r.supplier, r.sku, r.product, r.unit,
+          r.orderedQty, r.orderedCost, r.orderedValue, r.receivedQty, r.receivedValue, r.billedQty, r.billedValue, r.billedLanded, r.qtyVariance, r.costVariance, r.receipts.join(", "), r.bills.join(", "), r.status,
+        ]),
+        [],
+        ["TOTAL", "", "", ...(scope.combined ? [""] : []), "", "", "", "", "", "", rep.totals.ordered, "", rep.totals.received, "", rep.totals.billed, rep.totals.landed, "", "", "", "", ""],
+      ];
+      return sheetResponse(rows, "Three-way", `po-receiving-invoice-${tag}.xlsx`);
+    }
+    case "supplier-prices": {
+      const rep = await getSupplierPriceHistory(range, scope.ids, { supplierId: sp.supplier || undefined, productId: sp.product || undefined });
+      const rows: (string | number)[][] = [
+        ["SUPPLIER PRICE HISTORY", tag, scope.label, "prices per piece"],
+        [],
+        ["SKU", "Product", "Pack Size", ...(scope.combined ? ["Company"] : []), "Supplier", "First", "Last", "Change %", "Lowest", "Highest", "Last On"],
+        ...rep.rows.map((r) => [r.sku, r.product, r.packSize, ...(scope.combined ? [r.company] : []), r.supplier, r.first, r.last, r.changePct ?? "", r.lowest, r.highest, r.lastDate.toISOString().slice(0, 10)]),
+        [],
+        ["EVENTS"],
+        ["SKU", "Product", "Supplier", "Date", "Type", "Reference", "Qty", "Unit", "Cost per PC", "Landed per PC"],
+        ...rep.rows.flatMap((r) => r.events.map((e) => [r.sku, r.product, r.supplier, e.date.toISOString().slice(0, 10), e.kind, e.ref, e.qty, e.unit, Math.round(e.costPerPcs * 10000) / 10000, e.landedPerPcs == null ? "" : Math.round(e.landedPerPcs * 10000) / 10000])),
+      ];
+      return sheetResponse(rows, "Prices", `supplier-prices-${tag}.xlsx`);
     }
     case "sales-journal": {
       const j = await getSalesJournal(range, scope.ids, {

@@ -582,6 +582,14 @@ model GoodsReceipt {
   /// raised against it never adds quantity again; it re-costs what is on hand.
   stockedAt         DateTime?
 
+  /// Pending | Entered | Partial | Billed | Discrepancy — how the supplier bills stand against this
+  /// receipt. Kept in step by bill-matching.ts whenever a bill against it changes.
+  invoiceStatus     String    @default("Pending")
+  /// true when a Super Admin marked the receipt as billed and settled outside the BMS (before
+  /// Enter Bills existed) — it counts as Billed and no bill is expected for it
+  billedOutside     Boolean   @default(false)
+  billedOutsideNote String?
+
   lines GRNLine[]
   bills SupplierBill[]
 
@@ -1019,6 +1027,14 @@ model SupplierBill {
   /// receiving cost), fixed at posting. The ledger books the bill as clearing that amount
   /// and moving only the difference into inventory. 0 for a bill that stocked the goods itself.
   receiptCost        Float         @default(0)
+
+  /// None | Matched | Partial | Over — the bill's quantities against what its receipt still had to bill
+  matchStatus        String        @default("None")
+  /// what the clerk noted about a difference from the receipt (to raise with the supplier)
+  discrepancyNote    String?
+  /// an Admin's reason for posting quantities above what was received
+  overrideReason     String?
+  overrideById       String?
   paidAmount      Float  @default(0)
 
   accountingYear  Int     @default(0)

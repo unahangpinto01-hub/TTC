@@ -331,6 +331,14 @@ export function PurchasingSection({ p, payables }: { p: PurchasingMetrics; payab
           <div><p className="text-xs text-gray-500">Due within 7 days</p><p className={`font-semibold ${payables.dueSoon ? "text-amber-700" : "text-gray-400"}`}>{peso(payables.dueSoon)}</p></div>
           <div><p className="text-xs text-gray-500">Billed this period</p><p className="font-semibold">{peso(payables.billedInPeriod)}</p></div>
         </div>
+        {(payables.unbilled.receipts > 0 || payables.discrepancies.over + payables.discrepancies.partial > 0) && (
+          <p className="mt-2 text-xs">
+            <Link href="/reports/unbilled-receipts" className="text-amber-700 hover:underline">Received, not yet billed: {payables.unbilled.receipts} receipt(s) · {peso(payables.unbilled.value)}</Link>
+            {payables.discrepancies.over + payables.discrepancies.partial > 0 && (
+              <> · <Link href="/reports/invoice-discrepancies" className="text-red-600 hover:underline">Invoice discrepancies: {payables.discrepancies.over} over, {payables.discrepancies.partial} short</Link></>
+            )}
+          </p>
+        )}
         {payables.bySupplier.length > 0 && (
           <p className="mt-2 text-xs text-gray-600">
             Owed to: {payables.bySupplier.slice(0, 4).map((s) => `${s.name} ${peso(s.outstanding)}${s.overdue ? ` (overdue ${peso(s.overdue)})` : ""}`).join(" · ")}

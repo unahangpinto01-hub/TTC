@@ -14,6 +14,7 @@ import {
   computeBill, dueDateFor, nextBillNo, postBlockers, billEditBlocker, billVoidBlocker,
   DEFAULT_TERMS, TERMS, round2,
 } from "@/lib/bills";
+import { matchBillLines, refreshInvoiceStatus, unbilledOnReceipt } from "@/lib/bill-matching";
 
 const POSTERS = ["SUPER_ADMIN", "ADMIN"];
 
@@ -41,6 +42,8 @@ function header(formData: FormData) {
     invoiceUnavailable: formData.get("invoiceUnavailable") === "on",
     terms: (TERMS as readonly string[]).includes(terms) ? terms : DEFAULT_TERMS,
     memo: String(formData.get("memo") || "").trim() || null,
+    discrepancyNote: String(formData.get("discrepancyNote") || "").trim() || null,
+    overrideReason: String(formData.get("overrideReason") || "").trim() || null,
     freight: money(formData.get("freight")),
     otherCosts: money(formData.get("otherCosts")),
     allocationBasis: String(formData.get("allocationBasis")) === "qty" ? "qty" : "value",
@@ -49,8 +52,10 @@ function header(formData: FormData) {
 }
 
 /**
- * Start a bill. Raised from a posted receipt it copies the accepted lines; from a purchase
- * order, the lines still outstanding; on its own, it starts empty. A Draft touches nothing.
+ * Start a bill. Raised from a posted receipt it copies the lines the receipt still has to
+ * bill — accepted less what earlier bills covered, so a split invoice is entered as two
+ * bills. From a purchase order, the lines still outstanding; on its own, it starts empty.
+ * A Draft touches nothing.
  */
 export async function createBill(formData: FormData) {
   const user = await requirePermWrite("bills");
@@ -75,22 +80,27 @@ export async function createBill(formData: FormData) {
   if (grnId) {
     const grn = await prisma.goodsReceipt.findUnique({
       where: { id: grnId },
-      include: { purchaseOrder: true, lines: { include: { poLine: true } }, bills: { where: { status: { not: "Void" } }, select: { billNo: true } } },
+      include: { purchaseOrder: true, lines: { include: { poLine: true } } },
     });
     if (!grn || grn.companyId !== company.id) redirect("/bills/new?error=grn");
     if (grn.status !== "Posted") redirect("/bills/new?error=grnstatus");
-    if (grn.bills.length) redirect(`/bills/new?error=grnbilled&ref=${encodeURIComponent(grn.bills[0].billNo)}`);
+    const open = await unbilledOnReceipt(prisma, grn.id);
+    if (!open.some((l) => l.remaining > 0)) redirect(`/bills/new?error=grnbilled&ref=${encodeURIComponent(grn.grnNumber)}`);
     // the goods belong to the receipt's supplier — a bill cannot name another
     supplierId = grn.purchaseOrder.supplierId;
     goodsReceiptId = grn.id;
     purchaseOrderId = grn.purchaseOrderId;
     supplierInvoiceNo = supplierInvoiceNo ?? grn.supplierInvoiceNo;
     lines = grn.lines
-      .filter((l) => l.acceptedQty > 0)
-      .map((l) => ({
-        productId: l.productId, grnLineId: l.id, poLineId: l.poLineId, batchNo: l.batchNo, expDate: l.expDate,
-        qty: l.acceptedQty, unit: l.unit, baseQty: l.acceptedBaseQty, unitCost: l.unitCost, discount: 0,
-      }));
+      .filter((l) => (open.find((o) => o.id === l.id)?.remaining ?? 0) > 0)
+      .map((l) => {
+        const remaining = open.find((o) => o.id === l.id)!.remaining;
+        const factor = l.acceptedQty > 0 ? l.acceptedBaseQty / l.acceptedQty : 1;
+        return {
+          productId: l.productId, grnLineId: l.id, poLineId: l.poLineId, batchNo: l.batchNo, expDate: l.expDate,
+          qty: remaining, unit: l.unit, baseQty: Math.round(remaining * factor), unitCost: l.unitCost, discount: 0,
+        };
+      });
   } else if (poIdRaw) {
     const po = await prisma.purchaseOrder.findUnique({ where: { id: poIdRaw }, include: { lines: true } });
     if (!po || po.companyId !== company.id) redirect("/bills/new?error=po");
@@ -129,6 +139,7 @@ export async function createBill(formData: FormData) {
       goodsReceiptId,
       memo: h.memo,
       status: "Draft",
+      matchStatus: goodsReceiptId ? "Matched" : "None",
       subtotal: math.subtotal,
       freight: math.freight,
       otherCosts: math.otherCosts,
@@ -140,6 +151,11 @@ export async function createBill(formData: FormData) {
       lines: { create: lines.map((l, i) => ({ ...l, ...math.lines[i] })) },
     },
   });
+  if (goodsReceiptId) {
+    const m = await matchBillLines(prisma, { id: bill.id, goodsReceiptId, lines });
+    await prisma.supplierBill.update({ where: { id: bill.id }, data: { matchStatus: m.status } });
+    await refreshInvoiceStatus(prisma, goodsReceiptId);
+  }
   await logAudit({
     entity: "SupplierBill",
     entityId: bill.id,
@@ -156,9 +172,13 @@ export async function createBill(formData: FormData) {
 }
 
 /**
- * Save a Draft: header, costs and lines. A bill raised from a receipt keeps the receipt's
- * products and quantities — those are what physically arrived — and only the costs,
- * discounts and batch details can change. Any other bill rebuilds its lines from the form.
+ * Save a Draft: header, costs and lines.
+ *
+ * A bill raised from a receipt carries the supplier's OWN quantities — what the invoice
+ * says — matched line by line against what the receipt still has to bill. The receipt is
+ * never altered by it: a short invoice leaves the receipt partly billed, a long one is
+ * flagged Over. Its lines stay tied to the receipt's lines, so a product that was not
+ * received cannot be billed against it. Any other bill rebuilds its lines from the form.
  */
 export async function saveBill(formData: FormData) {
   const user = await requirePermWrite("bills");
@@ -208,11 +228,12 @@ export async function saveBill(formData: FormData) {
   for (let i = 0; i < lineIds.length; i++) {
     const existing = bill.lines.find((l) => l.id === lineIds[i]) ?? null;
     if (bill.goodsReceiptId) {
-      // receipt-backed: product and quantity are the receipt's; a line cannot be dropped or added
-      if (!existing) continue;
+      // receipt-backed: the line stays tied to its receipt line and unit; the quantity is the invoice's
+      if (!existing || qtys[i] <= 0) continue;
+      const factor = existing.qty > 0 ? existing.baseQty / existing.qty : existing.unit === "CARTON" ? existing.product.piecesPerCarton ?? 1 : 1;
       rows.push({
         id: existing.id, productId: existing.productId, grnLineId: existing.grnLineId, poLineId: existing.poLineId,
-        qty: existing.qty, unit: existing.unit, baseQty: existing.baseQty,
+        qty: qtys[i], unit: existing.unit, baseQty: Math.round(qtys[i] * factor),
         unitCost: costs[i] > 0 ? round2(costs[i]) : existing.unitCost, discount: discs[i] ?? 0, batchNo: batches[i] ?? null, expDate: exps[i] ?? null,
       });
       continue;
@@ -240,19 +261,11 @@ export async function saveBill(formData: FormData) {
       qty: qtys[i], unit, baseQty, unitCost, discount: discs[i] ?? 0, batchNo: batches[i] ?? null, expDate: exps[i] ?? null,
     });
   }
-  if (bill.goodsReceiptId && rows.length !== bill.lines.length) {
-    // a receipt-backed line went missing from the form — keep the receipt's lines whole
-    for (const l of bill.lines) {
-      if (!rows.some((r) => r.id === l.id)) {
-        rows.push({
-          id: l.id, productId: l.productId, grnLineId: l.grnLineId, poLineId: l.poLineId, qty: l.qty, unit: l.unit, baseQty: l.baseQty,
-          unitCost: l.unitCost, discount: l.discount, batchNo: l.batchNo, expDate: l.expDate,
-        });
-      }
-    }
-  }
 
   const math = computeBill(rows, h);
+  const match = bill.goodsReceiptId
+    ? await matchBillLines(prisma, { id, goodsReceiptId: bill.goodsReceiptId, lines: rows })
+    : { status: "None" as const, lines: [], unbilledAfter: 0 };
 
   // what changed, for the audit trail — every quantity, cost and batch is named
   for (const r of rows) {
@@ -273,6 +286,13 @@ export async function saveBill(formData: FormData) {
   if (Math.abs(bill.freight - math.freight) > 0.004 || Math.abs(bill.otherCosts - math.otherCosts) > 0.004)
     changes.push(`Freight/other: ${bill.freight.toFixed(2)} + ${bill.otherCosts.toFixed(2)} → ${math.freight.toFixed(2)} + ${math.otherCosts.toFixed(2)}`);
   if (Math.abs(bill.total - math.total) > 0.004) changes.push(`Total: ${bill.total.toFixed(2)} → ${math.total.toFixed(2)}`);
+  if (bill.matchStatus !== match.status) changes.push(`Match: ${bill.matchStatus} → ${match.status}`);
+  if ((bill.discrepancyNote ?? "") !== (h.discrepancyNote ?? "")) changes.push(`Discrepancy note: ${h.discrepancyNote ?? "(cleared)"}`);
+
+  // only an Admin may carry an override, and only while the bill is actually Over
+  const canOverride = POSTERS.includes(user.role);
+  const overrideReason = match.status === "Over" && canOverride ? h.overrideReason : null;
+  if ((bill.overrideReason ?? "") !== (overrideReason ?? "")) changes.push(`Over-billing approval: ${overrideReason ?? "(cleared)"}`);
 
   await prisma.$transaction(async (tx) => {
     const keep = rows.filter((r) => r.id).map((r) => r.id!);
@@ -296,6 +316,10 @@ export async function saveBill(formData: FormData) {
         dueDate,
         terms: h.terms,
         memo: h.memo,
+        matchStatus: match.status,
+        discrepancyNote: h.discrepancyNote,
+        overrideReason,
+        overrideById: overrideReason ? user.id : null,
         subtotal: math.subtotal,
         freight: math.freight,
         otherCosts: math.otherCosts,
@@ -305,6 +329,7 @@ export async function saveBill(formData: FormData) {
         total: math.total,
       },
     });
+    if (bill.goodsReceiptId) await refreshInvoiceStatus(tx, bill.goodsReceiptId);
   });
 
   await logAudit({
@@ -328,10 +353,12 @@ export async function saveBill(formData: FormData) {
  *       Cr Accounts Payable    the whole bill
  *
  * A line billed against a posted receipt adds no quantity — the receipt already stocked it
- * at the receiving cost — so the difference between that and the billed inventory cost
- * re-costs the pieces on hand (the ledger books the receipt's amount as cleared and only the
- * difference into inventory). A line with no receipt behind it goes into stock here, at its
- * inventory cost per piece, and folds into the product's weighted average.
+ * at the receiving cost — so the difference between that and the billed inventory cost,
+ * for the quantity this bill covers, re-costs the pieces on hand (the ledger books the
+ * receipt's amount as cleared and only the difference into inventory). A line with no
+ * receipt behind it goes into stock here, at its inventory cost per piece, and folds into
+ * the product's weighted average. A bill claiming more than was received posts only with
+ * an Admin's recorded reason.
  */
 export async function postBill(formData: FormData) {
   const user = await requirePermWrite("bills");
@@ -349,7 +376,8 @@ export async function postBill(formData: FormData) {
   if (!bill || bill.companyId !== company.id) redirect("/bills");
   if (bill.status !== "Draft") redirect(`/bills/${id}?error=locked`);
 
-  const blockers = await postBlockers(bill);
+  const match = bill.goodsReceiptId ? await matchBillLines(prisma, bill) : null;
+  const blockers = await postBlockers(bill, match ? { status: match.status, overrideReason: bill.overrideReason } : undefined);
   if (blockers.length) redirect(`/bills/${id}?error=blocked`);
 
   const reason = String(formData.get("periodReason") || "").trim();
@@ -374,8 +402,9 @@ export async function postBill(formData: FormData) {
         const grnLine = grn?.lines.find((g) => g.id === line.grnLineId) ?? null;
 
         if (alreadyStocked && grnLine) {
-          // the pieces are on the shelf already, valued at the receipt's cost — move them to the billed cost
-          const lineReceiptCost = round2(grnLine.unitCost * grnLine.acceptedQty);
+          // the pieces are on the shelf already, valued at the receipt's cost — move the billed
+          // quantity of them to the billed cost
+          const lineReceiptCost = round2(grnLine.unitCost * line.qty);
           receiptCost = round2(receiptCost + lineReceiptCost);
           const delta = round2(line.inventoryCost - lineReceiptCost);
           if (Math.abs(delta) >= 0.01 && product.stockQty > 0) {
@@ -441,9 +470,11 @@ export async function postBill(formData: FormData) {
           accountingYear: year,
           accountingMonth: month,
           receiptCost,
+          matchStatus: match?.status ?? "None",
           periodReason: check.reasonRequired ? reason : null,
         },
       });
+      if (grn) await refreshInvoiceStatus(tx, grn.id);
     }, { timeout: 60000 });
   } catch (e) {
     if (e instanceof UnitError) redirect(`/bills/${id}?error=history`);
@@ -458,6 +489,8 @@ export async function postBill(formData: FormData) {
       `${bill.billNo} posted · ${periodLabel(year, month)} · Dr Inventory ₱${round2(bill.subtotal + bill.freight + bill.otherCosts).toFixed(2)}` +
       (bill.inputVat ? ` · Dr Input VAT ₱${bill.inputVat.toFixed(2)}` : "") +
       ` · Cr Accounts Payable ₱${bill.total.toFixed(2)} (${bill.supplier.name}, due ${bill.dueDate.toDateString()})` +
+      (match ? ` · match ${match.status}${match.unbilledAfter > 0 ? ` (${match.unbilledAfter} still unbilled on ${grn?.grnNumber})` : ""}` : "") +
+      (match?.status === "Over" ? ` · over-billing approved: ${bill.overrideReason}` : "") +
       (stockedPcs ? ` · ${stockedPcs.toLocaleString()} PCS into stock` : alreadyStocked ? ` · goods already in stock from the receipt (₱${receiptCost.toFixed(2)})` : "") +
       (notes.length ? ` · ${notes.join("; ")}` : "") +
       (check.reasonRequired ? ` · prior-period adjustment: ${reason}` : ""),
@@ -469,6 +502,7 @@ export async function postBill(formData: FormData) {
   revalidatePath(`/bills/${id}`);
   revalidatePath("/bills");
   if (bill.purchaseOrderId) revalidatePath(`/purchase-orders/${bill.purchaseOrderId}`);
+  if (bill.goodsReceiptId) revalidatePath(`/receiving/${bill.goodsReceiptId}`);
   redirect(`/bills/${id}?posted=ok`);
 }
 
@@ -493,9 +527,13 @@ export async function voidBill(formData: FormData) {
   if (reason.length < 5) redirect(`/bills/${id}?error=voidreason`);
 
   if (bill.status === "Draft") {
-    await prisma.supplierBill.update({ where: { id }, data: { status: "Void", voidedAt: new Date(), voidedById: user.id, voidReason: reason } });
+    await prisma.$transaction(async (tx) => {
+      await tx.supplierBill.update({ where: { id }, data: { status: "Void", voidedAt: new Date(), voidedById: user.id, voidReason: reason } });
+      if (bill.goodsReceiptId) await refreshInvoiceStatus(tx, bill.goodsReceiptId);
+    });
     await logAudit({ entity: "SupplierBill", entityId: id, action: "VOIDED", detail: `${bill.billNo} (draft) voided — ${reason}`, actorName: user.name, actorEmail: user.email, companyId: company.id, reason });
     revalidatePath(`/bills/${id}`);
+    if (bill.goodsReceiptId) revalidatePath(`/receiving/${bill.goodsReceiptId}`);
     redirect(`/bills/${id}`);
   }
 
@@ -528,6 +566,7 @@ export async function voidBill(formData: FormData) {
       await tx.goodsReceipt.update({ where: { id: bill.goodsReceiptId }, data: { stockedAt: null } });
     }
     await tx.supplierBill.update({ where: { id }, data: { status: "Void", voidedAt: new Date(), voidedById: user.id, voidReason: reason } });
+    if (bill.goodsReceiptId) await refreshInvoiceStatus(tx, bill.goodsReceiptId);
   }, { timeout: 60000 });
 
   const pcs = bill.lines.reduce((s, l) => s + l.stockedBaseQty, 0);
@@ -543,5 +582,6 @@ export async function voidBill(formData: FormData) {
   });
   revalidatePath(`/bills/${id}`);
   revalidatePath("/bills");
+  if (bill.goodsReceiptId) revalidatePath(`/receiving/${bill.goodsReceiptId}`);
   redirect(`/bills/${id}`);
 }

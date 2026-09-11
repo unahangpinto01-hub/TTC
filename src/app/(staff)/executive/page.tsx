@@ -137,6 +137,13 @@ export default async function ExecutiveDashboard({
       getPayablesMetrics(f.companyIds, { from: f.from, to: f.to }),
     ]);
   const alerts = buildAlerts({ ar, stock: stockRows, forecast, customers: custRows, credits, purchasing, sales, prevSales });
+  // management attention: goods on the shelf with no supplier invoice, and invoices that disagree with the receipt
+  if (payables.unbilled.receipts > 0)
+    alerts.push({ level: payables.unbilled.over30 > 0 ? "amber" : "yellow", title: "Received but not yet billed", detail: `${payables.unbilled.receipts} receipt(s) worth ₱${payables.unbilled.value.toLocaleString("en-PH", { minimumFractionDigits: 2 })} at receiving cost have no posted supplier invoice${payables.unbilled.over30 ? ` — ${payables.unbilled.over30} older than 30 days` : ""}.`, href: "/reports/unbilled-receipts" });
+  if (payables.discrepancies.over > 0)
+    alerts.push({ level: "red", title: "Supplier invoice exceeds receipt", detail: `${payables.discrepancies.over} bill(s) claim more than was received.`, href: "/reports/invoice-discrepancies" });
+  if (payables.overdue > 0)
+    alerts.push({ level: "red", title: "Overdue supplier bills", detail: `₱${payables.overdue.toLocaleString("en-PH", { minimumFractionDigits: 2 })} on ${payables.overdueBills} bill(s) is past due.`, href: "/finance/ap" });
 
   const trendData = trend.map((m, i) => ({ ...m, prior: priorTrend[i]?.netSales ?? 0 }));
   // with no trading last year there is nothing to compare against, so the dashboard says

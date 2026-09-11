@@ -35,7 +35,7 @@ export default async function ReportsHub() {
   const DATED = new Set([
     "sales", "sales-journal", "customers", "products", "pnl", "collections", "expenses",
     "inventory-movement", "receiving", "supplier-receiving", "deliveries", "executive",
-    "payments", "refunds-credits", "purchases", "purchases-by-product", "purchases-by-supplier", "supplier-statement",
+    "payments", "refunds-credits", "purchases", "purchases-by-product", "purchases-by-supplier", "supplier-statement", "invoice-discrepancies", "po-receiving-invoice", "supplier-prices",
   ]);
 
   return (

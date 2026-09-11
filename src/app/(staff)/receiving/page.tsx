@@ -6,13 +6,15 @@ import { peso, fmtDate } from "@/lib/format";
 import { ctnValue, lineCartonSize } from "@/lib/units";
 import { PageHeader, StatusBadge } from "@/components/ui";
 import { LiveSearch } from "@/components/live-search";
+import { InvoiceBadge } from "@/components/invoice-badge";
+import { INVOICE_STATUSES } from "@/lib/bill-matching";
 
 const STATUSES = ["Draft", "Pending Inspection", "Received", "Posted", "Rejected", "Void"];
 
 export default async function ReceivingListPage({
   searchParams,
 }: {
-  searchParams: { status?: string; q?: string };
+  searchParams: { status?: string; q?: string; invoice?: string };
 }) {
   const user = await requirePerm("purchaseOrders");
   const company = await getActiveCompany(user);
@@ -20,6 +22,7 @@ export default async function ReceivingListPage({
 
   const where: any = { companyId: company.id };
   if (STATUSES.includes(searchParams.status ?? "")) where.status = searchParams.status;
+  if ((INVOICE_STATUSES as readonly string[]).includes(searchParams.invoice ?? "")) { where.status = "Posted"; where.invoiceStatus = searchParams.invoice; }
   const q = searchParams.q?.trim();
   if (q) {
     where.OR = [
@@ -63,6 +66,10 @@ export default async function ReceivingListPage({
           <option value="">All statuses</option>
           {STATUSES.map((s) => <option key={s}>{s}</option>)}
         </select>
+        <select name="invoice" defaultValue={searchParams.invoice ?? ""} className="input max-w-[210px]">
+          <option value="">Any invoice status</option>
+          {INVOICE_STATUSES.map((s) => <option key={s} value={s}>Invoice: {s}</option>)}
+        </select>
         <button className="btn-secondary" type="submit">Filter</button>
       </form>
 
@@ -79,6 +86,7 @@ export default async function ReceivingListPage({
               <th className="table-th text-right">Rejected</th>
               <th className="table-th text-right">Value</th>
               <th className="table-th">Status</th>
+              <th className="table-th">Invoice</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
@@ -119,12 +127,13 @@ export default async function ReceivingListPage({
                   </td>
                   <td className="table-td text-right">{peso(value)}</td>
                   <td className="table-td"><StatusBadge status={g.status} /></td>
+                  <td className="table-td">{g.status === "Posted" ? <InvoiceBadge status={g.invoiceStatus} /> : <span className="text-xs text-gray-300">—</span>}</td>
                 </tr>
               );
             })}
             {!receipts.length && (
               <tr>
-                <td colSpan={9} className="p-8 text-center text-sm text-gray-500">
+                <td colSpan={10} className="p-8 text-center text-sm text-gray-500">
                   No receiving transactions yet.
                   {openPOs.length > 0
                     ? " Start one from an open purchase order."

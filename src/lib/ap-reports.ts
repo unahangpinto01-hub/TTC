@@ -298,6 +298,10 @@ export async function getPurchaseBySupplier(range: Range, companyIds: string[], 
 /* ------------------------------------------------------------------ executive */
 
 export type PayablesMetrics = {
+  /** goods in stock with no posted supplier invoice — receipts, PCS and value at receiving cost */
+  unbilled: { receipts: number; pcs: number; value: number; over30: number };
+  /** live bills whose quantities disagree with their receipt */
+  discrepancies: { over: number; partial: number };
   outstanding: number;
   overdue: number;
   dueSoon: number; // due within 7 days, not yet overdue
@@ -309,12 +313,21 @@ export type PayablesMetrics = {
 
 /** The payables tile for the Executive Dashboard. */
 export async function getPayablesMetrics(companyIds: string[], range: Range): Promise<PayablesMetrics> {
-  const [aging, billed] = await Promise.all([
+  const [aging, billed, unbilled, discrepancies] = await Promise.all([
     getApAging(companyIds),
     prisma.supplierBill.aggregate({
       where: { companyId: { in: companyIds }, status: { in: LIVE_BILL_STATUSES }, billDate: { gte: range.from, lte: range.to } },
       _sum: { total: true },
     }),
+    prisma.goodsReceipt.count({ where: { companyId: { in: companyIds }, status: "Posted", invoiceStatus: { not: "Billed" } } })
+      .then(async (n) => {
+        if (!n) return { receipts: 0, pcs: 0, value: 0, over30: 0 };
+        const { getUnbilledReceipts } = await import("./purchasing-reports");
+        const u = await getUnbilledReceipts(companyIds);
+        return { receipts: u.totals.receipts, pcs: u.totals.pcs, value: u.totals.value, over30: u.totals.over30 };
+      }),
+    prisma.supplierBill.groupBy({ by: ["matchStatus"], where: { companyId: { in: companyIds }, status: { not: "Void" }, matchStatus: { in: ["Over", "Partial"] } }, _count: true })
+      .then((g) => ({ over: g.find((x) => x.matchStatus === "Over")?._count ?? 0, partial: g.find((x) => x.matchStatus === "Partial")?._count ?? 0 })),
   ]);
   const soon = Date.now() + 7 * 86400000;
   let overdue = 0, dueSoon = 0, overdueBills = 0;
@@ -328,6 +341,8 @@ export async function getPayablesMetrics(companyIds: string[], range: Range): Pr
     bySupplier.set(b.supplierId, s);
   }
   return {
+    unbilled,
+    discrepancies,
     outstanding: aging.totals.total,
     overdue,
     dueSoon,

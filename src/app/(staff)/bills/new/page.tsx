@@ -23,7 +23,7 @@ export default async function NewBillPage({ searchParams }: { searchParams: { er
   // arrived here from a receipt: offer it pre-picked (only if it is this company's, posted and unbilled)
   const preGrn = searchParams.grn
     ? await prisma.goodsReceipt.findFirst({
-        where: { id: searchParams.grn, companyId: company.id, status: "Posted", bills: { none: { status: { not: "Void" } } } },
+        where: { id: searchParams.grn, companyId: company.id, status: "Posted", invoiceStatus: { not: "Billed" } },
         select: { id: true, grnNumber: true, supplierInvoiceNo: true, purchaseOrder: { select: { poNumber: true, supplier: { select: { name: true } } } } },
       })
     : null;

@@ -19,6 +19,9 @@ export type EditorLine = {
   expDate: string;
   /** batches previously received for this product — offered as suggestions */
   batches: string[];
+  /** receipt-backed lines: what the receipt accepted and what earlier bills left to bill, in this line's unit */
+  received?: number | null;
+  remaining?: number | null;
 };
 
 type Row = EditorLine & { key: number; isNew: boolean };
@@ -42,7 +45,7 @@ export function BillEditor({
   applyVat: vat0,
 }: {
   lines: EditorLine[];
-  /** raised from a receipt: products and quantities are the receipt's and cannot change */
+  /** raised from a receipt: lines stay tied to the receipt's lines; the quantity is the invoice's own */
   locked: boolean;
   canEdit: boolean;
   companyId: string;
@@ -99,7 +102,7 @@ export function BillEditor({
               <th className="table-th text-right">Tax</th>
               <th className="table-th text-right">Amount</th>
               <th className="table-th text-right">Inventory Cost</th>
-              {editable && !locked && <th className="table-th" />}
+              {editable && <th className="table-th" />}
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
@@ -139,13 +142,18 @@ export function BillEditor({
                     )}
                   </td>
                   <td className={cell}>
-                    {editable && !locked ? (
-                      <input name="qty" type="number" min={0} value={r.qty || ""} onChange={(e) => patch(r.key, { qty: Math.max(0, Math.floor(Number(e.target.value) || 0)) })} className={`${inp} w-20`} />
-                    ) : (
+                    {editable ? (
                       <>
-                        {editable && <input type="hidden" name="qty" value={r.qty} />}
-                        <span className="font-semibold">{r.qty.toLocaleString()}</span>
+                        <input name="qty" type="number" min={0} value={r.qty || ""} onChange={(e) => patch(r.key, { qty: Math.max(0, Math.floor(Number(e.target.value) || 0)) })} className={`${inp} w-20 ${r.remaining != null && r.qty > r.remaining ? "border-red-400 bg-red-50" : ""}`} />
+                        {r.remaining != null && (
+                          <p className={`mt-0.5 whitespace-nowrap text-[10px] ${r.qty > r.remaining ? "font-semibold text-red-600" : r.qty < r.remaining ? "text-amber-700" : "text-gray-400"}`}>
+                            {r.qty > r.remaining ? `⚠ over by ${(r.qty - r.remaining).toLocaleString()}` : r.qty < r.remaining ? `${(r.remaining - r.qty).toLocaleString()} left unbilled` : "matches receipt"}
+                            <span className="block text-gray-400">received {r.received?.toLocaleString()} · to bill {r.remaining.toLocaleString()}</span>
+                          </p>
+                        )}
                       </>
+                    ) : (
+                      <span className="font-semibold">{r.qty.toLocaleString()}</span>
                     )}
                   </td>
                   <td className={cell}>
@@ -179,9 +187,9 @@ export function BillEditor({
                   <td className={`${cell} text-right text-sm ${m.taxAmount ? "" : "text-gray-300"}`}>{m.taxAmount ? peso(m.taxAmount) : "—"}</td>
                   <td className={`${cell} text-right font-semibold`}>{peso(m.amount)}</td>
                   <td className={`${cell} text-right font-semibold text-emerald-800`}>{peso(m.inventoryCost)}</td>
-                  {editable && !locked && (
+                  {editable && (
                     <td className={cell}>
-                      <button type="button" onClick={() => remove(r.key)} className="text-xs text-red-600 hover:underline" title="Remove line">✕</button>
+                      <button type="button" onClick={() => remove(r.key)} className="text-xs text-red-600 hover:underline" title={locked ? "Not on the supplier's invoice" : "Remove line"}>✕</button>
                     </td>
                   )}
                 </tr>
@@ -198,8 +206,10 @@ export function BillEditor({
       )}
       {locked && (
         <p className="mt-2 text-xs text-gray-500">
-          Products and quantities come from the receipt — they are already in stock. Enter the costs, discounts and
-          batches as billed; a quantity dispute is settled on the receipt, not here.
+          The lines are the receipt&rsquo;s — those goods are already in stock. Enter the quantities, costs, discounts and
+          batches exactly as the supplier&rsquo;s invoice shows them. A short invoice leaves the rest of the receipt to bill
+          later; an invoice claiming more than was received is flagged and needs an Admin&rsquo;s approval. The receipt itself
+          is never changed by a bill.
         </p>
       )}
 

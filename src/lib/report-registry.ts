@@ -98,6 +98,14 @@ export const REPORTS: ReportDef[] = [
     href: "/reports/purchases/by-product", desc: "Quantity bought and landed cost per product" },
   { key: "purchases-by-supplier", title: "Purchase by Supplier", module: "Purchasing", fn: "bills", exportKey: "purchases-by-supplier",
     href: "/reports/purchases/by-supplier", desc: "Purchases, VAT and outstanding balance per supplier" },
+  { key: "unbilled-receipts", title: "Received but Not Yet Billed", module: "Purchasing", fn: "bills", exportKey: "unbilled-receipts",
+    href: "/reports/unbilled-receipts", desc: "Goods in stock whose supplier invoice has not been posted, valued at receiving cost" },
+  { key: "invoice-discrepancies", title: "Supplier Invoice Discrepancies", module: "Purchasing", fn: "bills", exportKey: "invoice-discrepancies",
+    href: "/reports/invoice-discrepancies", desc: "Bills whose quantities disagree with the receipt — over-billed or short — and what was raised with the supplier" },
+  { key: "po-receiving-invoice", title: "PO vs Receiving vs Invoice", module: "Purchasing", fn: "bills", exportKey: "po-receiving-invoice",
+    href: "/reports/po-receiving-invoice", desc: "Three-way match per purchase order line: ordered, received, invoiced, and the variances" },
+  { key: "supplier-prices", title: "Supplier Price History", module: "Purchasing", fn: "purchaseOrders", exportKey: "supplier-prices",
+    href: "/reports/supplier-prices", desc: "What each supplier has charged per piece for each product over time" },
 ];
 
 export const REPORT_MODULES = ["Executive", "Sales", "Finance", "Inventory", "Purchasing"] as const;

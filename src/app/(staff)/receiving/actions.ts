@@ -370,6 +370,50 @@ export async function voidGRN(formData: FormData) {
   redirect(`/receiving/${id}`);
 }
 
+/**
+ * Mark a posted receipt as billed and settled outside the BMS — for goods received before
+ * Enter Bills existed, whose invoices were handled on paper. It then counts as Billed, drops
+ * off "Received but Not Yet Billed", and no bill is expected for it. Super Admin only, and
+ * never for a receipt that already has a bill in the system.
+ */
+export async function markReceiptBilledOutside(formData: FormData) {
+  const user = await requireStaffWrite(["SUPER_ADMIN"]);
+  const company = await getActiveCompany(user);
+  const id = String(formData.get("id"));
+  const note = String(formData.get("note") || "").trim();
+  const grn = await prisma.goodsReceipt.findUnique({ where: { id }, include: { bills: { where: { status: { not: "Void" } }, select: { id: true } } } });
+  if (!grn || grn.companyId !== company.id) redirect("/receiving");
+  if (grn.status !== "Posted" || grn.bills.length) redirect(`/receiving/${id}?error=billed`);
+  await prisma.goodsReceipt.update({ where: { id }, data: { billedOutside: true, billedOutsideNote: note || null, invoiceStatus: "Billed" } });
+  await logAudit({
+    entity: "GoodsReceipt", entityId: id, action: "BILLED_OUTSIDE",
+    detail: `${grn.grnNumber} marked as billed and settled outside the BMS${note ? ` — ${note}` : ""}`,
+    actorName: user.name, actorEmail: user.email, companyId: company.id, reason: note || undefined,
+  });
+  revalidatePath(`/receiving/${id}`);
+  redirect(`/receiving/${id}`);
+}
+
+/** The same, for every posted, unbilled receipt of the active company received up to a date — the one-time cutover. */
+export async function markReceiptsBilledOutsideBefore(formData: FormData) {
+  const user = await requireStaffWrite(["SUPER_ADMIN"]);
+  const company = await getActiveCompany(user);
+  const raw = String(formData.get("before") || "");
+  const note = String(formData.get("note") || "").trim();
+  const before = /^\d{4}-\d{2}-\d{2}$/.test(raw) ? new Date(`${raw}T23:59:59.999`) : null;
+  if (!before || note.length < 5) redirect("/reports/unbilled-receipts?error=cutover");
+  const targets = await prisma.goodsReceipt.findMany({
+    where: { companyId: company.id, status: "Posted", invoiceStatus: { not: "Billed" }, receivedDate: { lte: before }, bills: { none: { status: { not: "Void" } } } },
+    select: { id: true, grnNumber: true },
+  });
+  await prisma.goodsReceipt.updateMany({ where: { id: { in: targets.map((t) => t.id) } }, data: { billedOutside: true, billedOutsideNote: note, invoiceStatus: "Billed" } });
+  for (const t of targets) {
+    await logAudit({ entity: "GoodsReceipt", entityId: t.id, action: "BILLED_OUTSIDE", detail: `${t.grnNumber} marked as billed and settled outside the BMS (cutover up to ${raw}) — ${note}`, actorName: user.name, actorEmail: user.email, companyId: company.id, reason: note });
+  }
+  revalidatePath("/reports/unbilled-receipts");
+  redirect(`/reports/unbilled-receipts?cutover=${targets.length}`);
+}
+
 /** Close a purchase order: no further receiving, even if quantities are outstanding. */
 export async function closePO(formData: FormData) {
   const user = await requireStaffWrite(["SUPER_ADMIN", "ADMIN"]);
