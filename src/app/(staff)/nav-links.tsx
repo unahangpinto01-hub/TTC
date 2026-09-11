@@ -45,6 +45,8 @@ const NAV: { section: string; items: Item[] }[] = [
       { href: "/finance/accounts", label: "Cash / Bank Accounts", fn: "receivePayments" },
       { href: "/finance/ar", label: "AR / Aging", fn: "ar" },
       { href: "/finance/ap", label: "AP / Aging", fn: "ap" },
+      { href: "/dv", label: "Disbursement Vouchers", fn: "dv" },
+      { href: "/payments/bills", label: "Pay Bills", fn: "payBills" },
       { href: "/bills/expense", label: "Enter Bills — Non-Inventory", fn: "expenses" },
       { href: "/finance/expenses", label: "Expense Vouchers (history)", fn: "expenses" },
       { href: "/finance/ledger", label: "Ledger", fn: "ledger" },

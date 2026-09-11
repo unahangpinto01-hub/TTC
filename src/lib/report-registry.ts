@@ -76,6 +76,10 @@ export const REPORTS: ReportDef[] = [
     href: "/finance/ap", desc: "What is owed to each supplier, by days past due" },
   { key: "supplier-statement", title: "Supplier Statement", module: "Finance", fn: "ap", exportKey: "supplier-statement",
     href: "/reports/supplier-statement", desc: "Statement of account for one supplier — bills, payments and balance" },
+  { key: "supplier-payments", title: "Supplier Payments", module: "Finance", fn: "payBills", exportKey: "supplier-payments",
+    href: "/reports/supplier-payments", desc: "Every payment to a supplier in the period — account, method, cheque, voucher and bills settled" },
+  { key: "dv-register", title: "Disbursement Voucher Register", module: "Finance", fn: "dv", exportKey: "dv-register",
+    href: "/reports/dv-register", desc: "Every voucher in the period — payee, bills, amount authorised, paid, status and signatories" },
 
   // ---------------------------------------------------------------- Inventory
   { key: "merchandise-inventory", title: "Merchandise Inventory", module: "Inventory", fn: "reports", exportKey: "merchandise-inventory",

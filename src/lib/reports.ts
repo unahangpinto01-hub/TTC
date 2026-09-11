@@ -428,7 +428,7 @@ export async function getDeliveryPerformance({ from, to }: Range, companyIds: st
 
 /** Journal-style ledger entries derived from sales, purchases, expenses, collections. */
 export async function getLedger({ from, to }: Range, companyIds: string[]) {
-  const [srs, payments, expenses, poIns, bills] = await Promise.all([
+  const [srs, payments, expenses, poIns, bills, supplierPayments] = await Promise.all([
     prisma.salesReceipt.findMany({
       where: { companyId: { in: companyIds }, status: { not: "Void" }, invoiceDate: { gte: from, lte: to } },
       include: {
@@ -468,6 +468,10 @@ export async function getLedger({ from, to }: Range, companyIds: string[]) {
           },
         },
       },
+    }),
+    prisma.supplierPayment.findMany({
+      where: { companyId: { in: companyIds }, status: "Posted", date: { gte: from, lte: to } },
+      include: { supplier: { select: { name: true } }, cashAccount: { include: { glAccount: { select: { code: true, description: true } } } }, company: { select: { companyName: true, glPayables: { select: { code: true, description: true } } } }, lines: { include: { bill: { select: { billNo: true } } } } },
     }),
   ]);
   const acctOf = (a: { code: string; description: string } | null, fallback: string) => (a ? `${a.code} ${a.description}` : fallback);
@@ -522,6 +526,16 @@ export async function getLedger({ from, to }: Range, companyIds: string[]) {
       debit: "Inventory",
       credit: "Goods Received Not Billed",
       amount: round2(l.acceptedQty * l.unitCost),
+    })),
+    // a supplier payment: the payable settled, cash or bank reduced
+    ...supplierPayments.map((p) => ({
+      date: p.date,
+      company: p.company.companyName,
+      ref: p.paymentNo,
+      description: `Paid ${p.supplier.name} — ${p.lines.map((l) => l.bill.billNo).join(", ")}${p.checkNo ? ` (cheque ${p.checkNo})` : ""}`,
+      debit: acctOf(p.company.glPayables, "Accounts Payable"),
+      credit: p.cashAccount.glAccount ? `${p.cashAccount.glAccount.code} ${p.cashAccount.glAccount.description}` : p.cashAccount.name,
+      amount: round2(p.amount),
     })),
     // a posted supplier bill: the whole bill owed to the supplier; against it, the receiving
     // cost already sitting in the clearing account is cleared and only the difference (freight,

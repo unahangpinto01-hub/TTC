@@ -120,7 +120,7 @@ export async function getSupplierStatement(supplierId: string, companyIds: strin
   const bills = await prisma.supplierBill.findMany({
     where: { companyId: { in: companyIds }, supplierId, status: { in: LIVE_BILL_STATUSES }, billDate: { lte: range.to } },
     select: {
-      id: true, billNo: true, supplierInvoiceNo: true, billDate: true, dueDate: true, total: true, paidAmount: true, status: true, memo: true,
+      id: true, billNo: true, kind: true, supplierInvoiceNo: true, billDate: true, dueDate: true, total: true, paidAmount: true, status: true, memo: true,
       company: { select: { companyName: true } },
       purchaseOrder: { select: { poNumber: true } },
       goodsReceipt: { select: { grnNumber: true } },
@@ -128,28 +128,38 @@ export async function getSupplierStatement(supplierId: string, companyIds: strin
     orderBy: [{ billDate: "asc" }, { billNo: "asc" }],
   });
 
-  // payments carry no date of their own yet (Pay Bills is the next module), so what has
-  // been paid on an earlier bill is netted into the balance brought forward
+  // payments are their own dated entries; the balance brought forward is bills less payments before the period
+  const pays = await prisma.supplierPayment.findMany({
+    where: { companyId: { in: companyIds }, supplierId, status: "Posted", date: { lte: range.to } },
+    select: { id: true, paymentNo: true, date: true, amount: true, method: true, checkNo: true, refNo: true, company: { select: { companyName: true } }, dv: { select: { dvNo: true } }, lines: { select: { bill: { select: { billNo: true } } } } },
+    orderBy: [{ date: "asc" }, { paymentNo: "asc" }],
+  });
   let opening = 0;
-  const lines: StatementLine[] = [];
-  for (const b of bills) {
-    const net = round2(b.total - b.paidAmount);
-    if (b.billDate < range.from) { opening = round2(opening + net); continue; }
-  }
-  let balance = opening;
-  let charges = 0, payments = 0;
-  for (const b of bills) {
-    if (b.billDate < range.from) continue;
-    balance = round2(balance + b.total - b.paidAmount);
-    charges = round2(charges + b.total);
-    payments = round2(payments + b.paidAmount);
-    lines.push({
+  for (const b of bills) if (b.billDate < range.from) opening = round2(opening + b.total);
+  for (const p of pays) if (p.date < range.from) opening = round2(opening - p.amount);
+  type Entry = Omit<StatementLine, "balance">;
+  const entries: Entry[] = [
+    ...bills.filter((b) => b.billDate >= range.from).map((b) => ({
       date: b.billDate, billId: b.id, billNo: b.billNo, company: b.company.companyName,
       ref: [b.supplierInvoiceNo ? `Inv ${b.supplierInvoiceNo}` : "", b.purchaseOrder?.poNumber, b.goodsReceipt?.grnNumber].filter(Boolean).join(" · "),
-      description: b.memo ?? "Inventory purchase",
-      charges: b.total, payments: b.paidAmount, balance, status: b.status, dueDate: b.dueDate,
-    });
-  }
+      description: b.memo ?? (b.kind === "EXPENSE" ? "Non-inventory bill" : "Inventory purchase"),
+      charges: b.total, payments: 0, status: b.status, dueDate: b.dueDate,
+    })),
+    ...pays.filter((p) => p.date >= range.from).map((p) => ({
+      date: p.date, billId: "", billNo: p.paymentNo, company: p.company.companyName,
+      ref: [p.dv?.dvNo, p.checkNo ? `cheque ${p.checkNo}` : p.refNo].filter(Boolean).join(" · "),
+      description: `Payment — ${p.method} for ${p.lines.map((l) => l.bill.billNo).join(", ")}`,
+      charges: 0, payments: p.amount, status: "Paid", dueDate: p.date,
+    })),
+  ].sort((a, b) => a.date.getTime() - b.date.getTime());
+  let balance = opening;
+  let charges = 0, payments = 0;
+  const lines: StatementLine[] = entries.map((e) => {
+    balance = round2(balance + e.charges - e.payments);
+    charges = round2(charges + e.charges);
+    payments = round2(payments + e.payments);
+    return { ...e, balance };
+  });
   return { supplier, opening, lines, charges, payments, closing: balance };
 }
 

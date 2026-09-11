@@ -81,9 +81,9 @@ export default async function SupplierStatementPage({
                   <td />
                 </tr>
                 {st.lines.map((l) => (
-                  <tr key={l.billId} className="hover:bg-gray-50">
+                  <tr key={l.billId || l.billNo} className="hover:bg-gray-50">
                     <td className="table-td text-sm">{fmtDate(l.date)}</td>
-                    <td className="table-td"><Link href={`/bills/${l.billId}`} className="font-mono text-xs font-semibold text-emerald-700 hover:underline">{l.billNo}</Link></td>
+                    <td className="table-td">{l.billId ? <Link href={`/bills/${l.billId}`} className="font-mono text-xs font-semibold text-emerald-700 hover:underline">{l.billNo}</Link> : <span className="font-mono text-xs font-semibold text-gray-700">{l.billNo}</span>}</td>
                     {scope.combined && <td className="table-td"><CompanyTag name={l.company} /></td>}
                     <td className="table-td text-xs text-gray-600">{l.ref || "—"}</td>
                     <td className="table-td text-sm">{l.description}</td>
@@ -91,7 +91,7 @@ export default async function SupplierStatementPage({
                     <td className="table-td text-right">{peso(l.charges)}</td>
                     <td className="table-td text-right text-emerald-700">{l.payments ? peso(l.payments) : "—"}</td>
                     <td className="table-td text-right font-semibold">{peso(l.balance)}</td>
-                    <td className="table-td"><StatusBadge status={l.status} /></td>
+                    <td className="table-td">{l.billId ? <StatusBadge status={l.status} /> : <span className="text-xs text-emerald-700">payment</span>}</td>
                   </tr>
                 ))}
                 {!st.lines.length && <tr><td colSpan={scope.combined ? 10 : 9} className="p-6 text-center text-sm text-gray-500">No bills from this supplier in the period.</td></tr>}
@@ -108,8 +108,7 @@ export default async function SupplierStatementPage({
             </table>
           </div>
           <p className="mt-2 text-xs text-gray-500">
-            Charges are posted supplier bills. Payments will list by date once Pay Bills exists; until then any amount paid
-            shows against its bill.
+            Charges are posted supplier bills; payments are supplier payments recorded under Pay Bills, by date.
           </p>
         </>
       )}

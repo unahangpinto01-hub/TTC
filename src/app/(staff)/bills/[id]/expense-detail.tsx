@@ -33,6 +33,7 @@ export async function loadExpenseBill(id: string) {
       postedBy: { select: { name: true } },
       voidedBy: { select: { name: true } },
       expenseLines: { include: { glAccount: { select: { code: true, description: true } } }, orderBy: { id: "asc" } },
+      dvBills: { include: { dv: { select: { id: true, dvNo: true, status: true, date: true, amount: true } } } },
     },
   });
 }
@@ -152,6 +153,15 @@ export async function ExpenseBillDetail({ bill, user, companyName, searchParams 
             </>
           )}
         </form>
+      )}
+
+      {bill.dvBills.length > 0 && (
+        <div className="card mb-4 text-sm">
+          <p className="mb-1 font-semibold">Disbursement Vouchers</p>
+          {bill.dvBills.map((d) => (
+            <p key={d.dv.id} className="text-xs"><Link href={`/dv/${d.dv.id}`} className="font-mono font-semibold text-emerald-700 hover:underline">{d.dv.dvNo}</Link> · {fmtDate(d.dv.date)} · {d.dv.status} · authorises {peso(d.amount)} of this bill</p>
+          ))}
+        </div>
       )}
 
       <div className="grid gap-4 lg:grid-cols-2">

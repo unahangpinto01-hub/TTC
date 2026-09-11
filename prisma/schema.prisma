@@ -35,16 +35,24 @@ model User {
   recoveryCodes    RecoveryCode[]
   trustedDevices   TrustedDevice[]
   securityEvents   SecurityEvent[]
-  grnCreated       GoodsReceipt[]     @relation("GRNCreated")
-  grnPosted        GoodsReceipt[]     @relation("GRNPosted")
+  grnCreated       GoodsReceipt[]        @relation("GRNCreated")
+  grnPosted        GoodsReceipt[]        @relation("GRNPosted")
   receivedPayments ReceivePayment[]
-  rcCreated        RefundCredit[]     @relation("RCCreated")
-  rcApproved       RefundCredit[]     @relation("RCApproved")
+  rcCreated        RefundCredit[]        @relation("RCCreated")
+  rcApproved       RefundCredit[]        @relation("RCApproved")
   appSettings      AppSetting[]
   periodChanges    AccountingPeriod[]
-  billsCreated     SupplierBill[]     @relation("BillCreated")
-  billsPosted      SupplierBill[]     @relation("BillPosted")
-  billsVoided      SupplierBill[]     @relation("BillVoided")
+  billsCreated     SupplierBill[]        @relation("BillCreated")
+  billsPosted      SupplierBill[]        @relation("BillPosted")
+  billsVoided      SupplierBill[]        @relation("BillVoided")
+  dvPrepared       DisbursementVoucher[] @relation("DVPrepared")
+  dvChecked        DisbursementVoucher[] @relation("DVChecked")
+  dvApproved       DisbursementVoucher[] @relation("DVApproved")
+  dvNoted          DisbursementVoucher[] @relation("DVNoted")
+  dvPosted         DisbursementVoucher[] @relation("DVPosted")
+  dvVoided         DisbursementVoucher[] @relation("DVVoided")
+  paymentsMade     SupplierPayment[]     @relation("PaymentCreated")
+  paymentsVoided   SupplierPayment[]     @relation("PaymentVoided")
 }
 
 /// Server-side sessions: the cookie holds a random token; only its SHA-256 hash is stored.
@@ -157,6 +165,8 @@ model Supplier {
   products       Product[]
   purchaseOrders PurchaseOrder[]
   bills          SupplierBill[]
+  vouchers       DisbursementVoucher[]
+  payments       SupplierPayment[]
 }
 
 model Product {
@@ -414,8 +424,9 @@ model CashAccount {
   glAccountId    String?
   glAccount      GLAccount? @relation(fields: [glAccountId], references: [id])
 
-  payments      ReceivePayment[]
-  refundCredits RefundCredit[]
+  payments         ReceivePayment[]
+  refundCredits    RefundCredit[]
+  supplierPayments SupplierPayment[]
 }
 
 /// A provisional receipt: one customer payment, applied to one or more of that
@@ -956,6 +967,8 @@ model Company {
   expenses          Expense[]
   forecasts         Forecast[]
   bills             SupplierBill[]
+  vouchers          DisbursementVoucher[]
+  supplierPayments  SupplierPayment[]
   notifications     Notification[]
 
   @@map("CompanySetting")
@@ -1060,6 +1073,8 @@ model SupplierBill {
 
   lines        SupplierBillLine[]
   expenseLines SupplierBillExpenseLine[]
+  dvBills      DVBill[]
+  paymentLines SupplierPaymentLine[]
 
   @@unique([companyId, billNo])
   @@index([companyId, status, dueDate])
@@ -1113,6 +1128,122 @@ model SupplierBillExpenseLine {
   amount      Float
   /// input VAT on this line
   taxAmount   Float        @default(0)
+
+  @@index([billId])
+}
+
+/// Disbursement Voucher — the company's payment authorisation, one per payee, covering one or
+/// more posted supplier bills. It is a supporting document, not a second accounting entry:
+/// the bills already raised the payable, the payment will settle it. Its accounting lines
+/// are generated from those, never typed. DV-TTC-2026-000001, per company per year.
+model DisbursementVoucher {
+  id          String   @id @default(cuid())
+  companyId   String
+  company     Company  @relation(fields: [companyId], references: [id])
+  dvNo        String
+  /// the number stamped on the paper pad, when one is still used alongside
+  padRef      String?
+  supplierId  String
+  supplier    Supplier @relation(fields: [supplierId], references: [id])
+  payee       String
+  date        DateTime
+  terms       String?
+  particulars String
+  memo        String?
+  /// Draft | Prepared | Checked | Approved | Posted | Partially Paid | Paid | Void
+  status      String   @default("Draft")
+  /// Σ of the bill allocations — what this voucher authorises paying
+  amount      Float    @default(0)
+  paidAmount  Float    @default(0)
+
+  preparedById String?
+  preparedBy   User?     @relation("DVPrepared", fields: [preparedById], references: [id])
+  preparedAt   DateTime?
+  checkedById  String?
+  checkedBy    User?     @relation("DVChecked", fields: [checkedById], references: [id])
+  checkedAt    DateTime?
+  approvedById String?
+  approvedBy   User?     @relation("DVApproved", fields: [approvedById], references: [id])
+  approvedAt   DateTime?
+  notedById    String?
+  notedBy      User?     @relation("DVNoted", fields: [notedById], references: [id])
+  notedAt      DateTime?
+  postedById   String?
+  postedBy     User?     @relation("DVPosted", fields: [postedById], references: [id])
+  postedAt     DateTime?
+  voidedById   String?
+  voidedBy     User?     @relation("DVVoided", fields: [voidedById], references: [id])
+  voidedAt     DateTime?
+  voidReason   String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  bills    DVBill[]
+  payments SupplierPayment[]
+
+  @@unique([companyId, dvNo])
+  @@index([companyId, status])
+  @@index([supplierId])
+}
+
+/// How much of one bill a voucher authorises paying.
+model DVBill {
+  id     String              @id @default(cuid())
+  dvId   String
+  dv     DisbursementVoucher @relation(fields: [dvId], references: [id], onDelete: Cascade)
+  billId String
+  bill   SupplierBill        @relation(fields: [billId], references: [id])
+  amount Float
+
+  @@unique([dvId, billId])
+  @@index([billId])
+}
+
+/// A payment to a supplier — what the company actually paid, from which account, against
+/// which bills, under which voucher. Dr Accounts Payable / Cr Cash or Bank.
+/// PY-TTC-2026-000001, per company per year.
+model SupplierPayment {
+  id            String               @id @default(cuid())
+  companyId     String
+  company       Company              @relation(fields: [companyId], references: [id])
+  paymentNo     String
+  date          DateTime
+  supplierId    String
+  supplier      Supplier             @relation(fields: [supplierId], references: [id])
+  dvId          String?
+  dv            DisbursementVoucher? @relation(fields: [dvId], references: [id])
+  cashAccountId String
+  cashAccount   CashAccount          @relation(fields: [cashAccountId], references: [id])
+  method        String // Cash | Check | Bank Transfer | E-Wallet
+  checkNo       String?
+  checkDate     DateTime?
+  refNo         String?
+  amount        Float
+  remarks       String?
+  /// Posted | Void
+  status        String               @default("Posted")
+  createdById   String?
+  createdBy     User?                @relation("PaymentCreated", fields: [createdById], references: [id])
+  createdAt     DateTime             @default(now())
+  voidedById    String?
+  voidedBy      User?                @relation("PaymentVoided", fields: [voidedById], references: [id])
+  voidedAt      DateTime?
+  voidReason    String?
+
+  lines SupplierPaymentLine[]
+
+  @@unique([companyId, paymentNo])
+  @@index([supplierId, date])
+  @@index([dvId])
+}
+
+model SupplierPaymentLine {
+  id        String          @id @default(cuid())
+  paymentId String
+  payment   SupplierPayment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  billId    String
+  bill      SupplierBill    @relation(fields: [billId], references: [id])
+  amount    Float
 
   @@index([billId])
 }

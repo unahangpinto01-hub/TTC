@@ -189,6 +189,26 @@ export async function GET(req: NextRequest, { params }: { params: { entity: stri
       }));
       break;
     }
+    case "disbursement-vouchers": {
+      // open=1 → posted vouchers not yet fully paid (the Pay Bills picker)
+      const rows = await prisma.disbursementVoucher.findMany({
+        where: {
+          companyId: { in: companyIds },
+          ...(sp.get("open") === "1" ? { status: { in: ["Posted", "Partially Paid"] } } : {}),
+          ...(sp.get("supplier") ? { supplierId: sp.get("supplier")! } : {}),
+          ...(q ? { OR: [{ dvNo: starts(q) }, { padRef: starts(q) }, { payee: starts(q) }] } : {}),
+        },
+        select: { id: true, dvNo: true, payee: true, amount: true, paidAmount: true, status: true, supplierId: true },
+        orderBy: { dvNo: "desc" },
+        take: limit,
+      });
+      hits = rows.map((r) => ({
+        id: r.id, label: r.dvNo,
+        sub: `${r.payee} · ₱${(r.amount - r.paidAmount).toLocaleString("en-PH", { minimumFractionDigits: 2 })} to pay · ${r.status}`,
+        data: { supplierId: r.supplierId, payee: r.payee, toPay: Math.round((r.amount - r.paidAmount) * 100) / 100 },
+      }));
+      break;
+    }
     case "payments": {
       const rows = await prisma.receivePayment.findMany({
         where: {
