@@ -136,9 +136,10 @@ export default async function ReceivingListPage({
         </table>
       </div>
       <p className="mt-2 text-xs text-gray-500">
-        A <strong>Posted</strong> receipt confirms what arrived and updates the purchase order. The goods enter stock, at
-        the billed cost, when the supplier bill raised against the receipt is posted (Enter Bills Against Inventory).
-        Rejected or damaged quantities are recorded but never billed or stocked, and stay outstanding on the purchase order.
+        Inventory is untouched until a receipt is <strong>Posted</strong>. Only accepted quantities are added to stock,
+        at weighted average cost; rejected or damaged quantities are recorded but never stocked, and stay outstanding on
+        the purchase order. The supplier&rsquo;s payable is raised by the bill entered against the receipt (Enter Bills
+        Against Inventory), which also re-costs the goods to the billed price plus freight.
       </p>
     </div>
   );

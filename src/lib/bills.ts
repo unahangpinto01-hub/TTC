@@ -11,11 +11,12 @@ export type { LineMathIn, LineMathOut, BillMath } from "./bill-math";
  * Enter Bills Against Inventory — the rules, in one place, read by the pages, the actions,
  * the reports and the print. The arithmetic lives in bill-math.ts so the browser can share it.
  *
- * A bill is the document that both stocks the goods and raises the payable. Receiving no
- * longer touches inventory: a goods received note confirms what arrived and moves the
- * purchase order along, and the bill that follows it puts the accepted quantities into
- * stock at the billed cost — product cost plus the freight and other purchasing costs the
- * bill allocates to them — and credits the supplier for the whole amount, VAT included.
+ * A bill raises the payable and fixes the cost of the goods. Receiving is the stock event:
+ * a posted goods received note puts the accepted quantities into inventory at the receiving
+ * cost, and the bill against it re-costs those pieces to the billed price plus the freight
+ * and other purchasing costs the bill allocates to them, crediting the supplier for the
+ * whole amount, VAT included. A bill with no receipt behind it (a direct purchase, or one
+ * straight off a purchase order) stocks the goods itself, because nothing else will.
  */
 
 export const BILL_STATUSES = ["Draft", "Posted", "Partially Paid", "Paid", "Void"] as const;

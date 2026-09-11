@@ -321,16 +321,17 @@ export async function saveBill(formData: FormData) {
 }
 
 /**
- * Post the bill — the one step that moves inventory and money.
+ * Post the bill — the step that raises the payable and fixes the cost.
  *
  *   Dr Inventory           product cost + allocated freight and other costs
  *   Dr Input VAT           the VAT on the bill
  *       Cr Accounts Payable    the whole bill
  *
- * Each line goes into stock at its inventory cost per piece and folds into the product's
- * weighted average. A line billed against a receipt that had ALREADY stocked (receipts
- * posted before receiving stopped stocking) adds no quantity; instead the difference
- * between what the receipt stocked at and what the bill says re-costs the pieces on hand.
+ * A line billed against a posted receipt adds no quantity — the receipt already stocked it
+ * at the receiving cost — so the difference between that and the billed inventory cost
+ * re-costs the pieces on hand (the ledger books the receipt's amount as cleared and only the
+ * difference into inventory). A line with no receipt behind it goes into stock here, at its
+ * inventory cost per piece, and folds into the product's weighted average.
  */
 export async function postBill(formData: FormData) {
   const user = await requirePermWrite("bills");
@@ -363,6 +364,7 @@ export async function postBill(formData: FormData) {
   const { year, month } = periodOf(bill.billDate);
   const notes: string[] = [];
   let stockedPcs = 0;
+  let receiptCost = 0;
 
   try {
     await prisma.$transaction(async (tx) => {
@@ -373,8 +375,9 @@ export async function postBill(formData: FormData) {
 
         if (alreadyStocked && grnLine) {
           // the pieces are on the shelf already, valued at the receipt's cost — move them to the billed cost
-          const receiptCost = round2(grnLine.unitCost * grnLine.acceptedQty);
-          const delta = round2(line.inventoryCost - receiptCost);
+          const lineReceiptCost = round2(grnLine.unitCost * grnLine.acceptedQty);
+          receiptCost = round2(receiptCost + lineReceiptCost);
+          const delta = round2(line.inventoryCost - lineReceiptCost);
           if (Math.abs(delta) >= 0.01 && product.stockQty > 0) {
             const newAvg = Math.max(0, (product.stockQty * product.unitCost + delta) / product.stockQty);
             await tx.product.update({ where: { id: product.id }, data: { unitCost: newAvg } });
@@ -437,6 +440,7 @@ export async function postBill(formData: FormData) {
           postedById: user.id,
           accountingYear: year,
           accountingMonth: month,
+          receiptCost,
           periodReason: check.reasonRequired ? reason : null,
         },
       });
@@ -454,7 +458,7 @@ export async function postBill(formData: FormData) {
       `${bill.billNo} posted · ${periodLabel(year, month)} · Dr Inventory ₱${round2(bill.subtotal + bill.freight + bill.otherCosts).toFixed(2)}` +
       (bill.inputVat ? ` · Dr Input VAT ₱${bill.inputVat.toFixed(2)}` : "") +
       ` · Cr Accounts Payable ₱${bill.total.toFixed(2)} (${bill.supplier.name}, due ${bill.dueDate.toDateString()})` +
-      (stockedPcs ? ` · ${stockedPcs.toLocaleString()} PCS into stock` : alreadyStocked ? ` · receipt had already stocked the goods` : "") +
+      (stockedPcs ? ` · ${stockedPcs.toLocaleString()} PCS into stock` : alreadyStocked ? ` · goods already in stock from the receipt (₱${receiptCost.toFixed(2)})` : "") +
       (notes.length ? ` · ${notes.join("; ")}` : "") +
       (check.reasonRequired ? ` · prior-period adjustment: ${reason}` : ""),
     actorName: user.name,

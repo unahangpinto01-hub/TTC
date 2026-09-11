@@ -45,10 +45,10 @@ export default async function NewBillPage({ searchParams }: { searchParams: { er
         <div>
           <p className="mb-1 font-semibold">What is this bill for?</p>
           <p className="mb-3 text-xs text-gray-500">
-            Pick the posted receipt and the accepted lines are copied in — those quantities are what physically arrived,
-            so they stay as they are and only the costs can change. Pick a purchase order instead for goods that were
-            never put through Receiving, or leave both blank and add the lines yourself. The receipt or order decides
-            the supplier.
+            Pick the posted receipt and the accepted lines are copied in — those quantities are already in stock, so
+            they stay as they are and only the costs can change. Pick a purchase order instead for goods that were never
+            put through Receiving (the bill will stock them), or leave both blank and add the lines yourself. The receipt
+            or order decides the supplier.
           </p>
           <div className="grid gap-3 sm:grid-cols-2">
             <div>

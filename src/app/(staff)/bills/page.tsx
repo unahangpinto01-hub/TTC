@@ -125,9 +125,10 @@ export default async function BillsListPage({
         </table>
       </div>
       <p className="mt-2 text-xs text-gray-500">
-        A bill puts purchased goods into stock and raises the supplier&rsquo;s payable in one posting — Dr Inventory,
-        Dr Input VAT, Cr Accounts Payable. Nothing moves while it is a <strong>Draft</strong>. A posted bill is paid
-        through Pay Bills, never by editing it.
+        A bill raises the supplier&rsquo;s payable and fixes what the goods cost — Dr Inventory, Dr Input VAT, Cr Accounts
+        Payable. Goods received through Receiving are already in stock; the bill re-costs them. A bill with no receipt
+        stocks the goods itself. Nothing moves while it is a <strong>Draft</strong>. A posted bill is paid through Pay
+        Bills, never by editing it.
       </p>
     </div>
   );

@@ -412,7 +412,14 @@ export async function getLedger({ from, to }: Range, companyIds: string[]) {
     }),
     prisma.payment.findMany({ where: { date: { gte: from, lte: to }, salesReceipt: { companyId: { in: companyIds } } }, include: { salesReceipt: { include: { company: { select: { companyName: true } }, customer: true } } } }),
     prisma.expense.findMany({ where: { companyId: { in: companyIds }, date: { gte: from, lte: to } }, include: { company: { select: { companyName: true } } } }),
-    prisma.stockMovement.findMany({ where: { date: { gte: from, lte: to }, type: "IN", refType: "PO", product: { companyId: { in: companyIds } } }, include: { product: { include: { company: { select: { companyName: true } } } } } }),
+    // receipts at their RECEIVING cost — the product's current cost has since been re-costed by bills
+    prisma.gRNLine.findMany({
+      where: { acceptedQty: { gt: 0 }, goodsReceipt: { companyId: { in: companyIds }, status: "Posted", receivedDate: { gte: from, lte: to } } },
+      include: {
+        product: { select: { name: true } },
+        goodsReceipt: { select: { grnNumber: true, receivedDate: true, company: { select: { companyName: true } }, purchaseOrder: { select: { poNumber: true } } } },
+      },
+    }),
     prisma.supplierBill.findMany({
       where: { companyId: { in: companyIds }, status: { in: LIVE_BILL_STATUSES }, billDate: { gte: from, lte: to } },
       include: {
@@ -470,25 +477,35 @@ export async function getLedger({ from, to }: Range, companyIds: string[]) {
       credit: "Cash",
       amount: e.amount,
     })),
-    // receipts from before supplier bills existed stocked on posting; nothing was owed on the
-    // books until the bill, so they sit against a clearing account rather than Accounts Payable
-    ...poIns.map((m) => ({
-      date: m.date,
-      company: m.product.company.companyName,
-      ref: m.refNo ?? "PO",
-      description: `Inventory received — ${m.product.name} × ${m.qty}`,
+    // a posted receipt stocks the goods before any bill exists, so the receiving cost sits
+    // against a clearing account until the supplier bill moves it to Accounts Payable
+    ...poIns.map((l) => ({
+      date: l.goodsReceipt.receivedDate,
+      company: l.goodsReceipt.company.companyName,
+      ref: `${l.goodsReceipt.purchaseOrder.poNumber} / ${l.goodsReceipt.grnNumber}`,
+      description: `Inventory received — ${l.product.name} × ${l.acceptedBaseQty.toLocaleString()} PCS`,
       debit: "Inventory",
       credit: "Goods Received Not Billed",
-      amount: round2(m.qty * m.product.unitCost),
+      amount: round2(l.acceptedQty * l.unitCost),
     })),
-    // a posted supplier bill: inventory (product cost + allocated freight/other) and input VAT
-    // in, the whole bill owed to the supplier
+    // a posted supplier bill: the whole bill owed to the supplier; against it, the receiving
+    // cost already sitting in the clearing account is cleared and only the difference (freight,
+    // price changes) moves inventory — or, for a bill with no receipt, the full inventory cost
     ...bills.flatMap((b) => {
       const base = { date: b.billDate, company: b.company.companyName, ref: b.billNo, credit: acctOf(b.company.glPayables, "Accounts Payable") };
       const rows = [];
       const inventory = round2(b.subtotal + b.freight + b.otherCosts);
-      if (inventory !== 0)
-        rows.push({ ...base, description: `Inventory purchased — ${b.supplier.name}${b.supplierInvoiceNo ? ` (Inv ${b.supplierInvoiceNo})` : ""}`, debit: acctOf(b.company.glInventory, "Inventory"), amount: inventory });
+      const who = `${b.supplier.name}${b.supplierInvoiceNo ? ` (Inv ${b.supplierInvoiceNo})` : ""}`;
+      if (b.receiptCost > 0) {
+        rows.push({ ...base, description: `Receipt billed — ${who}`, debit: "Goods Received Not Billed", amount: round2(b.receiptCost) });
+        const diff = round2(inventory - b.receiptCost);
+        if (diff > 0)
+          rows.push({ ...base, description: `Inventory re-costed (freight, price) — ${who}`, debit: acctOf(b.company.glInventory, "Inventory"), amount: diff });
+        else if (diff < 0)
+          rows.push({ ...base, description: `Inventory re-costed (billed below receipt) — ${who}`, debit: acctOf(b.company.glPayables, "Accounts Payable"), credit: acctOf(b.company.glInventory, "Inventory"), amount: -diff });
+      } else if (inventory !== 0) {
+        rows.push({ ...base, description: `Inventory purchased — ${who}`, debit: acctOf(b.company.glInventory, "Inventory"), amount: inventory });
+      }
       if (b.inputVat !== 0)
         rows.push({ ...base, description: `Input VAT — ${b.supplier.name}`, debit: acctOf(b.company.glInputVat, "Input VAT (account not set)"), amount: round2(b.inputVat) });
       return rows;

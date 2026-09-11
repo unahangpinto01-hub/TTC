@@ -124,8 +124,9 @@ export default async function PODetailPage({ params, searchParams }: { params: {
         <div className="mt-3 flex flex-wrap items-center gap-3">
           <Link href={`/receiving/new?po=${po.id}`} className="btn-primary">📦 Receive Against This PO</Link>
           <p className="text-xs text-gray-500">
-            Opens a goods received note, so a delivery can be checked first and damaged goods recorded. Stock is added,
-            and the supplier&rsquo;s payable raised, when the bill against that receipt is posted.
+            Opens a goods received note. Stock is added only when that receipt is posted, so a delivery can be checked
+            first and damaged goods recorded without stocking them. The supplier&rsquo;s payable is raised by the bill
+            entered against the receipt.
           </p>
         </div>
       )}

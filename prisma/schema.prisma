@@ -578,10 +578,8 @@ model GoodsReceipt {
   createdBy         User?         @relation("GRNCreated", fields: [createdById], references: [id])
   voidReason        String?
   createdAt         DateTime      @default(now())
-  /// When this receipt's accepted quantities went into stock. Receiving used to stock on
-  /// posting; now the supplier bill does, so a new receipt stays null until it is billed.
-  /// Receipts posted before the change carry their posting time here, and a bill raised
-  /// against one of those re-costs the stock it already holds rather than adding to it.
+  /// When this receipt's accepted quantities went into stock — set on posting. The bill
+  /// raised against it never adds quantity again; it re-costs what is on hand.
   stockedAt         DateTime?
 
   lines GRNLine[]
@@ -1017,6 +1015,10 @@ model SupplierBill {
   inputVat        Float  @default(0)
   /// subtotal + freight + otherCosts + inputVat — what the supplier is owed
   total           Float  @default(0)
+  /// what the receipt behind this bill had already put into inventory (its accepted qty ×
+  /// receiving cost), fixed at posting. The ledger books the bill as clearing that amount
+  /// and moving only the difference into inventory. 0 for a bill that stocked the goods itself.
+  receiptCost        Float         @default(0)
   paidAmount      Float  @default(0)
 
   accountingYear  Int     @default(0)

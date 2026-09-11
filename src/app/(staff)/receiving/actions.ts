@@ -6,7 +6,7 @@ import { prisma } from "@/lib/db";
 import { requirePermWrite, requireStaffWrite } from "@/lib/auth";
 import { getActiveCompany } from "@/lib/company";
 import { nextDocNumber } from "@/lib/numbering";
-import { parseEffectiveDate } from "@/lib/stock";
+import { parseEffectiveDate, recomputeStockChain } from "@/lib/stock";
 import { notifyRole } from "@/lib/notify";
 import { logAudit } from "@/lib/salespeople";
 
@@ -215,10 +215,13 @@ export async function setGRNStatus(formData: FormData) {
 }
 
 /**
- * Post the receipt: the accepted quantities are confirmed and the purchase order's received
- * figure moves on. Stock is NOT touched here — the supplier bill raised against this receipt
- * (Enter Bills Against Inventory) is what puts the goods into inventory, at the billed cost,
- * and raises the payable in the same posting. Rejected quantities stay outstanding on the PO.
+ * Post the receipt: the step that puts the goods into inventory.
+ *
+ * Accepted quantities are added to stock at weighted average cost using the receiving cost,
+ * a stock-card entry is written against the PO and this GRN, and the PO line's received
+ * figure moves on. Rejected quantities are recorded but never added to stock. The supplier
+ * bill that follows (Enter Bills Against Inventory) raises the payable and re-costs these
+ * pieces to the billed price plus freight — it never adds quantity again.
  */
 export async function postGRN(formData: FormData) {
   const user = await requireStaffWrite(["SUPER_ADMIN", "ADMIN"]);
@@ -236,19 +239,56 @@ export async function postGRN(formData: FormData) {
   if (grn.status !== "Received") redirect(`/receiving/${id}?error=notready`);
   if (!grn.lines.some((l) => l.acceptedQty > 0)) redirect(`/receiving/${id}?error=nothing`);
 
-  await prisma.$transaction(async (tx) => {
-    for (const line of grn.lines) {
-      if (line.acceptedQty <= 0) continue;
+  const backdated = grn.receivedDate.getTime() < Date.now() - 60 * 1000;
+
+  for (const line of grn.lines) {
+    if (line.acceptedBaseQty <= 0) continue;
+    const product = line.product;
+    const basePcs = line.acceptedBaseQty;
+    const newStock = product.stockQty + basePcs;
+
+    // Weighted average cost at full precision — the actual receiving cost, not the PO's
+    const factor = line.poLine.qty > 0 ? line.poLine.baseQty / line.poLine.qty : 1;
+    const receivedCostPerPcs = line.unitCost / factor;
+    const oldQty = Math.max(0, product.stockQty);
+    const newAvgCost =
+      oldQty > 0
+        ? (oldQty * product.unitCost + basePcs * receivedCostPerPcs) / (oldQty + basePcs)
+        : receivedCostPerPcs;
+
+    await prisma.$transaction(async (tx) => {
       await tx.pOLine.update({
         where: { id: line.poLineId },
         data: { receivedQty: line.poLine.receivedQty + line.acceptedQty },
       });
-    }
-    // stockedAt stays null: the bill against this receipt is what stocks it
-    await tx.goodsReceipt.update({
-      where: { id },
-      data: { status: "Posted", postedAt: new Date(), postedById: user.id },
+      await tx.product.update({
+        where: { id: line.productId },
+        data: { stockQty: newStock, unitCost: newAvgCost },
+      });
+      await tx.stockMovement.create({
+        data: {
+          productId: line.productId,
+          type: "IN",
+          qty: basePcs,
+          balanceAfter: newStock,
+          enteredQty: line.acceptedQty,
+          enteredUnit: line.unit,
+          refType: "PO",
+          // the movement names both documents, so the stock card traces back to either
+          refNo: `${grn.purchaseOrder.poNumber} / ${grn.grnNumber}`,
+          supplierRef: grn.deliveryRefNo,
+          date: grn.receivedDate,
+          userId: user.id,
+        },
+      });
+      // a backdated receipt slots into stock-card history — rebuild every later balance
+      if (backdated) await recomputeStockChain(tx, line.productId);
     });
+  }
+
+  await prisma.goodsReceipt.update({
+    where: { id },
+    data: { status: "Posted", postedAt: new Date(), postedById: user.id, stockedAt: new Date() },
   });
 
   // PO status follows what has actually been accepted
@@ -271,7 +311,7 @@ export async function postGRN(formData: FormData) {
     entity: "GoodsReceipt",
     entityId: id,
     action: "POSTED",
-    detail: `${grn.grnNumber} posted — ${accepted} accepted${rejected ? `, ${rejected} rejected` : ""}; ${po.poNumber} is now ${fully ? "Received" : "Partially Received"}. Stock and the payable follow when the supplier bill is posted.`,
+    detail: `${grn.grnNumber} posted to inventory — ${accepted} accepted${rejected ? `, ${rejected} rejected (not stocked)` : ""}; ${po.poNumber} is now ${fully ? "Received" : "Partially Received"}. The payable follows when the supplier bill is posted.`,
     actorName: user.name,
     actorEmail: user.email,
   });
@@ -284,10 +324,9 @@ export async function postGRN(formData: FormData) {
 }
 
 /**
- * Void a receipt. A posted receipt can still be voided as long as nothing has been built on
- * it — no live bill, and its goods not yet in stock — in which case the purchase order's
- * received figures are rolled back. Once billed, the bill is what gets reversed; once
- * stocked (receipts from before bills existed), a stock adjustment is the way back.
+ * Void a receipt. A posted receipt has stocked its goods, so it cannot be voided — a stock
+ * adjustment is the way back — and a receipt with a live bill must have the bill voided
+ * first. (A posted receipt that somehow never stocked is voided with its PO figures rolled back.)
  */
 export async function voidGRN(formData: FormData) {
   const user = await requireStaffWrite(["SUPER_ADMIN", "ADMIN"]);

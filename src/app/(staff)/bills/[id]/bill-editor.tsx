@@ -198,8 +198,8 @@ export function BillEditor({
       )}
       {locked && (
         <p className="mt-2 text-xs text-gray-500">
-          Products and quantities come from the receipt — they are what physically arrived. Enter the costs, discounts
-          and batches as billed; a quantity dispute is settled on the receipt, not here.
+          Products and quantities come from the receipt — they are already in stock. Enter the costs, discounts and
+          batches as billed; a quantity dispute is settled on the receipt, not here.
         </p>
       )}
 
@@ -207,7 +207,7 @@ export function BillEditor({
         <div className="text-xs text-gray-500">
           <p>
             <span className="font-semibold text-gray-700">Inventory cost</span> = product cost + this bill&rsquo;s share of freight and other
-            purchasing costs. That is the cost each piece enters stock at and folds into the weighted average.
+            purchasing costs. That is the cost each piece is carried in stock at and folds into the weighted average.
           </p>
           <p className="mt-1">Input VAT is a claim against the BIR, not a cost of the goods — it is owed to the supplier but never enters inventory.</p>
         </div>

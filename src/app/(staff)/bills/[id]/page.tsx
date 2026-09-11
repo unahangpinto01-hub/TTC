@@ -114,7 +114,7 @@ export default async function BillDetailPage({
       )}
       {searchParams.posted === "ok" && (
         <p className="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
-          ✔ Posted. The goods are in stock at their billed cost and {peso(bill.total)} is now payable to {bill.supplier.name}, due {fmtDate(bill.dueDate)}.
+          ✔ Posted. The goods are carried at their billed cost and {peso(bill.total)} is now payable to {bill.supplier.name}, due {fmtDate(bill.dueDate)}.
         </p>
       )}
       {bill.status === "Void" && (
@@ -243,7 +243,7 @@ export default async function BillDetailPage({
                 Dr Inventory {peso(bill.subtotal + bill.freight + bill.otherCosts)}
                 {bill.inputVat ? <> · Dr Input VAT {peso(bill.inputVat)}</> : null} · Cr Accounts Payable {peso(bill.total)}.
                 {bill.goodsReceipt?.stockedAt
-                  ? " The receipt already stocked these goods, so posting re-costs the pieces on hand rather than adding to them."
+                  ? " The receipt put these goods into stock; posting re-costs the pieces on hand to the billed price and raises the payable."
                   : ` ${pcs.toLocaleString()} PCS go into stock at their inventory cost.`}
               </p>
             </form>
@@ -263,7 +263,7 @@ export default async function BillDetailPage({
               <button className="text-sm font-medium text-red-600 hover:underline" type="submit">{isDraft ? "Void" : "Reverse this bill"}</button>
               {!isDraft && (
                 <span className="text-xs text-gray-500">
-                  Takes the stock back out, cancels the payable and frees the receipt to be billed again. You will be asked to sign in again.
+                  Cancels the payable and frees the receipt to be billed again; stock added by this bill itself is taken back out. You will be asked to sign in again.
                 </span>
               )}
             </>

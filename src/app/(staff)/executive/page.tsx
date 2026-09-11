@@ -453,7 +453,7 @@ export default async function ExecutiveDashboard({
           {inventory.noConversion > 0 && <li>{inventory.noConversion} product(s) have no carton conversion, so they add nothing to the CTN totals.</li>}
           <li>
             Accounts payable comes from posted supplier bills (Enter Bills Against Inventory) and ages on each bill&rsquo;s
-            due date. Goods received but not yet billed are not a payable until the bill is posted.
+            due date. Goods received but not yet billed are in stock but not yet a payable.
           </li>
           <li>Movement is judged on the period&rsquo;s own selling rate: under two months of cover is Fast, over six is Slow.</li>
         </ul>

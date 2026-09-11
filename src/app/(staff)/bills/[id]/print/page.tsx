@@ -147,7 +147,7 @@ export default async function BillPrintPage({ params }: { params: { id: string }
           {bill.memo && <p className="mb-4 text-xs text-gray-600"><span className="font-semibold">Memo:</span> {bill.memo}</p>}
           <p className="mb-6 text-xs text-gray-500">
             Terms: {bill.terms}. On posting this bill debits Inventory for the product cost plus allocated freight and other
-            purchasing costs, debits Input VAT, and credits Accounts Payable for the total. Goods enter stock at weighted
+            purchasing costs, debits Input VAT, and credits Accounts Payable for the total. Goods are carried at weighted
             average cost. Payment is recorded separately through Pay Bills.
           </p>
 

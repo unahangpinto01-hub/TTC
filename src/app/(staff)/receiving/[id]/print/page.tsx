@@ -144,8 +144,8 @@ export default async function GRNPrintPage({ params }: { params: { id: string } 
 
           {grn.remarks && <p className="mb-4 text-xs text-gray-600"><span className="font-semibold">Remarks:</span> {grn.remarks}</p>}
           <p className="mb-6 text-xs text-gray-500">
-            Accepted quantities are confirmed here and enter stock when the supplier bill for this receipt is posted,
-            at the billed cost. Rejected or damaged quantities remain outstanding on the purchase order.
+            Accepted quantities only are taken into stock, valued at weighted average cost. Rejected or damaged
+            quantities are recorded here and remain outstanding on the purchase order.
           </p>
 
           <div className="flex border-2 border-gray-800" style={{ breakInside: "avoid", height: "1.75in" }}>
@@ -167,8 +167,7 @@ export default async function GRNPrintPage({ params }: { params: { id: string } 
           </div>
 
           <p className="mt-2 text-[10px] text-gray-400">
-            {grn.postedAt ? `Posted ${fmtDateTime(grn.postedAt)}` : "Not yet posted"}
-            {grn.stockedAt ? ` · in stock ${fmtDateTime(grn.stockedAt)}` : " · not yet billed into stock"} · printed{" "}
+            {grn.postedAt ? `Posted to inventory ${fmtDateTime(grn.postedAt)}` : "Not yet posted to inventory"} · printed{" "}
             {fmtDateTime(new Date())}
           </p>
         </div>
