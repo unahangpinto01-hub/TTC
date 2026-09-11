@@ -44,19 +44,22 @@ export const periodLabel = (year: number, month: number) => `${MONTHS[month - 1]
  * Numbers are drawn from a counter that only ever increments, so voiding or deleting a
  * voucher never releases its number for reuse.
  */
-export async function nextVoucherNo(companyId: string, voucherDate: Date): Promise<string> {
+export async function nextSeriesNo(docType: string, companyId: string, docDate: Date): Promise<string> {
   const company = await prisma.company.findUniqueOrThrow({
     where: { id: companyId },
     select: { code: true, companyName: true },
   });
-  const year = voucherDate.getFullYear();
+  const year = docDate.getFullYear();
   const counter = await prisma.documentCounter.upsert({
-    where: { docType_year_companyId: { docType: "EV", year, companyId } },
-    create: { docType: "EV", year, companyId, lastNumber: 1 },
+    where: { docType_year_companyId: { docType, year, companyId } },
+    create: { docType, year, companyId, lastNumber: 1 },
     update: { lastNumber: { increment: 1 } },
   });
-  return `EV-${companyCode(company)}-${year}-${String(counter.lastNumber).padStart(6, "0")}`;
+  return `${docType}-${companyCode(company)}-${year}-${String(counter.lastNumber).padStart(6, "0")}`;
 }
+
+/** EV-TTC-2026-000001 — the expense voucher series. Supplier bills run the same way under BL. */
+export const nextVoucherNo = (companyId: string, voucherDate: Date) => nextSeriesNo("EV", companyId, voucherDate);
 
 /** A period with no row has never been closed, so it is Open. */
 export async function periodStatus(companyId: string, year: number, month: number): Promise<PeriodStatus> {
@@ -127,6 +130,8 @@ export async function checkVoucherDate(opts: {
   voucherDate: Date;
   now?: Date;
   canPriorPeriod: boolean;
+  /** what the document is called in the messages — "voucher" unless told otherwise */
+  noun?: string;
 }): Promise<VoucherDateCheck> {
   const now = opts.now ?? new Date();
   const { year, month } = periodOf(opts.voucherDate);
@@ -145,7 +150,7 @@ export async function checkVoucherDate(opts: {
   if (!opts.canPriorPeriod) {
     return {
       ok: false,
-      why: `${periodLabel(year, month)} is locked. A voucher dated in a locked period needs Prior-Period Adjustment permission.`,
+      why: `${periodLabel(year, month)} is locked. A ${opts.noun ?? "voucher"} dated in a locked period needs Prior-Period Adjustment permission.`,
     };
   }
   return {

@@ -6,6 +6,7 @@ import { cartonBreakdown, displayCartonSize, ctnValue, lineCartonSize } from "@/
 import { getActiveCompany, allowedCompanies } from "@/lib/company";
 import { scopeIds } from "@/lib/report-scope";
 import { getReceivingReport, getPOReceivingStatus, getSupplierReceivingHistory } from "@/lib/receiving-reports";
+import { getApAging, getSupplierStatement, getPurchaseReport, getPurchaseByProduct, getPurchaseBySupplier } from "@/lib/ap-reports";
 import {
   getSalesMetrics, getArMetrics, getCollectionMetrics, getInventoryMetrics,
   getMonthlyTrend, getForecastVsActual, getCompanyComparison, previousPeriod, growthPct,
@@ -666,6 +667,102 @@ export async function GET(req: NextRequest, { params }: { params: { report: stri
           rep.totals.value, rep.totals.costVariance, ""],
       ];
       return sheetResponse(rows, "Supplier Receiving", `supplier-receiving-${tag}.xlsx`);
+    }
+    case "ap-aging": {
+      const { rows: ap, open, totals: apT } = await getApAging(scope.ids);
+      const rows: (string | number)[][] = [
+        ["AP AGING REPORT", "as of " + new Date().toISOString().slice(0, 10), scope.label],
+        [],
+        ["Supplier", ...(scope.combined ? ["Company"] : []), "Bills", "Current", "1-30", "31-60", "61-90", "90+", "Total"],
+        ...ap.map((r) => [r.supplier, ...(scope.combined ? [r.company] : []), r.bills, r.current, r.d1_30, r.d31_60, r.d61_90, r.d90plus, r.total]),
+        [],
+        ["TOTAL", ...(scope.combined ? [""] : []), apT.bills, apT.current, apT.d1_30, apT.d31_60, apT.d61_90, apT.d90plus, apT.total],
+        [],
+        ["OPEN BILLS"],
+        ["Bill No.", ...(scope.combined ? ["Company"] : []), "Supplier", "Supplier Invoice", "Bill Date", "Due Date", "Days Overdue", "Total", "Paid", "Outstanding"],
+        ...open.map((b) => [
+          b.billNo, ...(scope.combined ? [b.company] : []), b.supplier, b.supplierInvoiceNo ?? "",
+          b.billDate.toISOString().slice(0, 10), b.dueDate.toISOString().slice(0, 10), Math.max(0, b.daysOverdue), b.total, b.paid, b.outstanding,
+        ]),
+      ];
+      return sheetResponse(rows, "AP Aging", `ap-aging-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    }
+    case "supplier-statement": {
+      if (!sp.supplier) return new Response("supplier is required", { status: 400 });
+      const st = await getSupplierStatement(sp.supplier, scope.ids, range);
+      if (!st) return new Response("Unknown supplier", { status: 404 });
+      const rows: (string | number)[][] = [
+        ["SUPPLIER STATEMENT", st.supplier.name, tag, scope.label],
+        [],
+        ["Date", "Bill No.", ...(scope.combined ? ["Company"] : []), "Reference", "Description", "Due", "Charges", "Payments", "Balance", "Status"],
+        [range.from.toISOString().slice(0, 10), "", ...(scope.combined ? [""] : []), "", "Balance brought forward", "", "", "", st.opening, ""],
+        ...st.lines.map((l) => [
+          l.date.toISOString().slice(0, 10), l.billNo, ...(scope.combined ? [l.company] : []), l.ref, l.description,
+          l.dueDate.toISOString().slice(0, 10), l.charges, l.payments, l.balance, l.status,
+        ]),
+        [],
+        ["PERIOD TOTAL", "", ...(scope.combined ? [""] : []), "", "", "", st.charges, st.payments, st.closing, ""],
+      ];
+      return sheetResponse(rows, "Statement", `supplier-statement-${tag}.xlsx`);
+    }
+    case "purchases": {
+      const rep = await getPurchaseReport(range, scope.ids, { supplierId: sp.supplier || undefined, status: sp.status || undefined, q: sp.q || undefined });
+      const rows: (string | number)[][] = [
+        ["PURCHASE REPORT", tag, scope.label],
+        [],
+        ["Bill Date", "Bill No.", ...(scope.combined ? ["Company"] : []), "Supplier", "Supplier Invoice", "PO No.", "GRN No.", "Due Date", "Terms", "PCS", "CTN", "Product Cost", "Freight", "Other Costs", "Input VAT", "Total", "Paid", "Outstanding", "Status"],
+        ...rep.rows.map((x) => [
+          x.bill.billDate.toISOString().slice(0, 10), x.bill.billNo, ...(scope.combined ? [x.bill.company.companyName] : []),
+          x.bill.supplier.name, x.bill.supplierInvoiceNo ?? "", x.bill.purchaseOrder?.poNumber ?? "", x.bill.goodsReceipt?.grnNumber ?? "",
+          x.bill.dueDate.toISOString().slice(0, 10), x.bill.terms, x.pcs, Math.round(x.ctn * 100) / 100,
+          x.bill.subtotal, x.bill.freight, x.bill.otherCosts, x.bill.inputVat, x.bill.total, x.bill.paidAmount, x.outstanding, x.bill.status,
+        ]),
+        [],
+        ["TOTAL", "", ...(scope.combined ? [""] : []), "", "", "", "", "", "", rep.totals.pcs, Math.round(rep.totals.ctn * 100) / 100,
+          rep.totals.subtotal, rep.totals.freight, "", rep.totals.inputVat, rep.totals.total, rep.totals.paid, rep.totals.outstanding, ""],
+        [],
+        ["LINE DETAIL"],
+        ["Bill No.", "SKU", "Product", "Pack Size", "Batch", "Expiry", "Qty", "Unit", "PCS", "PCS per CTN", "Unit Cost", "Discount", "Amount", "Freight/Other Alloc.", "Tax", "Inventory Cost", "Cost per PC"],
+        ...rep.rows.flatMap((x) =>
+          x.bill.lines.map((l) => [
+            x.bill.billNo, l.product.sku, l.product.name, l.product.packSize, l.batchNo ?? "", l.expDate ? l.expDate.toISOString().slice(0, 10) : "",
+            l.qty, l.unit, l.baseQty, lineCartonSize(l, l.product) ?? "N/A", l.unitCost, l.discount, l.amount, l.freightAlloc, l.taxAmount, l.inventoryCost,
+            l.baseQty > 0 ? Math.round((l.inventoryCost / l.baseQty) * 10000) / 10000 : 0,
+          ])
+        ),
+      ];
+      return sheetResponse(rows, "Purchases", `purchase-report-${tag}.xlsx`);
+    }
+    case "purchases-by-product": {
+      const rep = await getPurchaseByProduct(range, scope.ids, { supplierId: sp.supplier || undefined });
+      const rows: (string | number)[][] = [
+        ["PURCHASE BY PRODUCT", tag, scope.label],
+        [],
+        ["SKU", "Product", "Pack Size", "Category", ...(scope.combined ? ["Company"] : []), "Bills", "PCS", "CTN", "Product Cost", "Freight/Other", "Landed Cost", "Avg Cost per PC", "Last Cost per PC", "Last Bought", "Suppliers"],
+        ...rep.rows.map((r) => [
+          r.sku, r.name, r.packSize, r.category, ...(scope.combined ? [r.company] : []), r.bills, r.pcs, r.ctn ?? "N/A",
+          r.productCost, r.freight, r.inventoryCost, Math.round(r.avgCostPerPcs * 10000) / 10000, Math.round(r.lastCostPerPcs * 10000) / 10000,
+          r.lastDate ? r.lastDate.toISOString().slice(0, 10) : "", r.suppliers.join(", "),
+        ]),
+        [],
+        ["TOTAL", "", "", "", ...(scope.combined ? [""] : []), "", rep.totals.pcs, "", rep.totals.productCost, rep.totals.freight, rep.totals.inventoryCost, "", "", "", ""],
+      ];
+      return sheetResponse(rows, "By Product", `purchase-by-product-${tag}.xlsx`);
+    }
+    case "purchases-by-supplier": {
+      const rep = await getPurchaseBySupplier(range, scope.ids);
+      const rows: (string | number)[][] = [
+        ["PURCHASE BY SUPPLIER", tag, scope.label],
+        [],
+        ["Supplier", ...(scope.combined ? ["Company"] : []), "Bills", "PCS", "Product Cost", "Freight/Other", "Input VAT", "Total", "Paid", "Outstanding", "Last Bill"],
+        ...rep.rows.map((r) => [
+          r.supplier, ...(scope.combined ? [r.company] : []), r.bills, r.pcs, r.subtotal, r.freight, r.inputVat, r.total, r.paid, r.outstanding,
+          r.last ? r.last.toISOString().slice(0, 10) : "",
+        ]),
+        [],
+        ["TOTAL", ...(scope.combined ? [""] : []), rep.totals.bills, rep.totals.pcs, rep.totals.subtotal, rep.totals.freight, rep.totals.inputVat, rep.totals.total, rep.totals.paid, rep.totals.outstanding, ""],
+      ];
+      return sheetResponse(rows, "By Supplier", `purchase-by-supplier-${tag}.xlsx`);
     }
     case "sales-journal": {
       const j = await getSalesJournal(range, scope.ids, {

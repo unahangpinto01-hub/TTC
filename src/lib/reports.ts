@@ -1,4 +1,5 @@
 import { prisma } from "./db";
+import { LIVE_BILL_STATUSES } from "./bills";
 import { componentsOf, sumComponents, type SalesComponents } from "./sales-components";
 import { lineCartonSize } from "./units";
 
@@ -393,7 +394,7 @@ export async function getDeliveryPerformance({ from, to }: Range, companyIds: st
 
 /** Journal-style ledger entries derived from sales, purchases, expenses, collections. */
 export async function getLedger({ from, to }: Range, companyIds: string[]) {
-  const [srs, payments, expenses, poIns] = await Promise.all([
+  const [srs, payments, expenses, poIns, bills] = await Promise.all([
     prisma.salesReceipt.findMany({
       where: { companyId: { in: companyIds }, status: { not: "Void" }, invoiceDate: { gte: from, lte: to } },
       include: {
@@ -412,7 +413,22 @@ export async function getLedger({ from, to }: Range, companyIds: string[]) {
     prisma.payment.findMany({ where: { date: { gte: from, lte: to }, salesReceipt: { companyId: { in: companyIds } } }, include: { salesReceipt: { include: { company: { select: { companyName: true } }, customer: true } } } }),
     prisma.expense.findMany({ where: { companyId: { in: companyIds }, date: { gte: from, lte: to } }, include: { company: { select: { companyName: true } } } }),
     prisma.stockMovement.findMany({ where: { date: { gte: from, lte: to }, type: "IN", refType: "PO", product: { companyId: { in: companyIds } } }, include: { product: { include: { company: { select: { companyName: true } } } } } }),
+    prisma.supplierBill.findMany({
+      where: { companyId: { in: companyIds }, status: { in: LIVE_BILL_STATUSES }, billDate: { gte: from, lte: to } },
+      include: {
+        supplier: { select: { name: true } },
+        company: {
+          select: {
+            companyName: true,
+            glInventory: { select: { code: true, description: true } },
+            glPayables: { select: { code: true, description: true } },
+            glInputVat: { select: { code: true, description: true } },
+          },
+        },
+      },
+    }),
   ]);
+  const acctOf = (a: { code: string; description: string } | null, fallback: string) => (a ? `${a.code} ${a.description}` : fallback);
   // An invoice is not one credit to "Sales": the products, the freight and any other
   // charge are different revenue and are credited to the accounts chosen on Company
   // Details. Lumping them together overstated product sales in the ledger.
@@ -454,15 +470,29 @@ export async function getLedger({ from, to }: Range, companyIds: string[]) {
       credit: "Cash",
       amount: e.amount,
     })),
+    // receipts from before supplier bills existed stocked on posting; nothing was owed on the
+    // books until the bill, so they sit against a clearing account rather than Accounts Payable
     ...poIns.map((m) => ({
       date: m.date,
       company: m.product.company.companyName,
       ref: m.refNo ?? "PO",
       description: `Inventory received — ${m.product.name} × ${m.qty}`,
       debit: "Inventory",
-      credit: "Accounts Payable",
+      credit: "Goods Received Not Billed",
       amount: round2(m.qty * m.product.unitCost),
     })),
+    // a posted supplier bill: inventory (product cost + allocated freight/other) and input VAT
+    // in, the whole bill owed to the supplier
+    ...bills.flatMap((b) => {
+      const base = { date: b.billDate, company: b.company.companyName, ref: b.billNo, credit: acctOf(b.company.glPayables, "Accounts Payable") };
+      const rows = [];
+      const inventory = round2(b.subtotal + b.freight + b.otherCosts);
+      if (inventory !== 0)
+        rows.push({ ...base, description: `Inventory purchased — ${b.supplier.name}${b.supplierInvoiceNo ? ` (Inv ${b.supplierInvoiceNo})` : ""}`, debit: acctOf(b.company.glInventory, "Inventory"), amount: inventory });
+      if (b.inputVat !== 0)
+        rows.push({ ...base, description: `Input VAT — ${b.supplier.name}`, debit: acctOf(b.company.glInputVat, "Input VAT (account not set)"), amount: round2(b.inputVat) });
+      return rows;
+    }),
   ];
   return entries.sort((a, b) => b.date.getTime() - a.date.getTime());
 }

@@ -16,6 +16,7 @@ import {
   buildAlerts, getRecentTransactions,
   previousPeriod, growthPct, type ExecFilters,
 } from "@/lib/executive";
+import { getPayablesMetrics } from "@/lib/ap-reports";
 import { SalesTrendChart, ForecastChart, CompanyBars } from "./charts";
 import {
   BreakdownTable, CustomersSection, ProductsSection, ArSection,
@@ -121,7 +122,7 @@ export default async function ExecutiveDashboard({
 
   // ---- phase 2 datasets, all narrowed by the same filters as everything above
   const measure = (MEASURES.some((m) => m.key === searchParams.measure) ? searchParams.measure : "amount") as Measure;
-  const [byProduct, byCustomer, bySalesperson, byArea, custRows, prodRows, stockRows, purchasing, credits, recent] =
+  const [byProduct, byCustomer, bySalesperson, byArea, custRows, prodRows, stockRows, purchasing, credits, recent, payables] =
     await Promise.all([
       getSalesBreakdown(f, "product"),
       getSalesBreakdown(f, "customer"),
@@ -133,6 +134,7 @@ export default async function ExecutiveDashboard({
       getPurchasingMetrics(f),
       getCreditMetrics(f),
       getRecentTransactions(f, 10),
+      getPayablesMetrics(f.companyIds, { from: f.from, to: f.to }),
     ]);
   const alerts = buildAlerts({ ar, stock: stockRows, forecast, customers: custRows, credits, purchasing, sales, prevSales });
 
@@ -419,7 +421,7 @@ export default async function ExecutiveDashboard({
 
       {/* ------------------------------------------------------------ purchasing */}
       <div className="mb-6">
-        <PurchasingSection p={purchasing} />
+        <PurchasingSection p={purchasing} payables={payables} />
       </div>
 
       {/* --------------------------------- row 6: alerts | recent transactions */}
@@ -450,8 +452,8 @@ export default async function ExecutiveDashboard({
           <li>Inventory turnover uses closing stock at weighted average cost — the system keeps one current cost per product, not a cost history.</li>
           {inventory.noConversion > 0 && <li>{inventory.noConversion} product(s) have no carton conversion, so they add nothing to the CTN totals.</li>}
           <li>
-            Accounts payable is blank because the BMS has no supplier bill — Enter Bills and Enter Bills Against
-            Inventory do not exist, so what is owed to a supplier cannot be derived from a receipt.
+            Accounts payable comes from posted supplier bills (Enter Bills Against Inventory) and ages on each bill&rsquo;s
+            due date. Goods received but not yet billed are not a payable until the bill is posted.
           </li>
           <li>Movement is judged on the period&rsquo;s own selling rate: under two months of cover is Fast, over six is Slow.</li>
         </ul>

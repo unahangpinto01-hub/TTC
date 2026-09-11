@@ -6,7 +6,7 @@ import { prisma } from "@/lib/db";
 import { requirePermWrite, requireStaffWrite } from "@/lib/auth";
 import { getActiveCompany } from "@/lib/company";
 import { nextDocNumber } from "@/lib/numbering";
-import { parseEffectiveDate, recomputeStockChain } from "@/lib/stock";
+import { parseEffectiveDate } from "@/lib/stock";
 import { notifyRole } from "@/lib/notify";
 import { logAudit } from "@/lib/salespeople";
 
@@ -215,11 +215,10 @@ export async function setGRNStatus(formData: FormData) {
 }
 
 /**
- * Post the receipt: the only step that touches inventory.
- *
- * Accepted quantities are added to stock at weighted average cost, a stock-card entry is
- * written against the PO and this GRN, and the PO line's received figure moves on.
- * Rejected quantities are recorded but never added to stock.
+ * Post the receipt: the accepted quantities are confirmed and the purchase order's received
+ * figure moves on. Stock is NOT touched here — the supplier bill raised against this receipt
+ * (Enter Bills Against Inventory) is what puts the goods into inventory, at the billed cost,
+ * and raises the payable in the same posting. Rejected quantities stay outstanding on the PO.
  */
 export async function postGRN(formData: FormData) {
   const user = await requireStaffWrite(["SUPER_ADMIN", "ADMIN"]);
@@ -237,56 +236,19 @@ export async function postGRN(formData: FormData) {
   if (grn.status !== "Received") redirect(`/receiving/${id}?error=notready`);
   if (!grn.lines.some((l) => l.acceptedQty > 0)) redirect(`/receiving/${id}?error=nothing`);
 
-  const backdated = grn.receivedDate.getTime() < Date.now() - 60 * 1000;
-
-  for (const line of grn.lines) {
-    if (line.acceptedBaseQty <= 0) continue;
-    const product = line.product;
-    const basePcs = line.acceptedBaseQty;
-    const newStock = product.stockQty + basePcs;
-
-    // Weighted average cost at full precision — the actual receiving cost, not the PO's
-    const factor = line.poLine.qty > 0 ? line.poLine.baseQty / line.poLine.qty : 1;
-    const receivedCostPerPcs = line.unitCost / factor;
-    const oldQty = Math.max(0, product.stockQty);
-    const newAvgCost =
-      oldQty > 0
-        ? (oldQty * product.unitCost + basePcs * receivedCostPerPcs) / (oldQty + basePcs)
-        : receivedCostPerPcs;
-
-    await prisma.$transaction(async (tx) => {
+  await prisma.$transaction(async (tx) => {
+    for (const line of grn.lines) {
+      if (line.acceptedQty <= 0) continue;
       await tx.pOLine.update({
         where: { id: line.poLineId },
         data: { receivedQty: line.poLine.receivedQty + line.acceptedQty },
       });
-      await tx.product.update({
-        where: { id: line.productId },
-        data: { stockQty: newStock, unitCost: newAvgCost },
-      });
-      await tx.stockMovement.create({
-        data: {
-          productId: line.productId,
-          type: "IN",
-          qty: basePcs,
-          balanceAfter: newStock,
-          enteredQty: line.acceptedQty,
-          enteredUnit: line.unit,
-          refType: "PO",
-          // the movement names both documents, so the stock card traces back to either
-          refNo: `${grn.purchaseOrder.poNumber} / ${grn.grnNumber}`,
-          supplierRef: grn.deliveryRefNo,
-          date: grn.receivedDate,
-          userId: user.id,
-        },
-      });
-      // a backdated receipt slots into stock-card history — rebuild every later balance
-      if (backdated) await recomputeStockChain(tx, line.productId);
+    }
+    // stockedAt stays null: the bill against this receipt is what stocks it
+    await tx.goodsReceipt.update({
+      where: { id },
+      data: { status: "Posted", postedAt: new Date(), postedById: user.id },
     });
-  }
-
-  await prisma.goodsReceipt.update({
-    where: { id },
-    data: { status: "Posted", postedAt: new Date(), postedById: user.id },
   });
 
   // PO status follows what has actually been accepted
@@ -309,7 +271,7 @@ export async function postGRN(formData: FormData) {
     entity: "GoodsReceipt",
     entityId: id,
     action: "POSTED",
-    detail: `${grn.grnNumber} posted to inventory — ${accepted} accepted${rejected ? `, ${rejected} rejected (not stocked)` : ""}; ${po.poNumber} is now ${fully ? "Received" : "Partially Received"}`,
+    detail: `${grn.grnNumber} posted — ${accepted} accepted${rejected ? `, ${rejected} rejected` : ""}; ${po.poNumber} is now ${fully ? "Received" : "Partially Received"}. Stock and the payable follow when the supplier bill is posted.`,
     actorName: user.name,
     actorEmail: user.email,
   });
@@ -321,19 +283,42 @@ export async function postGRN(formData: FormData) {
   redirect(`/receiving/${id}?posted=ok`);
 }
 
-/** Void a receipt. A posted one cannot be voided — reverse it with a stock adjustment. */
+/**
+ * Void a receipt. A posted receipt can still be voided as long as nothing has been built on
+ * it — no live bill, and its goods not yet in stock — in which case the purchase order's
+ * received figures are rolled back. Once billed, the bill is what gets reversed; once
+ * stocked (receipts from before bills existed), a stock adjustment is the way back.
+ */
 export async function voidGRN(formData: FormData) {
   const user = await requireStaffWrite(["SUPER_ADMIN", "ADMIN"]);
   const company = await getActiveCompany(user);
   const id = String(formData.get("id"));
   const reason = String(formData.get("voidReason") || "").trim();
 
-  const grn = await prisma.goodsReceipt.findUnique({ where: { id } });
+  const grn = await prisma.goodsReceipt.findUnique({
+    where: { id },
+    include: { lines: { include: { poLine: true } }, bills: { where: { status: { not: "Void" } }, select: { id: true } } },
+  });
   if (!grn || grn.companyId !== company.id) redirect("/receiving");
-  if (grn.status === "Posted") redirect(`/receiving/${id}?error=posted`);
+  if (grn.bills.length) redirect(`/receiving/${id}?error=billed`);
+  if (grn.status === "Posted" && grn.stockedAt) redirect(`/receiving/${id}?error=posted`);
   if (!reason) redirect(`/receiving/${id}?error=reason`);
 
-  await prisma.goodsReceipt.update({ where: { id }, data: { status: "Void", voidReason: reason } });
+  await prisma.$transaction(async (tx) => {
+    if (grn.status === "Posted") {
+      for (const line of grn.lines) {
+        if (line.acceptedQty <= 0) continue;
+        await tx.pOLine.update({ where: { id: line.poLineId }, data: { receivedQty: Math.max(0, line.poLine.receivedQty - line.acceptedQty) } });
+      }
+      const po = await tx.purchaseOrder.findUniqueOrThrow({ where: { id: grn.purchaseOrderId }, include: { lines: true } });
+      if (!["Closed", "Cancelled"].includes(po.status)) {
+        const any = po.lines.some((l) => l.receivedQty > 0);
+        const fully = po.lines.every((l) => l.receivedQty >= l.qty);
+        await tx.purchaseOrder.update({ where: { id: po.id }, data: { status: fully ? "Received" : any ? "Partially Received" : "Sent" } });
+      }
+    }
+    await tx.goodsReceipt.update({ where: { id }, data: { status: "Void", voidReason: reason } });
+  });
   await logAudit({
     entity: "GoodsReceipt",
     entityId: id,

@@ -22,7 +22,7 @@ export default async function LedgerPage({ searchParams }: { searchParams: { fro
         <div><label className="label">To</label><input type="date" name="to" defaultValue={toStr} className="input" /></div>
         <button className="btn-secondary" type="submit">Apply</button>
       </form>
-      <p className="mb-3 text-xs text-gray-500">Auto-generated entries from sales, collections, expenses, and inventory receipts.</p>
+      <p className="mb-3 text-xs text-gray-500">Auto-generated entries from sales, collections, expenses, supplier bills and inventory receipts.</p>
       <div className="card overflow-x-auto p-0">
         <table className="w-full min-w-[760px]">
           <thead className="border-b border-gray-200 bg-gray-50">

@@ -26,22 +26,25 @@ model User {
   pendingTotpSecretEnc String? // encrypted secret during enrollment, before first successful code
   twoFactorEnabledAt   DateTime?
 
-  salesOrders    SalesOrder[]
-  stockMoves     StockMovement[]
-  expenses       Expense[]
-  notifications  Notification[]
-  evaluations    Evaluation[]
-  sessions       AuthSession[]
-  recoveryCodes  RecoveryCode[]
-  trustedDevices TrustedDevice[]
-  securityEvents SecurityEvent[]
-  grnCreated     GoodsReceipt[]  @relation("GRNCreated")
-  grnPosted      GoodsReceipt[]  @relation("GRNPosted")
+  salesOrders      SalesOrder[]
+  stockMoves       StockMovement[]
+  expenses         Expense[]
+  notifications    Notification[]
+  evaluations      Evaluation[]
+  sessions         AuthSession[]
+  recoveryCodes    RecoveryCode[]
+  trustedDevices   TrustedDevice[]
+  securityEvents   SecurityEvent[]
+  grnCreated       GoodsReceipt[]     @relation("GRNCreated")
+  grnPosted        GoodsReceipt[]     @relation("GRNPosted")
   receivedPayments ReceivePayment[]
-  rcCreated      RefundCredit[]  @relation("RCCreated")
-  rcApproved     RefundCredit[]  @relation("RCApproved")
-  appSettings    AppSetting[]
-  periodChanges  AccountingPeriod[]
+  rcCreated        RefundCredit[]     @relation("RCCreated")
+  rcApproved       RefundCredit[]     @relation("RCApproved")
+  appSettings      AppSetting[]
+  periodChanges    AccountingPeriod[]
+  billsCreated     SupplierBill[]     @relation("BillCreated")
+  billsPosted      SupplierBill[]     @relation("BillPosted")
+  billsVoided      SupplierBill[]     @relation("BillVoided")
 }
 
 /// Server-side sessions: the cookie holds a random token; only its SHA-256 hash is stored.
@@ -153,6 +156,7 @@ model Supplier {
 
   products       Product[]
   purchaseOrders PurchaseOrder[]
+  bills          SupplierBill[]
 }
 
 model Product {
@@ -192,6 +196,7 @@ model Product {
   grnLines           GRNLine[]
   forecastLines      ForecastLine[]
   refundCreditLines  RefundCreditLine[]
+  billLines          SupplierBillLine[]
 
   @@unique([companyId, sku])
 }
@@ -398,16 +403,16 @@ model Payment {
 /// A cash or bank account per company — a simple register with a running balance,
 /// deliberately not a general ledger. Posted customer payments flow in here.
 model CashAccount {
-  id             String  @id @default(cuid())
+  id             String     @id @default(cuid())
   companyId      String
-  company        Company @relation(fields: [companyId], references: [id])
+  company        Company    @relation(fields: [companyId], references: [id])
   name           String // e.g. Cash on Hand, BDO Checking #1234
-  type           String  @default("Cash") // Cash | Bank | E-Wallet
-  openingBalance Float   @default(0)
-  status         String  @default("Active")
+  type           String     @default("Cash") // Cash | Bank | E-Wallet
+  openingBalance Float      @default(0)
+  status         String     @default("Active")
   // which Chart of Accounts entry this physical account books to
-  glAccountId String?
-  glAccount   GLAccount? @relation(fields: [glAccountId], references: [id])
+  glAccountId    String?
+  glAccount      GLAccount? @relation(fields: [glAccountId], references: [id])
 
   payments      ReceivePayment[]
   refundCredits RefundCredit[]
@@ -447,39 +452,39 @@ model ReceivePayment {
 /// a Refund pays money back out. Draft → Pending Approval → Approved → Posted,
 /// plus Rejected and Void. Only Posted documents touch AR, credit, cash or stock.
 model RefundCredit {
-  id             String        @id @default(cuid())
-  companyId      String
-  company        Company       @relation(fields: [companyId], references: [id])
-  rcNumber       String // CM-2026-00001 (credit) or RF-2026-00001 (refund), per company
-  type           String // Credit | Refund
-  customerId     String
-  customer       Customer      @relation(fields: [customerId], references: [id])
-  salesReceiptId String? // the related invoice, when there is one
-  salesReceipt   SalesReceipt? @relation(fields: [salesReceiptId], references: [id])
-  date           DateTime      @default(now())
-  reason         String // Sales Return | Overpayment | Pricing Adjustment | Damaged Product | Incorrect Billing | Others
-  remarks        String
-  amount         Float // from the item lines, or typed directly for an amount-only document
-  status         String        @default("Draft") // Draft | Pending Approval | Approved | Posted | Rejected | Void
-  voidReason     String?
-  createdById    String?
-  createdBy      User?         @relation("RCCreated", fields: [createdById], references: [id])
-  approvedById   String?
-  approvedBy     User?         @relation("RCApproved", fields: [approvedById], references: [id])
+  id              String          @id @default(cuid())
+  companyId       String
+  company         Company         @relation(fields: [companyId], references: [id])
+  rcNumber        String // CM-2026-00001 (credit) or RF-2026-00001 (refund), per company
+  type            String // Credit | Refund
+  customerId      String
+  customer        Customer        @relation(fields: [customerId], references: [id])
+  salesReceiptId  String? // the related invoice, when there is one
+  salesReceipt    SalesReceipt?   @relation(fields: [salesReceiptId], references: [id])
+  date            DateTime        @default(now())
+  reason          String // Sales Return | Overpayment | Pricing Adjustment | Damaged Product | Incorrect Billing | Others
+  remarks         String
+  amount          Float // from the item lines, or typed directly for an amount-only document
+  status          String          @default("Draft") // Draft | Pending Approval | Approved | Posted | Rejected | Void
+  voidReason      String?
+  createdById     String?
+  createdBy       User?           @relation("RCCreated", fields: [createdById], references: [id])
+  approvedById    String?
+  approvedBy      User?           @relation("RCApproved", fields: [approvedById], references: [id])
   // refund payout, recorded when the refund is posted
-  refundMethod   String?
-  refundRefNo    String?
-  refundDate     DateTime?
-  cashAccountId  String?
-  cashAccount    CashAccount?  @relation(fields: [cashAccountId], references: [id])
+  refundMethod    String?
+  refundRefNo     String?
+  refundDate      DateTime?
+  cashAccountId   String?
+  cashAccount     CashAccount?    @relation(fields: [cashAccountId], references: [id])
   // a refund of an overpayment draws down that payment's unapplied credit …
   sourcePaymentId String?
   sourcePayment   ReceivePayment? @relation(fields: [sourcePaymentId], references: [id])
   // … or the remaining balance of an earlier credit memo
-  sourceCreditId String?
-  sourceCredit   RefundCredit?  @relation("RefundOfCredit", fields: [sourceCreditId], references: [id])
-  refundsDrawn   RefundCredit[] @relation("RefundOfCredit")
-  createdAt      DateTime      @default(now())
+  sourceCreditId  String?
+  sourceCredit    RefundCredit?   @relation("RefundOfCredit", fields: [sourceCreditId], references: [id])
+  refundsDrawn    RefundCredit[]  @relation("RefundOfCredit")
+  createdAt       DateTime        @default(now())
 
   lines        RefundCreditLine[]
   applications CreditApplication[]
@@ -542,6 +547,7 @@ model PurchaseOrder {
 
   lines         POLine[]
   goodsReceipts GoodsReceipt[]
+  bills         SupplierBill[]
 
   @@unique([companyId, poNumber])
 }
@@ -572,8 +578,14 @@ model GoodsReceipt {
   createdBy         User?         @relation("GRNCreated", fields: [createdById], references: [id])
   voidReason        String?
   createdAt         DateTime      @default(now())
+  /// When this receipt's accepted quantities went into stock. Receiving used to stock on
+  /// posting; now the supplier bill does, so a new receipt stays null until it is billed.
+  /// Receipts posted before the change carry their posting time here, and a bill raised
+  /// against one of those re-costs the stock it already holds rather than adding to it.
+  stockedAt         DateTime?
 
   lines GRNLine[]
+  bills SupplierBill[]
 
   @@unique([companyId, grnNumber])
   @@index([purchaseOrderId])
@@ -640,23 +652,23 @@ model Expense {
   user      User?    @relation(fields: [userId], references: [id])
 
   /// EV-TTC-2026-000001 — unique per company, never reused
-  voucherNo      String?
+  voucherNo       String?
   /// drives the number series, the accounting year and the accounting period
-  voucherDate    DateTime @default(now())
+  voucherDate     DateTime   @default(now())
   /// when the document reached the company
-  receivedDate   DateTime?
-  payee          String?
+  receivedDate    DateTime?
+  payee           String?
   /// derived from voucherDate and stored so reports can group and index on them
-  accountingYear  Int @default(0)
-  accountingMonth Int @default(0)
+  accountingYear  Int        @default(0)
+  accountingMonth Int        @default(0)
   /// true when the voucher was encoded in a later calendar year than it is dated —
   /// the year-end cutoff case, called out in the audit trail
-  priorYearEntry Boolean  @default(false)
+  priorYearEntry  Boolean    @default(false)
   /// ENCODED DATE/TIME
-  createdAt      DateTime @default(now())
+  createdAt       DateTime   @default(now())
   // which GL account this expense books to — picked from the Chart of Accounts
-  glAccountId String?
-  glAccount   GLAccount? @relation(fields: [glAccountId], references: [id])
+  glAccountId     String?
+  glAccount       GLAccount? @relation(fields: [glAccountId], references: [id])
 
   @@unique([companyId, voucherNo])
   @@index([companyId, accountingYear, accountingMonth])
@@ -665,16 +677,16 @@ model Expense {
 /// Accounting period control, one row per company/year/month that has been moved off Open.
 /// A period with no row is Open — periods are not created in advance, they are only closed.
 model AccountingPeriod {
-  id         String   @id @default(cuid())
-  companyId  String
-  company    Company  @relation(fields: [companyId], references: [id])
-  year       Int
-  month      Int // 1-12
-  status     String   @default("Open") // Open | Closing | Locked
-  note       String?
+  id          String   @id @default(cuid())
+  companyId   String
+  company     Company  @relation(fields: [companyId], references: [id])
+  year        Int
+  month       Int // 1-12
+  status      String   @default("Open") // Open | Closing | Locked
+  note        String?
   changedById String?
-  changedBy   User?   @relation(fields: [changedById], references: [id])
-  updatedAt  DateTime @updatedAt
+  changedBy   User?    @relation(fields: [changedById], references: [id])
+  updatedAt   DateTime @updatedAt
 
   @@unique([companyId, year, month])
 }
@@ -698,9 +710,12 @@ model GLAccount {
 
   cashAccounts CashAccount[]
   expenses     Expense[]
-  salesFor     Company[] @relation("GLSales")
-  freightFor   Company[] @relation("GLFreight")
-  otherFor     Company[] @relation("GLOther")
+  salesFor     Company[]     @relation("GLSales")
+  freightFor   Company[]     @relation("GLFreight")
+  otherFor     Company[]     @relation("GLOther")
+  inventoryFor Company[]     @relation("GLInventory")
+  payablesFor  Company[]     @relation("GLPayables")
+  inputVatFor  Company[]     @relation("GLInputVat")
 }
 
 model Employee {
@@ -877,31 +892,31 @@ model AuditLog {
 /// Company master (one row per company). Mapped onto the original CompanySetting table so the
 /// existing Teamagro row (details, logo, print matrix) is preserved unchanged. Never hard-code names.
 model Company {
-  id                  String    @id @default(cuid())
-  companyName         String    @default("")
+  id                  String     @id @default(cuid())
+  companyName         String     @default("")
   /// Short code used inside document numbers (EV-TTC-2026-000001). Set on Company Details;
   /// falls back to the first letters of the name only when it has never been filled in.
-  code                String    @default("")
-  address             String    @default("Philippines")
-  mobileNo            String    @default("")
-  telephoneNo         String    @default("")
-  email               String    @default("")
-  tin                 String    @default("000-000-000-000")
-  sssNo               String    @default("")
-  phicNo              String    @default("")
-  hdmfNo              String    @default("")
+  code                String     @default("")
+  address             String     @default("Philippines")
+  mobileNo            String     @default("")
+  telephoneNo         String     @default("")
+  email               String     @default("")
+  tin                 String     @default("000-000-000-000")
+  sssNo               String     @default("")
+  phicNo              String     @default("")
+  hdmfNo              String     @default("")
   logoDataUrl         String? // 160x160 image stored inline (no persistent disk on the host)
   printVisibilityJson String? // {docType: {field: bool}} — which details print on which document
-  status              String    @default("Active") // Active | Inactive
-  isPrimary           Boolean   @default(false) // primary company owns employees/HR/payroll and the dealer portal
+  status              String     @default("Active") // Active | Inactive
+  isPrimary           Boolean    @default(false) // primary company owns employees/HR/payroll and the dealer portal
   // who signs this company's delivery receipts by default — employee links, never names,
   // so a rename in HR flows through and no signatory is hard-coded in a template
   drPreparedById      String?
-  drPreparedBy        Employee? @relation("DRDefaultPrepared", fields: [drPreparedById], references: [id])
+  drPreparedBy        Employee?  @relation("DRDefaultPrepared", fields: [drPreparedById], references: [id])
   drCheckedById       String?
-  drCheckedBy         Employee? @relation("DRDefaultChecked", fields: [drCheckedById], references: [id])
+  drCheckedBy         Employee?  @relation("DRDefaultChecked", fields: [drCheckedById], references: [id])
   drApprovedById      String?
-  drApprovedBy        Employee? @relation("DRDefaultApproved", fields: [drApprovedById], references: [id])
+  drApprovedBy        Employee?  @relation("DRDefaultApproved", fields: [drApprovedById], references: [id])
   // which Chart of Accounts entry each billing component credits — picked, never hard-coded,
   // so freight income stops being lumped into product sales in the ledger
   glSalesId           String?
@@ -910,23 +925,31 @@ model Company {
   glFreight           GLAccount? @relation("GLFreight", fields: [glFreightId], references: [id])
   glOtherId           String?
   glOther             GLAccount? @relation("GLOther", fields: [glOtherId], references: [id])
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
+  // and which entries a posted supplier bill moves — inventory in, the payable, input VAT
+  glInventoryId       String?
+  glInventory         GLAccount? @relation("GLInventory", fields: [glInventoryId], references: [id])
+  glPayablesId        String?
+  glPayables          GLAccount? @relation("GLPayables", fields: [glPayablesId], references: [id])
+  glInputVatId        String?
+  glInputVat          GLAccount? @relation("GLInputVat", fields: [glInputVatId], references: [id])
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
 
-  products         Product[]
+  products          Product[]
   accountingPeriods AccountingPeriod[]
-  incomingOrders   IncomingOrder[]
-  salesOrders      SalesOrder[]
-  deliveryReceipts DeliveryReceipt[]
-  salesReceipts    SalesReceipt[]
-  purchaseOrders   PurchaseOrder[]
-  goodsReceipts    GoodsReceipt[]
-  cashAccounts     CashAccount[]
-  receivePayments  ReceivePayment[]
-  refundCredits    RefundCredit[]
-  expenses         Expense[]
-  forecasts        Forecast[]
-  notifications    Notification[]
+  incomingOrders    IncomingOrder[]
+  salesOrders       SalesOrder[]
+  deliveryReceipts  DeliveryReceipt[]
+  salesReceipts     SalesReceipt[]
+  purchaseOrders    PurchaseOrder[]
+  goodsReceipts     GoodsReceipt[]
+  cashAccounts      CashAccount[]
+  receivePayments   ReceivePayment[]
+  refundCredits     RefundCredit[]
+  expenses          Expense[]
+  forecasts         Forecast[]
+  bills             SupplierBill[]
+  notifications     Notification[]
 
   @@map("CompanySetting")
 }
@@ -948,4 +971,109 @@ model DocumentCounter {
   lastNumber Int    @default(0)
 
   @@id([docType, year, companyId])
+}
+
+/// A supplier bill for inventory — Enter Bills Against Inventory.
+///
+/// This is the document that puts purchased goods into stock and raises the payable, in one
+/// posting: Dr Inventory (product cost + allocated freight and other costs) / Dr Input VAT /
+/// Cr Accounts Payable. A Draft touches nothing. The bill date decides the accounting period
+/// and the number series (BL-TTC-2026-000001), the same rule the expense voucher follows.
+///
+/// Money on the header is stored, not recomputed, so a printed bill never drifts from what
+/// was posted. `paidAmount` is maintained by the Pay Bills transaction.
+model SupplierBill {
+  id                 String         @id @default(cuid())
+  companyId          String
+  company            Company        @relation(fields: [companyId], references: [id])
+  billNo             String // unique per company (@@unique below)
+  supplierId         String
+  supplier           Supplier       @relation(fields: [supplierId], references: [id])
+  supplierInvoiceNo  String?
+  /// the supplier issued no invoice number (or it is not yet known) — required to post without one
+  invoiceUnavailable Boolean        @default(false)
+  billDate           DateTime
+  dueDate            DateTime
+  /// e.g. "30 days", "COD" — the label the due date was computed from
+  terms              String         @default("30 days")
+  purchaseOrderId    String?
+  purchaseOrder      PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id])
+  goodsReceiptId     String?
+  goodsReceipt       GoodsReceipt?  @relation(fields: [goodsReceiptId], references: [id])
+  memo               String?
+  /// Draft | Posted | Partially Paid | Paid | Void
+  status             String         @default("Draft")
+
+  /// Σ line amounts (qty × unit cost − discount), before freight, other costs and VAT
+  subtotal        Float  @default(0)
+  /// freight billed by this supplier, allocated across the lines into inventory cost
+  freight         Float  @default(0)
+  /// other directly attributable purchasing costs, allocated the same way
+  otherCosts      Float  @default(0)
+  /// "value" (by line amount, default) or "qty" (by pieces)
+  allocationBasis String @default("value")
+  /// 0 or 0.12 — input VAT is a receivable from the BIR, never part of inventory cost
+  vatRate         Float  @default(0)
+  inputVat        Float  @default(0)
+  /// subtotal + freight + otherCosts + inputVat — what the supplier is owed
+  total           Float  @default(0)
+  paidAmount      Float  @default(0)
+
+  accountingYear  Int     @default(0)
+  accountingMonth Int     @default(0)
+  /// the reason given when posting into a locked period (prior-period adjustment)
+  periodReason    String?
+
+  createdById String?
+  createdBy   User?     @relation("BillCreated", fields: [createdById], references: [id])
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  postedById  String?
+  postedBy    User?     @relation("BillPosted", fields: [postedById], references: [id])
+  postedAt    DateTime?
+  voidedById  String?
+  voidedBy    User?     @relation("BillVoided", fields: [voidedById], references: [id])
+  voidedAt    DateTime?
+  voidReason  String?
+
+  lines SupplierBillLine[]
+
+  @@unique([companyId, billNo])
+  @@index([companyId, status, dueDate])
+  @@index([supplierId, supplierInvoiceNo])
+  @@index([goodsReceiptId])
+}
+
+model SupplierBillLine {
+  id             String       @id @default(cuid())
+  billId         String
+  bill           SupplierBill @relation(fields: [billId], references: [id], onDelete: Cascade)
+  productId      String
+  product        Product      @relation(fields: [productId], references: [id])
+  /// the receiving / order line this bills, when the bill was raised from one
+  grnLineId      String?
+  poLineId       String?
+  batchNo        String?
+  expDate        DateTime?
+  /// qty is in `unit`; baseQty is the same in PCS (the inventory unit)
+  qty            Int
+  unit           String       @default("PCS")
+  baseQty        Int          @default(0)
+  /// cost per `unit`, before discount
+  unitCost       Float
+  /// amount taken off this line
+  discount       Float        @default(0)
+  /// qty × unitCost − discount: the product cost, ex-VAT
+  amount         Float        @default(0)
+  /// this line's share of freight + other costs
+  freightAlloc   Float        @default(0)
+  /// input VAT on this line
+  taxAmount      Float        @default(0)
+  /// amount + freightAlloc — what went into inventory for this line
+  inventoryCost  Float        @default(0)
+  /// PCS this line actually added to stock when the bill was posted (0 when the receipt had already stocked them)
+  stockedBaseQty Int          @default(0)
+
+  @@index([billId])
+  @@index([productId])
 }

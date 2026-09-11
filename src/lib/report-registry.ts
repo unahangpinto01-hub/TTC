@@ -72,6 +72,10 @@ export const REPORTS: ReportDef[] = [
     href: "/reports/refunds-credits", desc: "Credit memos and customer refunds raised in the period" },
   { key: "expenses", title: "Expense Report", module: "Finance", fn: "expenses", exportKey: "expenses",
     href: "/finance/expenses", desc: "By category with detail listing" },
+  { key: "ap-aging", title: "AP Aging", module: "Finance", fn: "ap", exportKey: "ap-aging",
+    href: "/finance/ap", desc: "What is owed to each supplier, by days past due" },
+  { key: "supplier-statement", title: "Supplier Statement", module: "Finance", fn: "ap", exportKey: "supplier-statement",
+    href: "/reports/supplier-statement", desc: "Statement of account for one supplier — bills, payments and balance" },
 
   // ---------------------------------------------------------------- Inventory
   { key: "merchandise-inventory", title: "Merchandise Inventory", module: "Inventory", fn: "reports", exportKey: "merchandise-inventory",
@@ -88,6 +92,12 @@ export const REPORTS: ReportDef[] = [
     href: "/reports/po-receiving", desc: "Ordered against received for every purchase order" },
   { key: "supplier-receiving", title: "Supplier Receiving History", module: "Purchasing", fn: "purchaseOrders", exportKey: "supplier-receiving",
     href: "/reports/supplier-receiving", desc: "What each supplier delivered, reject rate and cost variance" },
+  { key: "purchases", title: "Purchase Report", module: "Purchasing", fn: "bills", exportKey: "purchases",
+    href: "/reports/purchases", desc: "Every posted supplier bill in the period — product cost, freight, VAT and what is still owed" },
+  { key: "purchases-by-product", title: "Purchase by Product", module: "Purchasing", fn: "bills", exportKey: "purchases-by-product",
+    href: "/reports/purchases/by-product", desc: "Quantity bought and landed cost per product" },
+  { key: "purchases-by-supplier", title: "Purchase by Supplier", module: "Purchasing", fn: "bills", exportKey: "purchases-by-supplier",
+    href: "/reports/purchases/by-supplier", desc: "Purchases, VAT and outstanding balance per supplier" },
 ];
 
 export const REPORT_MODULES = ["Executive", "Sales", "Finance", "Inventory", "Purchasing"] as const;

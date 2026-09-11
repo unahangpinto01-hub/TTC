@@ -18,6 +18,7 @@ export default async function PODetailPage({ params, searchParams }: { params: {
       supplier: true,
       lines: { include: { product: true } },
       goodsReceipts: { include: { lines: true }, orderBy: { receivedDate: "desc" } },
+      bills: { select: { id: true, billNo: true, billDate: true, status: true, total: true, goodsReceipt: { select: { grnNumber: true } } }, orderBy: { billDate: "desc" } },
     },
   });
   if (!po || po.companyId !== company.id) notFound(); // company isolation
@@ -123,8 +124,8 @@ export default async function PODetailPage({ params, searchParams }: { params: {
         <div className="mt-3 flex flex-wrap items-center gap-3">
           <Link href={`/receiving/new?po=${po.id}`} className="btn-primary">📦 Receive Against This PO</Link>
           <p className="text-xs text-gray-500">
-            Opens a goods received note. Stock is added only when that receipt is posted, so a delivery can be checked
-            first and damaged goods recorded without stocking them.
+            Opens a goods received note, so a delivery can be checked first and damaged goods recorded. Stock is added,
+            and the supplier&rsquo;s payable raised, when the bill against that receipt is posted.
           </p>
         </div>
       )}
@@ -157,6 +158,36 @@ export default async function PODetailPage({ params, searchParams }: { params: {
                     <td className="table-td text-right">{g.lines.reduce((s, l) => s + l.acceptedQty, 0).toLocaleString()}</td>
                     <td className="table-td text-right text-red-600">{g.lines.reduce((s, l) => s + l.rejectedQty, 0) || "—"}</td>
                     <td className="table-td"><StatusBadge status={g.status} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {po.bills.length > 0 && (
+        <div className="mt-4">
+          <h2 className="mb-2 font-semibold">Supplier Bills</h2>
+          <div className="card overflow-x-auto p-0">
+            <table className="w-full min-w-[520px]">
+              <thead className="border-b border-gray-200 bg-gray-50">
+                <tr>
+                  <th className="table-th">Bill #</th>
+                  <th className="table-th">Date</th>
+                  <th className="table-th">Receipt</th>
+                  <th className="table-th text-right">Total</th>
+                  <th className="table-th">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {po.bills.map((b) => (
+                  <tr key={b.id} className={b.status === "Void" ? "opacity-50" : ""}>
+                    <td className="table-td"><Link href={`/bills/${b.id}`} className="font-mono text-xs font-semibold text-emerald-700 hover:underline">{b.billNo}</Link></td>
+                    <td className="table-td text-sm">{fmtDate(b.billDate)}</td>
+                    <td className="table-td font-mono text-xs text-gray-600">{b.goodsReceipt?.grnNumber ?? "direct"}</td>
+                    <td className="table-td text-right">{peso(b.total)}</td>
+                    <td className="table-td"><StatusBadge status={b.status} /></td>
                   </tr>
                 ))}
               </tbody>

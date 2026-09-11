@@ -150,6 +150,9 @@ export async function GET(req: NextRequest, { params }: { params: { entity: stri
           companyId: { in: companyIds },
           // open=1 → only POs still expecting goods (the Receive Inventory picker)
           ...(sp.get("open") === "1" ? { status: { in: ["Sent", "Partially Received"] } } : {}),
+          // billable=1 → orders a bill may reference: anything sent to the supplier
+          ...(sp.get("billable") === "1" ? { status: { notIn: ["Draft", "Cancelled"] } } : {}),
+          ...(sp.get("supplier") ? { supplierId: sp.get("supplier")! } : {}),
           ...(q ? { poNumber: starts(q) } : {}),
         },
         select: { id: true, poNumber: true, status: true, supplier: { select: { name: true } } },
@@ -157,6 +160,33 @@ export async function GET(req: NextRequest, { params }: { params: { entity: stri
         take: limit,
       });
       hits = rows.map((r) => ({ id: r.id, label: r.poNumber, sub: `${r.supplier?.name ?? ""} · ${r.status}` }));
+      break;
+    }
+    case "goods-receipts": {
+      // billable=1 → posted receipts that no live bill has claimed yet (the Enter Bills picker);
+      // supplier narrows to one supplier's receipts so a bill cannot be raised against another's goods
+      const rows = await prisma.goodsReceipt.findMany({
+        where: {
+          companyId: { in: companyIds },
+          ...(sp.get("billable") === "1"
+            ? { status: "Posted", bills: { none: { status: { not: "Void" } } } }
+            : {}),
+          ...(sp.get("supplier") ? { purchaseOrder: { supplierId: sp.get("supplier")! } } : {}),
+          ...(q ? { OR: [{ grnNumber: starts(q) }, { deliveryRefNo: starts(q) }, { purchaseOrder: { poNumber: starts(q) } }] } : {}),
+        },
+        select: {
+          id: true, grnNumber: true, status: true, receivedDate: true, deliveryRefNo: true, supplierInvoiceNo: true,
+          purchaseOrder: { select: { id: true, poNumber: true, supplierId: true, supplier: { select: { name: true } } } },
+        },
+        orderBy: { grnNumber: "desc" },
+        take: limit,
+      });
+      hits = rows.map((r) => ({
+        id: r.id,
+        label: r.grnNumber,
+        sub: [r.purchaseOrder.supplier.name, r.purchaseOrder.poNumber, r.deliveryRefNo ? `DR ${r.deliveryRefNo}` : "", r.receivedDate.toISOString().slice(0, 10)].filter(Boolean).join(" · "),
+        data: { poId: r.purchaseOrder.id, poNumber: r.purchaseOrder.poNumber, supplierId: r.purchaseOrder.supplierId, supplierInvoiceNo: r.supplierInvoiceNo },
+      }));
       break;
     }
     case "payments": {

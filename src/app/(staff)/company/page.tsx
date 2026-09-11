@@ -17,6 +17,12 @@ export default async function CompanyPage({ searchParams }: { searchParams: { sa
     orderBy: { code: "asc" },
     select: { id: true, code: true, description: true },
   });
+  // balance-sheet accounts for what a supplier bill moves — inventory, the payable, input VAT
+  const bsAccounts = await prisma.gLAccount.findMany({
+    where: { status: "Active", statement: "BS" },
+    orderBy: { code: "asc" },
+    select: { id: true, code: true, description: true },
+  });
   const staff = await prisma.employee.findMany({
     where: { status: "Active" },
     select: { id: true, name: true, position: true },
@@ -150,6 +156,41 @@ export default async function CompanyPage({ searchParams }: { searchParams: { sa
                   <select name={field} defaultValue={current ?? ""} className="input">
                     <option value="">— not set —</option>
                     {incomeAccounts.map((a) => (
+                      <option key={a.id} value={a.id}>{a.code} · {a.description}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <p className="mb-1 font-semibold">Purchasing Account Mapping</p>
+          <p className="mb-3 text-xs text-gray-500">
+            Which Chart of Accounts entry a posted supplier bill moves: inventory is debited for the product cost plus
+            allocated freight and other purchasing costs, input VAT is debited separately (it is never part of inventory
+            cost), and the supplier&rsquo;s payable is credited for the whole bill.
+          </p>
+          <div className="grid gap-3 sm:grid-cols-3">
+            {([
+              ["glInventoryId", "Inventory Asset", company.glInventoryId],
+              ["glPayablesId", "Accounts Payable", company.glPayablesId],
+              ["glInputVatId", "Input VAT", company.glInputVatId],
+            ] as const).map(([field, label, current]) => (
+              <div key={field}>
+                <label className="label">{label}</label>
+                {readOnly ? (
+                  <p className="text-sm font-semibold">
+                    {(() => {
+                      const a = bsAccounts.find((x) => x.id === current);
+                      return a ? `${a.code} ${a.description}` : "— not set —";
+                    })()}
+                  </p>
+                ) : (
+                  <select name={field} defaultValue={current ?? ""} className="input">
+                    <option value="">— not set —</option>
+                    {bsAccounts.map((a) => (
                       <option key={a.id} value={a.id}>{a.code} · {a.description}</option>
                     ))}
                   </select>

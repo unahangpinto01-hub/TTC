@@ -4,6 +4,7 @@ import type {
   BreakdownRow, CustomerRow, ProductRow, StockRow, ArMetrics,
   PurchasingMetrics, CreditMetrics, CollectionMetrics, Alert, RecentTx,
 } from "@/lib/executive";
+import type { PayablesMetrics } from "@/lib/ap-reports";
 
 const num = (n: number) => n.toLocaleString("en-PH", { maximumFractionDigits: 2 });
 const pct = (n: number | null) => (n == null ? "—" : `${n.toFixed(1)}%`);
@@ -285,7 +286,7 @@ export function InventorySection({ rows }: { rows: StockRow[] }) {
 }
 
 /** Purchasing from purchase orders and receipts. Payables have no data source yet. */
-export function PurchasingSection({ p }: { p: PurchasingMetrics }) {
+export function PurchasingSection({ p, payables }: { p: PurchasingMetrics; payables: PayablesMetrics }) {
   return (
     <div className="card">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -319,13 +320,22 @@ export function PurchasingSection({ p }: { p: PurchasingMetrics }) {
           {!p.bySupplier.length && <tr><td colSpan={4} className="py-6 text-center text-sm text-gray-500">No purchase orders in this period.</td></tr>}
         </tbody>
       </table>
-      <div className="mt-3 rounded-lg border border-dashed border-gray-300 bg-gray-50 p-3">
-        <p className="text-xs font-semibold text-gray-600">Accounts Payable — not available</p>
-        <p className="mt-0.5 text-xs text-gray-500">
-          The BMS has no supplier bill: Enter Bills and Enter Bills Against Inventory do not exist yet, suppliers carry
-          no terms, and a goods receipt alone does not say what is owed or when. Current AP, Overdue AP, Upcoming
-          Payables and Supplier Balances stay blank until that module is built.
-        </p>
+      <div className="mt-3 rounded-lg border border-gray-200 bg-gray-50 p-3">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <p className="text-xs font-semibold text-gray-700">Accounts Payable</p>
+          <Link href="/finance/ap" className="text-xs text-emerald-700 hover:underline">AP aging →</Link>
+        </div>
+        <div className="mt-1 grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
+          <div><p className="text-xs text-gray-500">Outstanding</p><p className={`font-semibold ${payables.outstanding ? "text-red-600" : "text-gray-400"}`}>{peso(payables.outstanding)}</p><p className="text-[10px] text-gray-400">{payables.openBills} open bill(s)</p></div>
+          <div><p className="text-xs text-gray-500">Overdue</p><p className={`font-semibold ${payables.overdue ? "text-red-600" : "text-gray-400"}`}>{peso(payables.overdue)}</p><p className="text-[10px] text-gray-400">{payables.overdueBills} bill(s)</p></div>
+          <div><p className="text-xs text-gray-500">Due within 7 days</p><p className={`font-semibold ${payables.dueSoon ? "text-amber-700" : "text-gray-400"}`}>{peso(payables.dueSoon)}</p></div>
+          <div><p className="text-xs text-gray-500">Billed this period</p><p className="font-semibold">{peso(payables.billedInPeriod)}</p></div>
+        </div>
+        {payables.bySupplier.length > 0 && (
+          <p className="mt-2 text-xs text-gray-600">
+            Owed to: {payables.bySupplier.slice(0, 4).map((s) => `${s.name} ${peso(s.outstanding)}${s.overdue ? ` (overdue ${peso(s.overdue)})` : ""}`).join(" · ")}
+          </p>
+        )}
       </div>
     </div>
   );

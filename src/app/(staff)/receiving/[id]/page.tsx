@@ -17,7 +17,8 @@ const ERRORS: Record<string, string> = {
   empty: "Enter what arrived before moving the receipt on.",
   notready: "A receipt must reach Received before it can be posted.",
   nothing: "There is nothing accepted to post.",
-  posted: "A posted receipt cannot be voided — reverse it with a stock adjustment instead.",
+  posted: "This receipt's goods are already in stock — reverse it with a stock adjustment instead.",
+  billed: "A bill has been raised against this receipt. Void the bill first.",
   reason: "Give a reason for voiding.",
 };
 
@@ -37,10 +38,12 @@ export default async function GRNDetailPage({
       createdBy: { select: { name: true } },
       postedBy: { select: { name: true } },
       lines: { include: { product: true, poLine: true }, orderBy: { id: "asc" } },
+      bills: { select: { id: true, billNo: true, status: true, total: true }, orderBy: { billDate: "desc" } },
     },
   });
   if (!grn || grn.companyId !== company.id) notFound(); // company isolation
   const audit = await getAuditTrail("GoodsReceipt", params.id, 30);
+  const liveBill = grn.bills.find((b) => b.status !== "Void") ?? null;
 
   const canEdit = user.perm === "READ_WRITE" && grn.status === "Draft";
   const canApprove = ["SUPER_ADMIN", "ADMIN"].includes(user.role) && user.perm === "READ_WRITE";
@@ -62,6 +65,12 @@ export default async function GRNDetailPage({
       </Link>
       <PageHeader title={`Receiving ${grn.grnNumber}`}>
         <StatusBadge status={grn.status} />
+        {grn.status === "Posted" && !liveBill && user.perm === "READ_WRITE" && (
+          <Link href={`/bills/new?grn=${grn.id}`} className="btn-primary">🧾 Enter Bill</Link>
+        )}
+        {liveBill && (
+          <Link href={`/bills/${liveBill.id}`} className="btn-secondary">Bill {liveBill.billNo} · {liveBill.status}</Link>
+        )}
         <Link href={`/receiving/${grn.id}/print`} className="btn-secondary">🖨 Print GRN</Link>
       </PageHeader>
 
@@ -75,7 +84,8 @@ export default async function GRNDetailPage({
       )}
       {searchParams.posted === "ok" && (
         <p className="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
-          ✔ Posted. Accepted quantities are in stock at weighted average cost and the purchase order has been updated.
+          ✔ Posted. The purchase order has been updated. The goods enter stock, and the supplier&rsquo;s payable is raised,
+          when the bill for this receipt is posted — <Link href={`/bills/new?grn=${grn.id}`} className="font-semibold underline">enter it now</Link>.
         </p>
       )}
       {grn.status === "Void" && (
@@ -213,11 +223,11 @@ export default async function GRNDetailPage({
       {costDiffs.length > 0 && grn.status !== "Void" && (
         <p className="mb-4 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
           <span className="font-semibold">Cost difference on {costDiffs.length} line(s).</span> The purchase order cost is
-          kept for comparison; posting values stock at the actual receiving cost.
+          kept for comparison; the bill that follows values stock at the billed cost.
         </p>
       )}
 
-      {isOpen && user.perm === "READ_WRITE" && (
+      {(isOpen || (grn.status === "Posted" && !grn.stockedAt)) && user.perm === "READ_WRITE" && (
         <div className="card mb-4 flex flex-wrap items-center gap-2">
           <span className="text-sm font-semibold">Workflow:</span>
           {grn.status === "Draft" && (
@@ -250,12 +260,12 @@ export default async function GRNDetailPage({
             (canApprove ? (
               <form action={postGRN}>
                 <input type="hidden" name="id" value={grn.id} />
-                <button className="btn-primary" type="submit">📦 Post to Inventory</button>
+                <button className="btn-primary" type="submit">✔ Post Receipt</button>
               </form>
             ) : (
-              <span className="text-sm text-gray-500">Waiting for an Admin to post this to inventory.</span>
+              <span className="text-sm text-gray-500">Waiting for an Admin to post this receipt.</span>
             ))}
-          {canApprove && (
+          {canApprove && !liveBill && (
             <form action={voidGRN} className="ml-auto flex gap-2">
               <input type="hidden" name="id" value={grn.id} />
               <input name="voidReason" placeholder="reason to void" required className="input w-52 py-1 text-sm" />
@@ -273,6 +283,7 @@ export default async function GRNDetailPage({
               ["Company", company.companyName],
               ["Created by", `${grn.createdBy?.name ?? "—"} · ${fmtDateTime(grn.createdAt)}`],
               ["Posted by", grn.postedAt ? `${grn.postedBy?.name ?? "—"} · ${fmtDateTime(grn.postedAt)}` : "not posted"],
+              ["In stock", grn.stockedAt ? `${fmtDateTime(grn.stockedAt)}${liveBill ? ` via ${liveBill.billNo}` : ""}` : liveBill ? `when ${liveBill.billNo} is posted` : "when its bill is posted"],
               ["Warehouse", grn.warehouse ?? "—"],
               ["Supplier DR", grn.deliveryRefNo ?? "—"],
               ["Supplier Invoice", grn.supplierInvoiceNo ?? "—"],
