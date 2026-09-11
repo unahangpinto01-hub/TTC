@@ -7,7 +7,7 @@ import { requirePermWrite, requireStepUp } from "@/lib/auth";
 import { getActiveCompany } from "@/lib/company";
 import { logAudit } from "@/lib/salespeople";
 import { OPEN_BILL_STATUSES, round2 } from "@/lib/bills";
-import { nextDvNo, dvEditBlocker, availableForVoucher } from "@/lib/dv";
+import { nextDvNo, dvEditBlocker, availableForVoucher, generateAccountLines } from "@/lib/dv";
 
 const ADMINS = ["SUPER_ADMIN", "ADMIN"];
 
@@ -67,6 +67,23 @@ export async function saveDV(formData: FormData) {
   const amount = round2(allocations.reduce((s, a) => s + a.amount, 0));
   const date = formDate(formData.get("date")) ?? dv.date;
   const changes: string[] = [];
+
+  // the Account Title block: whatever the form carries, each account verified against the chart
+  const lineTitles = formData.getAll("lineTitle").map((v) => String(v || "").trim());
+  const lineAccounts = formData.getAll("lineAccountId").map(String);
+  const lineDebits = formData.getAll("lineDebit").map((v) => round2(Math.max(0, Number(v) || 0)));
+  const lineCredits = formData.getAll("lineCredit").map((v) => round2(Math.max(0, Number(v) || 0)));
+  const accountLines: { glAccountId: string | null; title: string; debit: number; credit: number }[] = [];
+  for (let i = 0; i < lineTitles.length; i++) {
+    if (!lineTitles[i] && !lineDebits[i] && !lineCredits[i]) continue;
+    let glAccountId: string | null = lineAccounts[i] || null;
+    if (glAccountId) {
+      const a = await prisma.gLAccount.findFirst({ where: { id: glAccountId, status: "Active" }, select: { id: true } });
+      if (!a) redirect(`/dv/${id}?error=account`);
+    }
+    accountLines.push({ glAccountId, title: lineTitles[i] || "(untitled)", debit: lineDebits[i] ?? 0, credit: lineCredits[i] ?? 0 });
+  }
+  const linesGiven = formData.getAll("lineTitle").length > 0;
   for (const a of allocations) {
     const before = dv.bills.find((b) => b.billId === a.billId);
     if (!before) changes.push(`${a.billNo}: ₱${a.amount.toFixed(2)} added`);
@@ -78,6 +95,10 @@ export async function saveDV(formData: FormData) {
   await prisma.$transaction(async (tx) => {
     await tx.dVBill.deleteMany({ where: { dvId: id } });
     if (allocations.length) await tx.dVBill.createMany({ data: allocations.map((a) => ({ dvId: id, billId: a.billId, amount: a.amount })) });
+    if (linesGiven) {
+      await tx.dVAccountLine.deleteMany({ where: { dvId: id } });
+      if (accountLines.length) await tx.dVAccountLine.createMany({ data: accountLines.map((l, i) => ({ dvId: id, ...l, sortOrder: i })) });
+    }
     await tx.disbursementVoucher.update({
       where: { id },
       data: {
@@ -88,6 +109,31 @@ export async function saveDV(formData: FormData) {
     });
   });
   await logAudit({ entity: "DisbursementVoucher", entityId: id, action: "EDITED", detail: changes.length ? `${dv.dvNo} — ${changes.join("; ")}` : `${dv.dvNo} saved`, actorName: user.name, actorEmail: user.email, companyId: company.id });
+  revalidatePath(`/dv/${id}`);
+  redirect(`/dv/${id}?saved=ok`);
+}
+
+/** Throw away the edited Account Title block and rebuild it from the bills and payments. */
+export async function regenerateDVLines(formData: FormData) {
+  const user = await requirePermWrite("dv");
+  const company = await getActiveCompany(user);
+  const id = String(formData.get("id"));
+  const dv = await prisma.disbursementVoucher.findUnique({
+    where: { id },
+    include: {
+      company: { select: { glPayablesId: true, glPayables: { select: { code: true, description: true } }, glInputVatId: true, glInputVat: { select: { code: true, description: true } } } },
+      bills: { include: { bill: { select: { billNo: true, kind: true, total: true, inputVat: true, supplier: { select: { name: true } }, expenseLines: { include: { glAccount: { select: { code: true, description: true } } } } } } } },
+      payments: { where: { status: "Posted" }, include: { cashAccount: { include: { glAccount: { select: { code: true, description: true } } } } } },
+    },
+  });
+  if (!dv || dv.companyId !== company.id) redirect("/dv");
+  if (dvEditBlocker(dv)) redirect(`/dv/${id}?error=locked`);
+  const lines = generateAccountLines(dv);
+  await prisma.$transaction(async (tx) => {
+    await tx.dVAccountLine.deleteMany({ where: { dvId: id } });
+    if (lines.length) await tx.dVAccountLine.createMany({ data: lines.map((l, i) => ({ dvId: id, glAccountId: l.glAccountId, title: l.title, debit: l.debit, credit: l.credit, sortOrder: i })) });
+  });
+  await logAudit({ entity: "DisbursementVoucher", entityId: id, action: "EDITED", detail: `${dv.dvNo} — account lines regenerated from the bills`, actorName: user.name, actorEmail: user.email, companyId: company.id });
   revalidatePath(`/dv/${id}`);
   redirect(`/dv/${id}?saved=ok`);
 }

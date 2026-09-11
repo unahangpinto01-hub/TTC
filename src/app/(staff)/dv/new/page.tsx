@@ -4,6 +4,8 @@ import { getActiveCompany } from "@/lib/company";
 import { PageHeader } from "@/components/ui";
 import { SearchSelect } from "@/components/search-select";
 import { createDV } from "../actions";
+import { DvPreview } from "../dv-preview";
+import { fmtDate } from "@/lib/format";
 
 export default async function NewDvPage({ searchParams }: { searchParams: { error?: string } }) {
   const user = await requirePerm("dv");
@@ -12,11 +14,11 @@ export default async function NewDvPage({ searchParams }: { searchParams: { erro
   const today = new Date();
   const ymd = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
   return (
-    <div className="max-w-3xl">
+    <div className="max-w-4xl">
       <Link href="/dv" className="mb-3 inline-flex items-center gap-1 text-sm font-medium text-emerald-700 hover:underline">← Back to Disbursement Vouchers</Link>
       <PageHeader title="New Disbursement Voucher" />
       {searchParams.error === "supplier" && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">⚠ Choose the payee.</p>}
-      <form action={createDV} className="card space-y-4">
+      <form id="dv-form" action={createDV} className="card space-y-4">
         <p className="text-xs text-gray-500">
           One voucher per payee. On the next screen you choose which of the payee&rsquo;s posted bills it authorises paying and how
           much of each. The voucher then goes Prepared → Checked → Approved → Posted; payment is recorded separately against it.
@@ -32,6 +34,14 @@ export default async function NewDvPage({ searchParams }: { searchParams: { erro
         </div>
         <div className="flex items-center gap-3"><button className="btn-primary" type="submit">Create Voucher (Draft)</button><p className="text-xs text-gray-500">Company: <span className="font-semibold">{company.companyName}</span></p></div>
       </form>
+
+      <div className="mt-4">
+        <DvPreview
+          formId="dv-form"
+          base={{ companyName: company.companyName, dvNo: null, padRef: null, payee: "", date: fmtDate(today), terms: "", particulars: "", items: [], amount: 0, amountInWords: "", lines: [], signatures: {}, payments: [], paidTotal: 0, status: "Draft" }}
+        />
+        <p className="mt-1 text-xs text-gray-500">The bills, amounts and account lines are added on the next screen; the DV number is assigned when the voucher is created.</p>
+      </div>
     </div>
   );
 }

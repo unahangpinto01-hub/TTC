@@ -7,9 +7,12 @@ import { peso, fmtDate, fmtDateTime } from "@/lib/format";
 import { PageHeader, StatusBadge } from "@/components/ui";
 import { getAuditTrail } from "@/lib/salespeople";
 import { OPEN_BILL_STATUSES, outstandingOf } from "@/lib/bills";
-import { availableForVoucher, accountingLines, amountInWords, dvEditBlocker } from "@/lib/dv";
+import { availableForVoucher, generateAccountLines, voucherLines, amountInWords, dvEditBlocker } from "@/lib/dv";
 import { DvAllocations, type OpenBillRow } from "./dv-allocations";
-import { saveDV, advanceDV, noteDV, voidDV } from "../actions";
+import { DvAccountLines } from "./dv-account-lines";
+import { DvPreview } from "../dv-preview";
+import type { DvSheetData } from "@/components/dv-sheet";
+import { saveDV, regenerateDVLines, advanceDV, noteDV, voidDV } from "../actions";
 
 const ERRORS: Record<string, string> = {
   locked: "This voucher can only be changed while it is a Draft.",
@@ -20,6 +23,7 @@ const ERRORS: Record<string, string> = {
   samecheck: "The person who prepared a voucher cannot also check it.",
   paid: "A voucher with a payment against it cannot be voided — reverse the payment first.",
   reason: "Give a reason for voiding (at least 5 characters).",
+  account: "An account line names an account that is not in the Chart of Accounts, or is inactive.",
 };
 const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
@@ -30,8 +34,9 @@ export default async function DvDetailPage({ params, searchParams }: { params: {
     where: { id: params.id },
     include: {
       supplier: true,
-      company: { select: { companyName: true, glPayables: { select: { code: true, description: true } } } },
-      bills: { include: { bill: { select: { id: true, billNo: true, kind: true, billDate: true, dueDate: true, supplierInvoiceNo: true, total: true, paidAmount: true, status: true, supplier: { select: { name: true } } } } } },
+      company: { select: { companyName: true, glPayablesId: true, glPayables: { select: { code: true, description: true } }, glInputVatId: true, glInputVat: { select: { code: true, description: true } } } },
+      bills: { include: { bill: { select: { id: true, billNo: true, kind: true, billDate: true, dueDate: true, supplierInvoiceNo: true, total: true, inputVat: true, paidAmount: true, status: true, supplier: { select: { name: true } }, expenseLines: { include: { glAccount: { select: { code: true, description: true } } } } } } } },
+      accountLines: { orderBy: { sortOrder: "asc" } },
       preparedBy: { select: { name: true } }, checkedBy: { select: { name: true } }, approvedBy: { select: { name: true } },
       notedBy: { select: { name: true } }, postedBy: { select: { name: true } }, voidedBy: { select: { name: true } },
       payments: { include: { cashAccount: { include: { glAccount: { select: { code: true, description: true } } } } }, orderBy: { date: "asc" } },
@@ -60,7 +65,17 @@ export default async function DvDetailPage({ params, searchParams }: { params: {
       allocated: dv.bills.find((x) => x.billId === b.id)?.amount ?? 0,
     });
   }
-  const lines = accountingLines({ ...dv, payments: dv.payments.filter((p) => p.status === "Posted") });
+  const lines = voucherLines({ ...dv, payments: dv.payments.filter((p) => p.status === "Posted") });
+  const generated = !dv.accountLines.length;
+  const sheet: DvSheetData = {
+    companyName: dv.company.companyName, dvNo: dv.dvNo, padRef: dv.padRef, payee: dv.payee, date: fmtDate(dv.date), terms: dv.terms ?? "", particulars: dv.particulars,
+    items: dv.bills.map((b) => ({ label: `${b.bill.billNo}${b.bill.supplierInvoiceNo ? ` · Inv ${b.bill.supplierInvoiceNo}` : ""} · ${fmtDate(b.bill.billDate)}`, amount: b.amount })),
+    amount: dv.amount, amountInWords: amountInWords(dv.amount),
+    lines: lines.map((l) => ({ title: l.title, debit: l.debit, credit: l.credit })),
+    signatures: { preparedBy: dv.preparedBy?.name, checkedBy: dv.checkedBy?.name, approvedBy: dv.approvedBy?.name, notedBy: dv.notedBy?.name, postedBy: dv.postedBy?.name },
+    payments: dv.payments.filter((p) => p.status === "Posted").map((p) => ({ checkNo: p.checkNo ?? p.refNo ?? p.method, date: fmtDate(p.checkDate ?? p.date), amount: p.amount })),
+    paidTotal: dv.paidAmount, status: dv.status,
+  };
   const next: Record<string, { to: string; label: string; admin?: boolean }> = {
     Draft: { to: "Prepared", label: "✔ Mark Prepared" },
     Prepared: { to: "Checked", label: "✔ Mark Checked" },
@@ -89,7 +104,7 @@ export default async function DvDetailPage({ params, searchParams }: { params: {
         <div className="card py-3"><p className="text-xs text-gray-500">Date / Terms</p><p className="font-semibold">{fmtDate(dv.date)}</p><p className="text-xs text-gray-500">{dv.terms ?? "—"}{dv.padRef ? ` · pad DVN ${dv.padRef}` : ""}</p></div>
       </div>
 
-      <form action={saveDV} className="card mb-4 space-y-4">
+      <form id="dv-form" action={saveDV} className="card mb-4 space-y-4">
         <input type="hidden" name="id" value={dv.id} />
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <div className="sm:col-span-2"><label className="label">Payee (as printed)</label><input name="payee" defaultValue={dv.payee} disabled={!canEdit} className="input" /></div>
@@ -101,10 +116,17 @@ export default async function DvDetailPage({ params, searchParams }: { params: {
         </div>
         <div>
           <p className="mb-1 text-sm font-semibold">Bills this voucher pays</p>
-          <DvAllocations rows={rows} canEdit={canEdit} />
+          <DvAllocations key={rows.map((r) => `${r.billId}:${r.allocated}`).join("|")} rows={rows} canEdit={canEdit} />
         </div>
-        {canEdit && <div className="flex items-center gap-3"><button className="btn-primary" type="submit">💾 Save Voucher</button><p className="text-xs text-gray-500">Allocations are checked against each bill&rsquo;s available balance so no peso is authorised twice.</p></div>}
+        <div>
+          <p className="mb-1 text-sm font-semibold">Account Title / Debit (Credit) <span className="font-normal text-gray-500">— {generated ? "suggested from the bills' own accounts; edit freely, any account from the chart" : "as saved on this voucher"}</span></p>
+          <DvAccountLines key={lines.map((l) => `${l.title}:${l.debit}:${l.credit}`).join("|")} lines={lines.map((l, i) => ({ id: String(i), glAccountId: l.glAccountId ?? "", title: l.title, debit: l.debit, credit: l.credit }))} canEdit={canEdit} />
+        </div>
+        {canEdit && <div className="flex items-center gap-3"><button className="btn-primary" type="submit">💾 Save Voucher</button><p className="text-xs text-gray-500">Allocations are checked against each bill&rsquo;s available balance so no peso is authorised twice. The account lines print exactly as saved; the books stay posted from the bills and payments.</p></div>}
       </form>
+      {canEdit && !generated && (
+        <form action={regenerateDVLines} className="-mt-2 mb-4 text-right"><input type="hidden" name="id" value={dv.id} /><button type="submit" className="text-xs text-gray-500 hover:underline">↺ Rebuild the account lines from the bills</button></form>
+      )}
 
       {dv.payments.length > 0 && (
         <div className="card mb-4 text-sm">
@@ -117,16 +139,8 @@ export default async function DvDetailPage({ params, searchParams }: { params: {
         </div>
       )}
 
-      <div className="card mb-4">
-        <p className="mb-2 text-sm font-semibold">Account Title / Debit (Credit) <span className="font-normal text-gray-500">— generated from the bills, not typed</span></p>
-        <table className="w-full max-w-2xl text-sm">
-          <thead><tr className="border-b border-gray-200 text-left text-xs text-gray-500"><th className="py-1">Account Title</th><th className="py-1">Ref</th><th className="py-1 text-right">Debit</th><th className="py-1 text-right">(Credit)</th></tr></thead>
-          <tbody className="divide-y divide-gray-100">
-            {lines.map((l, i) => (
-              <tr key={i}><td className="py-1">{l.title}</td><td className="py-1 font-mono text-xs text-gray-500">{l.ref}</td><td className="py-1 text-right">{l.debit ? peso(l.debit) : ""}</td><td className="py-1 text-right">{l.credit ? `(${peso(l.credit)})` : ""}</td></tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="mb-4">
+        <DvPreview key={JSON.stringify(sheet)} formId="dv-form" base={sheet} />
       </div>
 
       {canWrite && dv.status !== "Void" && !["Paid", "Partially Paid"].includes(dv.status) && (

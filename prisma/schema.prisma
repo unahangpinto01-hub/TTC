@@ -734,6 +734,7 @@ model GLAccount {
   payablesFor             Company[]                 @relation("GLPayables")
   inputVatFor             Company[]                 @relation("GLInputVat")
   SupplierBillExpenseLine SupplierBillExpenseLine[]
+  accountLines            DVAccountLine[]
 }
 
 model Employee {
@@ -1178,8 +1179,9 @@ model DisbursementVoucher {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
-  bills    DVBill[]
-  payments SupplierPayment[]
+  bills        DVBill[]
+  payments     SupplierPayment[]
+  accountLines DVAccountLine[]
 
   @@unique([companyId, dvNo])
   @@index([companyId, status])
@@ -1246,4 +1248,23 @@ model SupplierPaymentLine {
   amount    Float
 
   @@index([billId])
+}
+
+/// The Account Title / Debit (Credit) block printed on a voucher. Generated from the bills
+/// when the voucher is saved, then editable — any account from the Chart of Accounts, never
+/// hard-coded. The books themselves are posted from the bills and payments; these lines are
+/// what the signed paper shows.
+model DVAccountLine {
+  id          String              @id @default(cuid())
+  dvId        String
+  dv          DisbursementVoucher @relation(fields: [dvId], references: [id], onDelete: Cascade)
+  glAccountId String?
+  glAccount   GLAccount?          @relation(fields: [glAccountId], references: [id])
+  /// the title as printed — the account's code and name, or free text
+  title       String
+  debit       Float               @default(0)
+  credit      Float               @default(0)
+  sortOrder   Int                 @default(0)
+
+  @@index([dvId])
 }

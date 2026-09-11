@@ -36,7 +36,7 @@ export function DvAllocations({ rows, canEdit }: { rows: OpenBillRow[]; canEdit:
               const v = alloc[r.billId] || 0;
               const over = v > r.available + 0.005;
               return (
-                <tr key={r.billId} className={v > 0 ? "bg-emerald-50/40" : ""}>
+                <tr key={r.billId} data-label={`${r.billNo}${r.supplierInvoiceNo ? ` · Inv ${r.supplierInvoiceNo}` : ""} · ${r.billDate}`} className={v > 0 ? "bg-emerald-50/40" : ""}>
                   <td className="table-td">
                     <input type="hidden" name="billId" value={r.billId} />
                     <a href={`/bills/${r.billId}`} className="font-mono text-xs font-semibold text-emerald-700 hover:underline">{r.billNo}</a>

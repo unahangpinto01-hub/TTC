@@ -42,62 +42,51 @@ export async function availableForVoucher(billId: string, excludeDvId?: string):
   return { outstanding, onOtherVouchers, available: round2(Math.max(0, outstanding - onOtherVouchers)) };
 }
 
-export type AccountingLine = { title: string; debit: number; credit: number; ref: string };
+export type AccountingLine = { title: string; debit: number; credit: number; ref: string; glAccountId: string | null };
 
 /**
- * The voucher's Account Title / Debit (Credit) block, generated from its bills: the payable
- * is debited per bill, cash or bank credited for the total. The bank account itself is
- * chosen when the payment is made, so until then the credit is shown as Cash / Bank.
+ * The voucher's Account Title / Debit (Credit) block as first generated from its bills — the
+ * office edits it from there. A non-inventory bill is shown by the accounts it was charged
+ * to (its own share of each, if the voucher covers only part of it) plus its input VAT; an
+ * inventory bill by Accounts Payable; and the credit is the cash or bank account of the
+ * payments already made, or Cash in Bank until one is.
  */
-export function accountingLines(dv: {
-  bills: { amount: number; bill: { billNo: string; supplier: { name: string } } }[];
-  company: { glPayables: { code: string; description: string } | null };
-  payments?: { amount: number; cashAccount: { name: string; glAccount: { code: string; description: string } | null } | null }[];
+export function generateAccountLines(dv: {
+  bills: { amount: number; bill: { billNo: string; kind: string; total: number; inputVat: number; supplier: { name: string }; expenseLines?: { amount: number; glAccountId: string; glAccount: { code: string; description: string } }[] } }[];
+  company: { glPayablesId?: string | null; glPayables: { code: string; description: string } | null; glInputVatId?: string | null; glInputVat?: { code: string; description: string } | null };
+  payments?: { amount: number; status?: string; cashAccount: { name: string; glAccountId?: string | null; glAccount: { code: string; description: string } | null } | null }[];
 }): AccountingLine[] {
   const ap = dv.company.glPayables ? `${dv.company.glPayables.code} ${dv.company.glPayables.description}` : "Accounts Payable";
-  const lines: AccountingLine[] = dv.bills.map((b) => ({ title: `${ap} — ${b.bill.supplier.name}`, debit: round2(b.amount), credit: 0, ref: b.bill.billNo }));
-  const total = round2(dv.bills.reduce((s, b) => s + b.amount, 0));
-  const paid = dv.payments ?? [];
-  if (paid.length) {
-    for (const p of paid) {
-      const acct = p.cashAccount?.glAccount ? `${p.cashAccount.glAccount.code} ${p.cashAccount.glAccount.description}` : p.cashAccount?.name ?? "Cash / Bank";
-      lines.push({ title: acct, debit: 0, credit: round2(p.amount), ref: "" });
+  const vat = dv.company.glInputVat ? `${dv.company.glInputVat.code} ${dv.company.glInputVat.description}` : "Input VAT";
+  const lines: AccountingLine[] = [];
+  for (const b of dv.bills) {
+    const share = b.bill.total > 0 ? b.amount / b.bill.total : 1;
+    if (b.bill.kind === "EXPENSE" && b.bill.expenseLines?.length) {
+      for (const l of b.bill.expenseLines) lines.push({ title: `${l.glAccount.code} ${l.glAccount.description}`, debit: round2(l.amount * share), credit: 0, ref: b.bill.billNo, glAccountId: l.glAccountId });
+      if (b.bill.inputVat) lines.push({ title: vat, debit: round2(b.bill.inputVat * share), credit: 0, ref: b.bill.billNo, glAccountId: dv.company.glInputVatId ?? null });
+    } else {
+      lines.push({ title: `${ap} — ${b.bill.supplier.name}`, debit: round2(b.amount), credit: 0, ref: b.bill.billNo, glAccountId: dv.company.glPayablesId ?? null });
     }
-    const left = round2(total - paid.reduce((s, p) => s + p.amount, 0));
-    if (left > 0) lines.push({ title: "Cash / Bank (on payment)", debit: 0, credit: left, ref: "" });
-  } else {
-    lines.push({ title: "Cash / Bank (on payment)", debit: 0, credit: total, ref: "" });
   }
+  const total = round2(lines.reduce((s, l) => s + l.debit, 0));
+  const paid = (dv.payments ?? []).filter((p) => !p.status || p.status === "Posted");
+  let credited = 0;
+  for (const p of paid) {
+    const acct = p.cashAccount?.glAccount ? `${p.cashAccount.glAccount.code} ${p.cashAccount.glAccount.description}` : p.cashAccount?.name ?? "Cash in Bank";
+    lines.push({ title: acct, debit: 0, credit: round2(p.amount), ref: "", glAccountId: p.cashAccount?.glAccountId ?? null });
+    credited = round2(credited + p.amount);
+  }
+  if (total - credited > 0.005) lines.push({ title: "Cash in Bank", debit: 0, credit: round2(total - credited), ref: "", glAccountId: null });
   return lines;
 }
 
-/* ------------------------------------------------------------------ amount in words */
-
-const ONES = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"];
-const TENS = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
-const SCALES = ["", "Thousand", "Million", "Billion"];
-
-function chunk(n: number): string {
-  const h = Math.floor(n / 100), r = n % 100;
-  const parts: string[] = [];
-  if (h) parts.push(`${ONES[h]} Hundred`);
-  if (r >= 20) parts.push(`${TENS[Math.floor(r / 10)]}${r % 10 ? `-${ONES[r % 10]}` : ""}`);
-  else if (r) parts.push(ONES[r]);
-  return parts.join(" ");
+/** What prints: the lines the office saved on the voucher, or the generated ones until then. */
+export function voucherLines(dv: Parameters<typeof generateAccountLines>[0] & { accountLines?: { title: string; debit: number; credit: number; glAccountId: string | null }[] }): AccountingLine[] {
+  if (dv.accountLines?.length) return dv.accountLines.map((l) => ({ title: l.title, debit: l.debit, credit: l.credit, ref: "", glAccountId: l.glAccountId }));
+  return generateAccountLines(dv);
 }
 
-/** ₱12,345.60 → "Twelve Thousand Three Hundred Forty-Five Pesos and 60/100 Only" — the paper form's line. */
-export function amountInWords(amount: number): string {
-  const whole = Math.floor(Math.abs(amount) + 1e-9);
-  const cents = Math.round((Math.abs(amount) - whole) * 100);
-  if (whole === 0 && cents === 0) return "Zero Pesos Only";
-  const parts: string[] = [];
-  let n = whole, i = 0;
-  while (n > 0) {
-    const c = n % 1000;
-    if (c) parts.unshift(`${chunk(c)}${SCALES[i] ? ` ${SCALES[i]}` : ""}`);
-    n = Math.floor(n / 1000); i++;
-  }
-  const pesos = whole ? `${parts.join(" ")} Peso${whole === 1 ? "" : "s"}` : "";
-  return `${pesos}${cents ? `${pesos ? " and " : ""}${String(cents).padStart(2, "0")}/100` : ""} Only`.trim();
-}
+/** Kept for callers that only need the default shape. */
+export const accountingLines = generateAccountLines;
+
+export { amountInWords } from "./dv-words";
