@@ -10,6 +10,7 @@ import { OPEN_BILL_STATUSES, outstandingOf } from "@/lib/bills";
 import { availableForVoucher, generateAccountLines, voucherLines, amountInWords, dvEditBlocker } from "@/lib/dv";
 import { DvAllocations, type OpenBillRow } from "./dv-allocations";
 import { DvAccountLines } from "./dv-account-lines";
+import { DvItems } from "./dv-items";
 import { DvPreview } from "../dv-preview";
 import type { DvSheetData } from "@/components/dv-sheet";
 import { saveDV, regenerateDVLines, advanceDV, noteDV, voidDV } from "../actions";
@@ -23,7 +24,10 @@ const ERRORS: Record<string, string> = {
   samecheck: "The person who prepared a voucher cannot also check it.",
   paid: "A voucher with a payment against it cannot be voided — reverse the payment first.",
   reason: "Give a reason for voiding (at least 5 characters).",
-  account: "An account line names an account that is not in the Chart of Accounts, or is inactive.",
+  account: "An account line or item names an account that is not in the Chart of Accounts, or is inactive.",
+  negative: "The voucher's own items net to less than nothing — the deductions exceed the charges.",
+  items: "The voucher's own items cannot be posted yet:",
+  period: "This voucher cannot be posted in its accounting period:",
 };
 const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
@@ -33,13 +37,14 @@ export default async function DvDetailPage({ params, searchParams }: { params: {
   const dv = await prisma.disbursementVoucher.findUnique({
     where: { id: params.id },
     include: {
-      supplier: true,
+      supplier: true, employee: { select: { id: true, name: true, position: true } },
+      items: { orderBy: { sortOrder: "asc" }, include: { glAccount: { select: { code: true, description: true } } } },
       company: { select: { companyName: true, glPayablesId: true, glPayables: { select: { code: true, description: true } }, glInputVatId: true, glInputVat: { select: { code: true, description: true } } } },
       bills: { include: { bill: { select: { id: true, billNo: true, kind: true, billDate: true, dueDate: true, supplierInvoiceNo: true, total: true, inputVat: true, paidAmount: true, status: true, supplier: { select: { name: true } }, expenseLines: { include: { glAccount: { select: { code: true, description: true } } } } } } } },
       accountLines: { orderBy: { sortOrder: "asc" } },
       preparedBy: { select: { name: true } }, checkedBy: { select: { name: true } }, approvedBy: { select: { name: true } },
       notedBy: { select: { name: true } }, postedBy: { select: { name: true } }, voidedBy: { select: { name: true } },
-      payments: { include: { cashAccount: { include: { glAccount: { select: { code: true, description: true } } } } }, orderBy: { date: "asc" } },
+      payments: { include: { lines: { select: { amount: true } }, cashAccount: { include: { glAccount: { select: { code: true, description: true } } } } }, orderBy: { date: "asc" } },
     },
   });
   if (!dv || dv.companyId !== company.id) notFound();
@@ -49,7 +54,7 @@ export default async function DvDetailPage({ params, searchParams }: { params: {
   const isAdmin = ["SUPER_ADMIN", "ADMIN"].includes(user.role);
 
   // the payee's open bills, with what is available to this voucher
-  const openBills = canEdit
+  const openBills = canEdit && dv.supplierId
     ? await prisma.supplierBill.findMany({
         where: { companyId: company.id, supplierId: dv.supplierId, status: { in: OPEN_BILL_STATUSES } },
         select: { id: true, billNo: true, kind: true, billDate: true, dueDate: true, supplierInvoiceNo: true, total: true, paidAmount: true, status: true },
@@ -69,7 +74,10 @@ export default async function DvDetailPage({ params, searchParams }: { params: {
   const generated = !dv.accountLines.length;
   const sheet: DvSheetData = {
     companyName: dv.company.companyName, dvNo: dv.dvNo, padRef: dv.padRef, payee: dv.payee, date: fmtDate(dv.date), terms: dv.terms ?? "", particulars: dv.particulars,
-    items: dv.bills.map((b) => ({ label: `${b.bill.billNo}${b.bill.supplierInvoiceNo ? ` · Inv ${b.bill.supplierInvoiceNo}` : ""} · ${fmtDate(b.bill.billDate)}`, amount: b.amount })),
+    items: [
+      ...dv.bills.map((b) => ({ label: `${b.bill.billNo}${b.bill.supplierInvoiceNo ? ` · Inv ${b.bill.supplierInvoiceNo}` : ""} · ${fmtDate(b.bill.billDate)}`, amount: b.amount })),
+      ...dv.items.map((it) => ({ label: it.description, amount: it.amount })),
+    ],
     amount: dv.amount, amountInWords: amountInWords(dv.amount),
     lines: lines.map((l) => ({ title: l.title, debit: l.debit, credit: l.credit })),
     signatures: { preparedBy: dv.preparedBy?.name, checkedBy: dv.checkedBy?.name, approvedBy: dv.approvedBy?.name, notedBy: dv.notedBy?.name, postedBy: dv.postedBy?.name },
@@ -95,11 +103,11 @@ export default async function DvDetailPage({ params, searchParams }: { params: {
       {searchParams.error && ERRORS[searchParams.error] && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700"><span className="font-semibold">⚠</span> {ERRORS[searchParams.error]}{searchParams.bill ? ` (${searchParams.bill})` : ""}</p>}
       {searchParams.saved === "ok" && <p className="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">✔ Saved.</p>}
       {dv.status === "Void" && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">Voided by {dv.voidedBy?.name ?? "—"} · {fmtDateTime(dv.voidedAt)}: {dv.voidReason}</p>}
-      {dv.status === "Posted" && <p className="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">Payment of {peso(dv.amount)} to {dv.payee} is authorised. The supplier is paid when a Payment is recorded against this voucher.</p>}
+      {dv.status === "Posted" && <p className="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">Payment of {peso(dv.amount)} to {dv.payee} is authorised. The payee is paid when a Payment is recorded against this voucher.{dv.items.length > 0 && <> Its own items ({peso(dv.directAmount)}) are booked: Dr their accounts / Cr Accounts Payable — {dv.payee}.</>}</p>}
 
       <div className="mb-4 grid grid-cols-2 gap-3 text-sm md:grid-cols-4">
-        <div className="card py-3"><p className="text-xs text-gray-500">Payee</p><p className="font-semibold">{dv.payee}</p><p className="text-xs text-gray-500">{dv.supplier.name}</p></div>
-        <div className="card py-3"><p className="text-xs text-gray-500">Amount authorised</p><p className="font-semibold">{peso(dv.amount)}</p><p className="text-xs text-gray-500">{dv.bills.length} bill(s)</p></div>
+        <div className="card py-3"><p className="text-xs text-gray-500">Payee</p><p className="font-semibold">{dv.payee}</p><p className="text-xs text-gray-500">{dv.supplier ? `supplier · ${dv.supplier.name}` : dv.employee ? `employee · ${dv.employee.name}` : "named payee"}</p></div>
+        <div className="card py-3"><p className="text-xs text-gray-500">Amount authorised</p><p className="font-semibold">{peso(dv.amount)}</p><p className="text-xs text-gray-500">{[dv.bills.length ? `${dv.bills.length} bill(s)` : "", dv.items.length ? `${dv.items.length} item(s) ${peso(dv.directAmount)}` : ""].filter(Boolean).join(" + ") || "nothing yet"}</p></div>
         <div className="card py-3"><p className="text-xs text-gray-500">Paid so far</p><p className={`font-semibold ${dv.paidAmount ? "text-emerald-700" : ""}`}>{peso(dv.paidAmount)}</p><p className="text-xs text-gray-500">{dv.amount - dv.paidAmount > 0.005 ? `${peso(dv.amount - dv.paidAmount)} to pay` : dv.amount ? "fully paid" : ""}</p></div>
         <div className="card py-3"><p className="text-xs text-gray-500">Date / Terms</p><p className="font-semibold">{fmtDate(dv.date)}</p><p className="text-xs text-gray-500">{dv.terms ?? "—"}{dv.padRef ? ` · pad DVN ${dv.padRef}` : ""}</p></div>
       </div>
@@ -114,18 +122,24 @@ export default async function DvDetailPage({ params, searchParams }: { params: {
           <div><label className="label">Pad DVN <span className="font-normal text-gray-400">(if stamped)</span></label><input name="padRef" defaultValue={dv.padRef ?? ""} disabled={!canEdit} className="input" placeholder="e.g. 24251" /></div>
           <div className="sm:col-span-2 lg:col-span-4"><label className="label">Memo (internal)</label><input name="memo" defaultValue={dv.memo ?? ""} disabled={!canEdit} className="input" /></div>
         </div>
+        {(dv.supplierId || rows.length > 0) && (
+          <div>
+            <p className="mb-1 text-sm font-semibold">Bills this voucher pays</p>
+            <DvAllocations key={rows.map((r) => `${r.billId}:${r.allocated}`).join("|")} rows={rows} canEdit={canEdit} />
+          </div>
+        )}
         <div>
-          <p className="mb-1 text-sm font-semibold">Bills this voucher pays</p>
-          <DvAllocations key={rows.map((r) => `${r.billId}:${r.allocated}`).join("|")} rows={rows} canEdit={canEdit} />
+          <p className="mb-1 text-sm font-semibold">Items with no bill behind them <span className="font-normal text-gray-500">— a liquidation, a permit, a reimbursement; each charged to its account, a negative is a deduction</span></p>
+          <DvItems key={dv.items.map((it) => `${it.id}:${it.amount}`).join("|")} items={dv.items.map((it) => ({ glAccountId: it.glAccountId ?? "", account: it.glAccount ? `${it.glAccount.code} ${it.glAccount.description}` : "", description: it.description, amount: it.amount }))} canEdit={canEdit} />
         </div>
         <div>
-          <p className="mb-1 text-sm font-semibold">Account Title / Debit (Credit) <span className="font-normal text-gray-500">— {generated ? "suggested from the bills' own accounts; edit freely, any account from the chart" : "as saved on this voucher"}</span></p>
+          <p className="mb-1 text-sm font-semibold">Account Title / Debit (Credit) <span className="font-normal text-gray-500">— {generated ? "suggested from the bills' and items' accounts; edit freely, any account from the chart" : "as saved on this voucher"}</span></p>
           <DvAccountLines key={lines.map((l) => `${l.title}:${l.debit}:${l.credit}`).join("|")} lines={lines.map((l, i) => ({ id: String(i), glAccountId: l.glAccountId ?? "", title: l.title, debit: l.debit, credit: l.credit }))} canEdit={canEdit} />
         </div>
-        {canEdit && <div className="flex items-center gap-3"><button className="btn-primary" type="submit">💾 Save Voucher</button><p className="text-xs text-gray-500">Allocations are checked against each bill&rsquo;s available balance so no peso is authorised twice. The account lines print exactly as saved; the books stay posted from the bills and payments.</p></div>}
+        {canEdit && <div className="flex items-center gap-3"><button className="btn-primary" type="submit">💾 Save Voucher</button><p className="text-xs text-gray-500">Allocations are checked against each bill&rsquo;s available balance so no peso is authorised twice. The account lines print exactly as saved. The books are posted from the bills and payments — and, when the voucher is posted, from its own items.</p></div>}
       </form>
       {canEdit && !generated && (
-        <form action={regenerateDVLines} className="-mt-2 mb-4 text-right"><input type="hidden" name="id" value={dv.id} /><button type="submit" className="text-xs text-gray-500 hover:underline">↺ Rebuild the account lines from the bills</button></form>
+        <form action={regenerateDVLines} className="-mt-2 mb-4 text-right"><input type="hidden" name="id" value={dv.id} /><button type="submit" className="text-xs text-gray-500 hover:underline">↺ Rebuild the account lines from the bills and items</button></form>
       )}
 
       {dv.payments.length > 0 && (

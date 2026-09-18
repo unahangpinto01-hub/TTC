@@ -47,7 +47,7 @@ export default async function SupplierPaymentsReport({ searchParams }: { searchP
                 <td className="table-td text-sm">{fmtDate(p.date)}</td>
                 <td className="table-td"><Link href={`/payments/bills/${p.id}`} className="font-mono text-xs font-semibold text-emerald-700 hover:underline">{p.paymentNo}</Link></td>
                 {scope.combined && <td className="table-td"><CompanyTag name={p.company.companyName} /></td>}
-                <td className="table-td text-sm">{p.supplier.name}</td>
+                <td className="table-td text-sm">{p.payee || p.supplier?.name}</td>
                 <td className="table-td font-mono text-xs">{p.dv ? <Link href={`/dv/${p.dv.id}`} className="text-emerald-700 hover:underline">{p.dv.dvNo}</Link> : "—"}</td>
                 <td className="table-td text-xs text-gray-600">{p.cashAccount.name} · {p.method}</td>
                 <td className="table-td text-xs text-gray-600">{p.checkNo ? `#${p.checkNo}${p.checkDate ? ` ${fmtDate(p.checkDate)}` : ""}` : p.refNo ?? "—"}</td>

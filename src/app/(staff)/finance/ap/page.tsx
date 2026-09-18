@@ -52,7 +52,7 @@ export default async function ApAgingPage({ searchParams }: { searchParams: { co
             {rows.map((r) => (
               <tr key={`${r.company}:${r.supplierId}`} className="hover:bg-gray-50">
                 <td className="table-td">
-                  <Link href={`/reports/supplier-statement?supplier=${r.supplierId}&company=${scope.value}`} className="font-medium text-emerald-700 hover:underline">{r.supplier}</Link>
+                  {r.supplierId.startsWith("payee:") ? <span className="font-medium">{r.supplier}</span> : <Link href={`/reports/supplier-statement?supplier=${r.supplierId}&company=${scope.value}`} className="font-medium text-emerald-700 hover:underline">{r.supplier}</Link>}
                 </td>
                 {scope.combined && <td className="table-td"><CompanyTag name={r.company} /></td>}
                 <td className="table-td text-right text-sm text-gray-600">{r.bills}</td>
@@ -103,7 +103,7 @@ export default async function ApAgingPage({ searchParams }: { searchParams: { co
               <tbody className="divide-y divide-gray-100">
                 {open.map((b) => (
                   <tr key={b.id} className="hover:bg-gray-50">
-                    <td className="table-td"><Link href={`/bills/${b.id}`} className="font-mono text-xs font-semibold text-emerald-700 hover:underline">{b.billNo}</Link></td>
+                    <td className="table-td"><Link href={b.href} className="font-mono text-xs font-semibold text-emerald-700 hover:underline">{b.billNo}</Link></td>
                     {scope.combined && <td className="table-td"><CompanyTag name={b.company} /></td>}
                     <td className="table-td text-sm">{b.supplier}</td>
                     <td className="table-td text-xs text-gray-600">{b.supplierInvoiceNo ?? "—"}</td>

@@ -1,5 +1,6 @@
 import { prisma } from "./db";
 import { LIVE_BILL_STATUSES } from "./bills";
+import { BOOKED_DV_STATUSES } from "./dv";
 import { componentsOf, sumComponents, type SalesComponents } from "./sales-components";
 import { lineCartonSize } from "./units";
 
@@ -177,7 +178,15 @@ export async function getExpenseReport(
   } else {
     billWhere.billDate = { gte: from, lte: to };
   }
-  const [expenses, billLines] = await Promise.all([
+  // a posted voucher's own items (a liquidation, a permit…) are expenses of the period too
+  const dvWhere: any = { companyId: { in: companyIds }, status: { in: BOOKED_DV_STATUSES }, directAmount: { gt: 0 } };
+  if (period?.year) {
+    dvWhere.accountingYear = period.year;
+    if (period.month) dvWhere.accountingMonth = period.month;
+  } else {
+    dvWhere.date = { gte: from, lte: to };
+  }
+  const [expenses, billLines, dvItems] = await Promise.all([
     prisma.expense.findMany({
       where,
       orderBy: [{ voucherDate: "desc" }, { voucherNo: "desc" }],
@@ -190,6 +199,14 @@ export async function getExpenseReport(
         bill: { select: { id: true, billNo: true, billDate: true, dueDate: true, status: true, supplierInvoiceNo: true, accountingYear: true, accountingMonth: true, companyId: true, supplier: { select: { name: true } }, company: { select: { companyName: true } } } },
       },
       orderBy: [{ bill: { billDate: "desc" } }, { id: "asc" }],
+    }),
+    prisma.dVItem.findMany({
+      where: { dv: dvWhere, glAccountId: { not: null } },
+      include: {
+        glAccount: { select: { code: true, description: true } },
+        dv: { select: { id: true, dvNo: true, date: true, status: true, payee: true, padRef: true, accountingYear: true, accountingMonth: true, companyId: true, company: { select: { companyName: true } } } },
+      },
+      orderBy: [{ dv: { date: "desc" } }, { sortOrder: "asc" }],
     }),
   ]);
   const byCategory = new Map<string, number>();
@@ -204,11 +221,21 @@ export async function getExpenseReport(
   }
   // a bill line is an expense under its account's name (ex-VAT — the VAT is a receivable, not a cost)
   const bills = billLines.map((l) => ({
-    id: l.id, billId: l.bill.id, billNo: l.bill.billNo, billDate: l.bill.billDate, dueDate: l.bill.dueDate, status: l.bill.status,
+    id: l.id, billId: l.bill.id, href: `/bills/${l.bill.id}`, billNo: l.bill.billNo, billDate: l.bill.billDate, dueDate: l.bill.dueDate, status: l.bill.status,
     supplier: l.bill.supplier.name, reference: l.bill.supplierInvoiceNo, account: `${l.glAccount.code} ${l.glAccount.description}`,
     category: l.glAccount.description, description: l.description, amount: l.amount, taxAmount: l.taxAmount,
     accountingYear: l.bill.accountingYear, accountingMonth: l.bill.accountingMonth, companyId: l.bill.companyId, company: l.bill.company.companyName,
   }));
+  // a voucher item under the same shape: the voucher is the document, the payee the "supplier"
+  for (const it of dvItems) {
+    bills.push({
+      id: it.id, billId: it.dv.id, href: `/dv/${it.dv.id}`, billNo: it.dv.dvNo, billDate: it.dv.date, dueDate: it.dv.date, status: it.dv.status,
+      supplier: it.dv.payee, reference: it.dv.padRef ? `pad DVN ${it.dv.padRef}` : null, account: `${it.glAccount!.code} ${it.glAccount!.description}`,
+      category: it.glAccount!.description, description: it.description, amount: it.amount, taxAmount: 0,
+      accountingYear: it.dv.accountingYear ?? 0, accountingMonth: it.dv.accountingMonth ?? 0, companyId: it.dv.companyId, company: it.dv.company.companyName,
+    });
+  }
+  bills.sort((a, b) => b.billDate.getTime() - a.billDate.getTime());
   for (const b of bills) {
     total += b.amount;
     byCategory.set(b.category, round2((byCategory.get(b.category) ?? 0) + b.amount));
@@ -428,7 +455,7 @@ export async function getDeliveryPerformance({ from, to }: Range, companyIds: st
 
 /** Journal-style ledger entries derived from sales, purchases, expenses, collections. */
 export async function getLedger({ from, to }: Range, companyIds: string[]) {
-  const [srs, payments, expenses, poIns, bills, supplierPayments] = await Promise.all([
+  const [srs, payments, expenses, poIns, bills, supplierPayments, directDvs] = await Promise.all([
     prisma.salesReceipt.findMany({
       where: { companyId: { in: companyIds }, status: { not: "Void" }, invoiceDate: { gte: from, lte: to } },
       include: {
@@ -471,7 +498,12 @@ export async function getLedger({ from, to }: Range, companyIds: string[]) {
     }),
     prisma.supplierPayment.findMany({
       where: { companyId: { in: companyIds }, status: "Posted", date: { gte: from, lte: to } },
-      include: { supplier: { select: { name: true } }, cashAccount: { include: { glAccount: { select: { code: true, description: true } } } }, company: { select: { companyName: true, glPayables: { select: { code: true, description: true } } } }, lines: { include: { bill: { select: { billNo: true } } } } },
+      include: { supplier: { select: { name: true } }, dv: { select: { dvNo: true } }, cashAccount: { include: { glAccount: { select: { code: true, description: true } } } }, company: { select: { companyName: true, glPayables: { select: { code: true, description: true } } } }, lines: { include: { bill: { select: { billNo: true } } } } },
+    }),
+    // a posted voucher's own items: booked on the voucher's date, owed to its payee
+    prisma.disbursementVoucher.findMany({
+      where: { companyId: { in: companyIds }, status: { in: BOOKED_DV_STATUSES }, directAmount: { gt: 0 }, date: { gte: from, lte: to } },
+      include: { items: { orderBy: { sortOrder: "asc" }, include: { glAccount: { select: { code: true, description: true } } } }, company: { select: { companyName: true, glPayables: { select: { code: true, description: true } } } } },
     }),
   ]);
   const acctOf = (a: { code: string; description: string } | null, fallback: string) => (a ? `${a.code} ${a.description}` : fallback);
@@ -532,11 +564,22 @@ export async function getLedger({ from, to }: Range, companyIds: string[]) {
       date: p.date,
       company: p.company.companyName,
       ref: p.paymentNo,
-      description: `Paid ${p.supplier.name} — ${p.lines.map((l) => l.bill.billNo).join(", ")}${p.checkNo ? ` (cheque ${p.checkNo})` : ""}`,
+      description: `Paid ${p.payee || p.supplier?.name || "payee"} — ${[...p.lines.map((l) => l.bill.billNo), p.lines.length ? "" : p.dv?.dvNo ?? ""].filter(Boolean).join(", ")}${p.checkNo ? ` (cheque ${p.checkNo})` : ""}`,
       debit: acctOf(p.company.glPayables, "Accounts Payable"),
       credit: p.cashAccount.glAccount ? `${p.cashAccount.glAccount.code} ${p.cashAccount.glAccount.description}` : p.cashAccount.name,
       amount: round2(p.amount),
     })),
+    // a posted voucher's own items: each charged to its account (a deduction credited back),
+    // and the net owed to the payee until Pay Bills settles it
+    ...directDvs.flatMap((d) => {
+      const ap = `${acctOf(d.company.glPayables, "Accounts Payable")} — ${d.payee}`;
+      return d.items.filter((it) => it.amount !== 0).map((it) => {
+        const acct = it.glAccount ? `${it.glAccount.code} ${it.glAccount.description}` : `(no account) ${it.description}`;
+        return it.amount > 0
+          ? { date: d.date, company: d.company.companyName, ref: d.dvNo, description: `${it.description} — ${d.payee}`, debit: acct, credit: ap, amount: round2(it.amount) }
+          : { date: d.date, company: d.company.companyName, ref: d.dvNo, description: `Deduction: ${it.description} — ${d.payee}`, debit: ap, credit: acct, amount: round2(-it.amount) };
+      });
+    }),
     // a posted supplier bill: the whole bill owed to the supplier; against it, the receiving
     // cost already sitting in the clearing account is cleared and only the difference (freight,
     // price changes) moves inventory — or, for a bill with no receipt, the full inventory cost

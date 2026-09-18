@@ -838,7 +838,7 @@ export async function GET(req: NextRequest, { params }: { params: { report: stri
         ["SUPPLIER PAYMENTS", tag, scope.label],
         [],
         ["Date", "Payment No.", ...(scope.combined ? ["Company"] : []), "Supplier", "Voucher", "Account", "Method", "Cheque No.", "Cheque Date", "Reference", "Bills", "Amount", "Status"],
-        ...pays.map((p) => [p.date.toISOString().slice(0, 10), p.paymentNo, ...(scope.combined ? [p.company.companyName] : []), p.supplier.name, p.dv?.dvNo ?? "", p.cashAccount.name, p.method, p.checkNo ?? "", p.checkDate ? p.checkDate.toISOString().slice(0, 10) : "", p.refNo ?? "", p.lines.map((l) => `${l.bill.billNo}${l.bill.supplierInvoiceNo ? ` (${l.bill.supplierInvoiceNo})` : ""}`).join(", "), p.amount, p.status]),
+        ...pays.map((p) => [p.date.toISOString().slice(0, 10), p.paymentNo, ...(scope.combined ? [p.company.companyName] : []), p.payee || p.supplier?.name || "", p.dv?.dvNo ?? "", p.cashAccount.name, p.method, p.checkNo ?? "", p.checkDate ? p.checkDate.toISOString().slice(0, 10) : "", p.refNo ?? "", p.lines.map((l) => `${l.bill.billNo}${l.bill.supplierInvoiceNo ? ` (${l.bill.supplierInvoiceNo})` : ""}`).join(", "), p.amount, p.status]),
         [],
         ["TOTAL (posted)", "", ...(scope.combined ? [""] : []), "", "", "", "", "", "", "", "", pays.filter((p) => p.status === "Posted").reduce((s, p) => s + p.amount, 0), ""],
       ];
@@ -854,7 +854,7 @@ export async function GET(req: NextRequest, { params }: { params: { report: stri
         ["DISBURSEMENT VOUCHER REGISTER", tag, scope.label],
         [],
         ["Date", "DV No.", "Pad DVN", ...(scope.combined ? ["Company"] : []), "Payee", "Bills", "Particulars", "Amount", "Paid", "Status", "Prepared", "Checked", "Approved", "Noted", "Posted"],
-        ...dvs.map((d) => [d.date.toISOString().slice(0, 10), d.dvNo, d.padRef ?? "", ...(scope.combined ? [d.company.companyName] : []), d.payee, d.bills.map((b) => b.bill.billNo).join(", "), d.particulars, d.amount, d.paidAmount, d.status, d.preparedBy?.name ?? "", d.checkedBy?.name ?? "", d.approvedBy?.name ?? "", d.notedBy?.name ?? "", d.postedBy?.name ?? ""]),
+        ...dvs.map((d) => [d.date.toISOString().slice(0, 10), d.dvNo, d.padRef ?? "", ...(scope.combined ? [d.company.companyName] : []), d.payee, [d.bills.map((b) => b.bill.billNo).join(", "), d.directAmount > 0 ? `own items ${d.directAmount.toFixed(2)}` : ""].filter(Boolean).join(" + "), d.particulars, d.amount, d.paidAmount, d.status, d.preparedBy?.name ?? "", d.checkedBy?.name ?? "", d.approvedBy?.name ?? "", d.notedBy?.name ?? "", d.postedBy?.name ?? ""]),
         [],
         ["TOTAL", "", "", ...(scope.combined ? [""] : []), "", "", "", dvs.filter((d) => d.status !== "Void").reduce((s, d) => s + d.amount, 0), dvs.reduce((s, d) => s + d.paidAmount, 0), "", "", "", "", "", ""],
       ];

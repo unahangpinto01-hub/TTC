@@ -17,10 +17,11 @@ export default async function DvPrintPage({ params }: { params: { id: string } }
     include: {
       company: { select: { companyName: true, glPayablesId: true, glPayables: { select: { code: true, description: true } }, glInputVatId: true, glInputVat: { select: { code: true, description: true } } } },
       bills: { include: { bill: { select: { billNo: true, kind: true, total: true, inputVat: true, supplierInvoiceNo: true, billDate: true, supplier: { select: { name: true } }, expenseLines: { include: { glAccount: { select: { code: true, description: true } } } } } } } },
+      items: { orderBy: { sortOrder: "asc" }, include: { glAccount: { select: { code: true, description: true } } } },
       accountLines: { orderBy: { sortOrder: "asc" } },
       preparedBy: { select: { name: true } }, checkedBy: { select: { name: true } }, approvedBy: { select: { name: true } },
       notedBy: { select: { name: true } }, postedBy: { select: { name: true } },
-      payments: { where: { status: "Posted" }, include: { cashAccount: { include: { glAccount: { select: { code: true, description: true } } } } }, orderBy: { date: "asc" } },
+      payments: { where: { status: "Posted" }, include: { lines: { select: { amount: true } }, cashAccount: { include: { glAccount: { select: { code: true, description: true } } } } }, orderBy: { date: "asc" } },
     },
   });
   if (!dv || dv.companyId !== company.id) notFound();
@@ -35,7 +36,10 @@ export default async function DvPrintPage({ params }: { params: { id: string } }
           <DvSheet
             d={{
               companyName: company.companyName, dvNo: dv.dvNo, padRef: dv.padRef, payee: dv.payee, date: fmtDate(dv.date), terms: dv.terms ?? "", particulars: dv.particulars,
-              items: dv.bills.map((b) => ({ label: `${b.bill.billNo}${b.bill.supplierInvoiceNo ? ` · Inv ${b.bill.supplierInvoiceNo}` : ""} · ${fmtDate(b.bill.billDate)}`, amount: b.amount })),
+              items: [
+                ...dv.bills.map((b) => ({ label: `${b.bill.billNo}${b.bill.supplierInvoiceNo ? ` · Inv ${b.bill.supplierInvoiceNo}` : ""} · ${fmtDate(b.bill.billDate)}`, amount: b.amount })),
+                ...dv.items.map((it) => ({ label: it.description, amount: it.amount })),
+              ],
               amount: dv.amount, amountInWords: amountInWords(dv.amount),
               lines: lines.map((l) => ({ title: l.title, debit: l.debit, credit: l.credit })),
               signatures: { preparedBy: dv.preparedBy?.name, checkedBy: dv.checkedBy?.name, approvedBy: dv.approvedBy?.name, notedBy: dv.notedBy?.name, postedBy: dv.postedBy?.name },

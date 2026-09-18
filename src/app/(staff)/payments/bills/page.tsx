@@ -12,7 +12,7 @@ export default async function PayBillsPage({ searchParams }: { searchParams: { q
   const where: any = { companyId: company.id };
   if (["Posted", "Void"].includes(searchParams.status ?? "")) where.status = searchParams.status;
   const q = searchParams.q?.trim();
-  if (q) where.OR = [{ paymentNo: { contains: q, mode: "insensitive" } }, { checkNo: { contains: q, mode: "insensitive" } }, { refNo: { contains: q, mode: "insensitive" } }, { supplier: { name: { contains: q, mode: "insensitive" } } }, { dv: { dvNo: { contains: q, mode: "insensitive" } } }, { lines: { some: { bill: { billNo: { contains: q, mode: "insensitive" } } } } }];
+  if (q) where.OR = [{ paymentNo: { contains: q, mode: "insensitive" } }, { checkNo: { contains: q, mode: "insensitive" } }, { refNo: { contains: q, mode: "insensitive" } }, { payee: { contains: q, mode: "insensitive" } }, { dv: { dvNo: { contains: q, mode: "insensitive" } } }, { lines: { some: { bill: { billNo: { contains: q, mode: "insensitive" } } } } }];
   const [payments, openDvs] = await Promise.all([
     prisma.supplierPayment.findMany({ where, orderBy: [{ date: "desc" }, { paymentNo: "desc" }], take: 150, include: { supplier: { select: { name: true } }, cashAccount: { select: { name: true } }, dv: { select: { id: true, dvNo: true } }, lines: { include: { bill: { select: { billNo: true } } } } } }),
     prisma.disbursementVoucher.findMany({ where: { companyId: company.id, status: { in: ["Posted", "Partially Paid"] } }, select: { id: true, dvNo: true, payee: true, amount: true, paidAmount: true }, orderBy: { date: "asc" } }),
@@ -20,7 +20,7 @@ export default async function PayBillsPage({ searchParams }: { searchParams: { q
 
   return (
     <div>
-      <PageHeader title="Pay Bills — Supplier Payments">
+      <PageHeader title="Pay Bills — Payments">
         {user.perm === "READ_WRITE" && <Link href="/payments/bills/new" className="btn-primary">+ Record Payment</Link>}
       </PageHeader>
       {openDvs.length > 0 && (
@@ -44,7 +44,7 @@ export default async function PayBillsPage({ searchParams }: { searchParams: { q
               <tr key={p.id} className={p.status === "Void" ? "opacity-50" : "hover:bg-gray-50"}>
                 <td className="table-td"><Link href={`/payments/bills/${p.id}`} className="font-mono text-xs font-semibold text-emerald-700 hover:underline">{p.paymentNo}</Link></td>
                 <td className="table-td text-sm">{fmtDate(p.date)}</td>
-                <td className="table-td text-sm">{p.supplier.name}</td>
+                <td className="table-td text-sm">{p.payee || p.supplier?.name}</td>
                 <td className="table-td font-mono text-xs">{p.dv ? <Link href={`/dv/${p.dv.id}`} className="text-emerald-700 hover:underline">{p.dv.dvNo}</Link> : <span className="text-gray-400">—</span>}</td>
                 <td className="table-td font-mono text-[11px] text-gray-600">{p.lines.map((l) => l.bill.billNo).join(", ")}</td>
                 <td className="table-td text-xs text-gray-600">{p.cashAccount.name} · {p.method}{p.checkNo ? ` #${p.checkNo}` : ""}</td>

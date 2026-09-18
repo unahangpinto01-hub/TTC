@@ -735,6 +735,7 @@ model GLAccount {
   inputVatFor             Company[]                 @relation("GLInputVat")
   SupplierBillExpenseLine SupplierBillExpenseLine[]
   accountLines            DVAccountLine[]
+  dvItems                 DVItem[]
 }
 
 model Employee {
@@ -770,6 +771,7 @@ model Employee {
   evaluations    Evaluation[]
   customers      Customer[]
   forecastLines  ForecastLine[]
+  vouchers       DisbursementVoucher[]
 
   drPrepared        DeliveryReceipt[] @relation("DRPrepared")
   drChecked         DeliveryReceipt[] @relation("DRChecked")
@@ -1138,24 +1140,32 @@ model SupplierBillExpenseLine {
 /// the bills already raised the payable, the payment will settle it. Its accounting lines
 /// are generated from those, never typed. DV-TTC-2026-000001, per company per year.
 model DisbursementVoucher {
-  id          String   @id @default(cuid())
-  companyId   String
-  company     Company  @relation(fields: [companyId], references: [id])
-  dvNo        String
+  id              String    @id @default(cuid())
+  companyId       String
+  company         Company   @relation(fields: [companyId], references: [id])
+  dvNo            String
   /// the number stamped on the paper pad, when one is still used alongside
-  padRef      String?
-  supplierId  String
-  supplier    Supplier @relation(fields: [supplierId], references: [id])
-  payee       String
-  date        DateTime
-  terms       String?
-  particulars String
-  memo        String?
+  padRef          String?
+  /// the payee is anyone: a supplier, an employee, or just a name typed on the voucher
+  supplierId      String?
+  supplier        Supplier? @relation(fields: [supplierId], references: [id])
+  employeeId      String?
+  employee        Employee? @relation(fields: [employeeId], references: [id])
+  payee           String
+  date            DateTime
+  terms           String?
+  particulars     String
+  memo            String?
   /// Draft | Prepared | Checked | Approved | Posted | Partially Paid | Paid | Void
-  status      String   @default("Draft")
-  /// Σ of the bill allocations — what this voucher authorises paying
-  amount      Float    @default(0)
-  paidAmount  Float    @default(0)
+  status          String    @default("Draft")
+  /// Σ of the bill allocations plus the voucher's own items — what it authorises paying
+  amount          Float     @default(0)
+  /// Σ of the voucher's own items (the part with no bill behind it); posting books these
+  directAmount    Float     @default(0)
+  paidAmount      Float     @default(0)
+  /// the period a direct voucher was booked in, set when it is posted
+  accountingYear  Int?
+  accountingMonth Int?
 
   preparedById String?
   preparedBy   User?     @relation("DVPrepared", fields: [preparedById], references: [id])
@@ -1180,6 +1190,7 @@ model DisbursementVoucher {
   updatedAt    DateTime  @updatedAt
 
   bills        DVBill[]
+  items        DVItem[]
   payments     SupplierPayment[]
   accountLines DVAccountLine[]
 
@@ -1201,6 +1212,23 @@ model DVBill {
   @@index([billId])
 }
 
+/// A voucher's own particulars — an expense with no supplier bill behind it (an employee's
+/// liquidation, a permit fee, a reimbursement). Each item names the account it is charged
+/// to; a negative amount is a deduction. When the voucher is posted these ARE the entry:
+/// Dr each item's account / Cr Accounts Payable to the payee, cleared by Pay Bills.
+model DVItem {
+  id          String              @id @default(cuid())
+  dvId        String
+  dv          DisbursementVoucher @relation(fields: [dvId], references: [id], onDelete: Cascade)
+  glAccountId String?
+  glAccount   GLAccount?          @relation(fields: [glAccountId], references: [id])
+  description String
+  amount      Float
+  sortOrder   Int                 @default(0)
+
+  @@index([dvId])
+}
+
 /// A payment to a supplier — what the company actually paid, from which account, against
 /// which bills, under which voucher. Dr Accounts Payable / Cr Cash or Bank.
 /// PY-TTC-2026-000001, per company per year.
@@ -1210,8 +1238,10 @@ model SupplierPayment {
   company       Company              @relation(fields: [companyId], references: [id])
   paymentNo     String
   date          DateTime
-  supplierId    String
-  supplier      Supplier             @relation(fields: [supplierId], references: [id])
+  supplierId    String?
+  supplier      Supplier?            @relation(fields: [supplierId], references: [id])
+  /// who was paid, as printed — the supplier's name, or the voucher's payee
+  payee         String               @default("")
   dvId          String?
   dv            DisbursementVoucher? @relation(fields: [dvId], references: [id])
   cashAccountId String

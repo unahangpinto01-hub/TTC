@@ -8,6 +8,7 @@ import { getActiveCompany } from "@/lib/company";
 import { logAudit } from "@/lib/salespeople";
 import { nextSeriesNo } from "@/lib/vouchers";
 import { OPEN_BILL_STATUSES, statusForPayment, round2 } from "@/lib/bills";
+import { directPaidOf } from "@/lib/dv";
 
 const PAYMENT_METHODS = ["Cash", "Check", "Bank Transfer", "E-Wallet"] as const;
 
@@ -42,9 +43,11 @@ async function settleVoucher(tx: Pick<typeof prisma, "supplierPayment" | "disbur
  * Record a payment. It posts at once — the Disbursement Voucher is the authorisation, so
  * the payment is the fact of money leaving. Each bill paid must be open, must belong to the
  * payee, and must not be paid beyond what is owed (or, under a voucher, beyond what the
- * voucher authorised for it). The same cheque number cannot be recorded twice on one account.
+ * voucher authorised for it). A voucher's own items (the part with no bill) are paid as one
+ * amount, never beyond what the voucher authorised less what was already paid on them. The
+ * same cheque number cannot be recorded twice on one account.
  *
- *   Dr Accounts Payable (per bill)  /  Cr Cash or Bank (the account chosen)
+ *   Dr Accounts Payable (per bill, and for the voucher's own items)  /  Cr Cash or Bank (the account chosen)
  */
 export async function recordSupplierPayment(formData: FormData) {
   const user = await requirePermWrite("payBills");
@@ -64,14 +67,14 @@ export async function recordSupplierPayment(formData: FormData) {
   if (!cashAccount) redirect(`${back}&error=account`);
   if (method === "Check" && !checkNo) redirect(`${back}&error=check`);
 
-  const dv = dvId ? await prisma.disbursementVoucher.findUnique({ where: { id: dvId }, include: { bills: true, supplier: true } }) : null;
+  const dv = dvId ? await prisma.disbursementVoucher.findUnique({ where: { id: dvId }, include: { bills: true, supplier: true, payments: { where: { status: "Posted" }, select: { amount: true, lines: { select: { amount: true } } } } } }) : null;
   if (dvId && (!dv || dv.companyId !== company.id)) redirect("/payments/bills/new?error=dv");
   if (dv && !["Posted", "Partially Paid"].includes(dv.status)) redirect(`${back}&error=dvstatus`);
 
   const billIds = formData.getAll("billId").map(String);
   const amounts = formData.getAll("pay").map((v) => round2(Math.max(0, Number(v) || 0)));
   const lines: { billId: string; amount: number; billNo: string }[] = [];
-  let supplierId = dv?.supplierId ?? String(formData.get("supplierId") || "");
+  let supplierId: string | null = dv ? dv.supplierId : String(formData.get("supplierId") || "") || null;
   for (let i = 0; i < billIds.length; i++) {
     if (!billIds[i] || amounts[i] <= 0) continue;
     const bill = await prisma.supplierBill.findFirst({ where: { id: billIds[i], companyId: company.id, status: { in: OPEN_BILL_STATUSES } }, select: { id: true, billNo: true, supplierId: true, total: true, paidAmount: true } });
@@ -89,8 +92,17 @@ export async function recordSupplierPayment(formData: FormData) {
     }
     lines.push({ billId: bill.id, amount: amounts[i], billNo: bill.billNo });
   }
-  if (!lines.length) redirect(`${back}&error=empty`);
-  const amount = round2(lines.reduce((s, l) => s + l.amount, 0));
+  // the voucher's own items, paid as one amount
+  let direct = 0;
+  if (dv && dv.directAmount > 0) {
+    direct = round2(Math.max(0, Number(formData.get("payDirect")) || 0));
+    const left = round2(dv.directAmount - directPaidOf(dv.payments));
+    if (direct > left + 0.005) redirect(`${back}&error=overdirect`);
+  }
+  if (!lines.length && direct <= 0) redirect(`${back}&error=empty`);
+  const amount = round2(lines.reduce((s, l) => s + l.amount, 0) + direct);
+  const payee = dv?.payee ?? (supplierId ? (await prisma.supplier.findUnique({ where: { id: supplierId }, select: { name: true } }))?.name ?? "" : "");
+  if (!payee) redirect(`${back}&error=payee`);
   if (checkNo) {
     const dupe = await prisma.supplierPayment.findFirst({ where: { cashAccountId, checkNo: { equals: checkNo, mode: "insensitive" }, status: "Posted" }, select: { paymentNo: true } });
     if (dupe) redirect(`${back}&error=dupecheck&bill=${encodeURIComponent(dupe.paymentNo)}`);
@@ -100,7 +112,7 @@ export async function recordSupplierPayment(formData: FormData) {
   const payment = await prisma.$transaction(async (tx) => {
     const p = await tx.supplierPayment.create({
       data: {
-        companyId: company.id, paymentNo, date, supplierId, dvId: dv?.id ?? null, cashAccountId, method, checkNo, checkDate, refNo, amount, remarks,
+        companyId: company.id, paymentNo, date, supplierId, payee, dvId: dv?.id ?? null, cashAccountId, method, checkNo, checkDate, refNo, amount, remarks,
         status: "Posted", createdById: user.id, lines: { create: lines.map((l) => ({ billId: l.billId, amount: l.amount })) },
       },
     });
@@ -108,10 +120,9 @@ export async function recordSupplierPayment(formData: FormData) {
     if (dv) await settleVoucher(tx, dv.id);
     return p;
   });
-  const supplier = await prisma.supplier.findUnique({ where: { id: supplierId }, select: { name: true } });
   await logAudit({
     entity: "SupplierPayment", entityId: payment.id, action: "PAID",
-    detail: `${paymentNo} · ₱${amount.toFixed(2)} to ${supplier?.name ?? "supplier"} from ${cashAccount.name} by ${method}${checkNo ? ` cheque ${checkNo}` : ""}${dv ? ` under ${dv.dvNo}` : ""} · ${lines.map((l) => `${l.billNo} ₱${l.amount.toFixed(2)}`).join(", ")} · Dr Accounts Payable / Cr ${cashAccount.name}`,
+    detail: `${paymentNo} · ₱${amount.toFixed(2)} to ${payee} from ${cashAccount.name} by ${method}${checkNo ? ` cheque ${checkNo}` : ""}${dv ? ` under ${dv.dvNo}` : ""} · ${[...lines.map((l) => `${l.billNo} ₱${l.amount.toFixed(2)}`), direct > 0 ? `voucher items ₱${direct.toFixed(2)}` : ""].filter(Boolean).join(", ")} · Dr Accounts Payable / Cr ${cashAccount.name}`,
     actorName: user.name, actorEmail: user.email, companyId: company.id,
   });
   for (const l of lines) await logAudit({ entity: "SupplierBill", entityId: l.billId, action: "PAID", detail: `₱${l.amount.toFixed(2)} paid by ${paymentNo}${dv ? ` under ${dv.dvNo}` : ""}`, actorName: user.name, actorEmail: user.email, companyId: company.id });

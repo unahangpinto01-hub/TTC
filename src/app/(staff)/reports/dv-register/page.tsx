@@ -49,7 +49,7 @@ export default async function DvRegisterPage({ searchParams }: { searchParams: {
                 <td className="table-td"><Link href={`/dv/${d.id}`} className="font-mono text-xs font-semibold text-emerald-700 hover:underline">{d.dvNo}</Link>{d.padRef && <span className="block text-[10px] text-gray-400">pad {d.padRef}</span>}</td>
                 {scope.combined && <td className="table-td"><CompanyTag name={d.company.companyName} /></td>}
                 <td className="table-td text-sm">{d.payee}</td>
-                <td className="table-td text-[11px]">{d.bills.map((b, i) => <span key={b.bill.id}>{i > 0 && ", "}<Link href={`/bills/${b.bill.id}`} className="font-mono text-emerald-700 hover:underline">{b.bill.billNo}</Link></span>)}</td>
+                <td className="table-td text-[11px]">{d.bills.map((b, i) => <span key={b.bill.id}>{i > 0 && ", "}<Link href={`/bills/${b.bill.id}`} className="font-mono text-emerald-700 hover:underline">{b.bill.billNo}</Link></span>)}{d.directAmount > 0 && <span className="text-gray-500">{d.bills.length ? " + " : ""}own items {peso(d.directAmount)}</span>}</td>
                 <td className="table-td max-w-xs truncate text-xs text-gray-600">{d.particulars}</td>
                 <td className="table-td text-right font-semibold">{peso(d.amount)}</td>
                 <td className={`table-td text-right ${d.paidAmount ? "text-emerald-700" : "text-gray-400"}`}>{d.paidAmount ? peso(d.paidAmount) : "—"}</td>

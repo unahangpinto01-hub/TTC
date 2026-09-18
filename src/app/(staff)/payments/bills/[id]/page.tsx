@@ -25,18 +25,20 @@ export default async function SupplierPaymentPage({ params, searchParams }: { pa
   const audit = await getAuditTrail("SupplierPayment", params.id, 20);
   const isAdmin = ["SUPER_ADMIN", "ADMIN"].includes(user.role) && user.perm === "READ_WRITE";
   const cashTitle = p.cashAccount.glAccount ? `${p.cashAccount.glAccount.code} ${p.cashAccount.glAccount.description}` : p.cashAccount.name;
+  const payee = p.payee || p.supplier?.name || "—";
+  const direct = Math.round((p.amount - p.lines.reduce((s, l) => s + l.amount, 0)) * 100) / 100;
 
   return (
     <div>
       <Link href="/payments/bills" className="mb-3 inline-flex items-center gap-1 text-sm font-medium text-emerald-700 hover:underline">← Back to Pay Bills</Link>
       <PageHeader title={`Payment ${p.paymentNo}`}><StatusBadge status={p.status} /></PageHeader>
-      {searchParams.posted === "ok" && <p className="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">✔ Payment recorded. {peso(p.amount)} paid to {p.supplier.name} from {p.cashAccount.name}.</p>}
+      {searchParams.posted === "ok" && <p className="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">✔ Payment recorded. {peso(p.amount)} paid to {payee} from {p.cashAccount.name}.</p>}
       {searchParams.error && ERRORS[searchParams.error] && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">⚠ {ERRORS[searchParams.error]}</p>}
       {p.status === "Void" && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">Voided by {p.voidedBy?.name ?? "—"} · {fmtDateTime(p.voidedAt)}: {p.voidReason}</p>}
 
       <div className="mb-4 grid grid-cols-2 gap-3 text-sm md:grid-cols-4">
-        <div className="card py-3"><p className="text-xs text-gray-500">Paid to</p><p className="font-semibold">{p.supplier.name}</p><p className="text-xs text-gray-500">{fmtDate(p.date)}</p></div>
-        <div className="card py-3"><p className="text-xs text-gray-500">Amount</p><p className="font-semibold">{peso(p.amount)}</p><p className="text-xs text-gray-500">{p.lines.length} bill(s)</p></div>
+        <div className="card py-3"><p className="text-xs text-gray-500">Paid to</p><p className="font-semibold">{payee}</p><p className="text-xs text-gray-500">{fmtDate(p.date)}</p></div>
+        <div className="card py-3"><p className="text-xs text-gray-500">Amount</p><p className="font-semibold">{peso(p.amount)}</p><p className="text-xs text-gray-500">{[p.lines.length ? `${p.lines.length} bill(s)` : "", direct > 0.005 ? `voucher items ${peso(direct)}` : ""].filter(Boolean).join(" + ")}</p></div>
         <div className="card py-3"><p className="text-xs text-gray-500">From</p><p className="font-semibold">{p.cashAccount.name}</p><p className="text-xs text-gray-500">{p.method}{p.checkNo ? ` · cheque ${p.checkNo}${p.checkDate ? ` dated ${fmtDate(p.checkDate)}` : ""}` : ""}{p.refNo ? ` · ref ${p.refNo}` : ""}</p></div>
         <div className="card py-3"><p className="text-xs text-gray-500">Disbursement Voucher</p>{p.dv ? <Link href={`/dv/${p.dv.id}`} className="font-mono font-semibold text-emerald-700 hover:underline">{p.dv.dvNo}</Link> : <p className="text-gray-400">none — paid directly</p>}{p.dv && <p className="text-xs text-gray-500">{p.dv.status}</p>}</div>
       </div>
@@ -48,6 +50,7 @@ export default async function SupplierPaymentPage({ params, searchParams }: { pa
             {p.lines.map((l) => (
               <tr key={l.id}><td className="table-td"><Link href={`/bills/${l.bill.id}`} className="font-mono text-xs font-semibold text-emerald-700 hover:underline">{l.bill.billNo}</Link><span className="block text-[10px] text-gray-500">{l.bill.kind === "EXPENSE" ? "non-inventory" : "inventory"}</span></td><td className="table-td text-xs text-gray-600">{l.bill.supplierInvoiceNo ?? "—"}</td><td className="table-td text-right">{peso(l.bill.total)}</td><td className="table-td text-right font-semibold">{peso(l.amount)}</td><td className="table-td text-right text-sm">{peso(l.bill.paidAmount)}</td><td className="table-td"><StatusBadge status={l.bill.status} /></td></tr>
             ))}
+            {direct > 0.005 && <tr><td className="table-td" colSpan={3}><span className="text-sm font-semibold">{p.dv?.dvNo ?? "Voucher"} — the voucher&rsquo;s own items (no bill)</span></td><td className="table-td text-right font-semibold">{peso(direct)}</td><td className="table-td" colSpan={2} /></tr>}
           </tbody>
         </table>
       </div>
@@ -55,7 +58,8 @@ export default async function SupplierPaymentPage({ params, searchParams }: { pa
       <div className="card mb-4 text-sm">
         <p className="mb-1 font-semibold">Accounting</p>
         <table className="w-full max-w-lg"><tbody className="divide-y divide-gray-100">
-          {p.lines.map((l) => <tr key={l.id}><td className="py-1">Accounts Payable — {p.supplier.name} <span className="font-mono text-xs text-gray-500">{l.bill.billNo}</span></td><td className="py-1 text-right">{peso(l.amount)}</td><td className="py-1 text-right" /></tr>)}
+          {p.lines.map((l) => <tr key={l.id}><td className="py-1">Accounts Payable — {payee} <span className="font-mono text-xs text-gray-500">{l.bill.billNo}</span></td><td className="py-1 text-right">{peso(l.amount)}</td><td className="py-1 text-right" /></tr>)}
+          {direct > 0.005 && <tr><td className="py-1">Accounts Payable — {payee} <span className="font-mono text-xs text-gray-500">{p.dv?.dvNo}</span></td><td className="py-1 text-right">{peso(direct)}</td><td className="py-1 text-right" /></tr>}
           <tr><td className="py-1 pl-8">{cashTitle}</td><td className="py-1 text-right" /><td className="py-1 text-right">({peso(p.amount)})</td></tr>
         </tbody></table>
       </div>

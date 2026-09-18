@@ -28,21 +28,34 @@ export function DvPreview({ formId, base }: { formId: string; base: DvSheetData 
         const label = inp.closest("tr")?.getAttribute("data-label") ?? "";
         if (amount > 0) items.push({ label, amount });
       });
-      const amount = items.length ? Math.round(items.reduce((s, i) => s + i.amount, 0) * 100) / 100 : base.amount;
+      // the voucher's own items: description and (signed) amount from their inputs
+      const itemInputs = form.querySelectorAll<HTMLInputElement>("input[name=itemAmount]");
+      itemInputs.forEach((inp) => {
+        const amount = Number(inp.value) || 0;
+        const row = inp.closest("tr");
+        const label = (row?.querySelector<HTMLInputElement>("input[name=itemDescription]")?.value ?? row?.getAttribute("data-item-label") ?? "").trim();
+        if (amount !== 0 || label) items.push({ label: label || "(item)", amount });
+      });
+      const amount = allocInputs.length || itemInputs.length ? Math.round(items.reduce((s, i) => s + i.amount, 0) * 100) / 100 : base.amount;
       const titles = strs("lineTitle"), debits = nums("lineDebit"), credits = nums("lineCredit");
       const lines = titles.map((t, i) => ({ title: t, debit: debits[i] || 0, credit: credits[i] || 0 })).filter((l) => l.title || l.debit || l.credit);
+      const pickedName = () => {
+        const hidden = [...form.querySelectorAll<HTMLInputElement>("input[name=supplierId], input[name=employeeId]")].find((h) => h.value);
+        return hidden?.parentElement?.querySelector<HTMLInputElement>("input:not([type=hidden])")?.value?.trim() ?? "";
+      };
       const rawDate = str("date");
       const date = rawDate ? new Date(`${rawDate}T12:00:00`).toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "2-digit" }) : base.date;
       setData({
         ...base,
-        payee: str("payee") || base.payee,
+        // no name typed: the supplier or employee just picked, as their search box shows it
+        payee: str("payee") || pickedName() || base.payee,
         date,
         terms: form.querySelector("[name=terms]") ? str("terms") : base.terms,
         particulars: form.querySelector("[name=particulars]") ? str("particulars") : base.particulars,
         padRef: form.querySelector("[name=padRef]") ? str("padRef") || null : base.padRef,
-        items: allocInputs.length ? items : base.items,
+        items: allocInputs.length || itemInputs.length ? items : base.items,
         amount,
-        amountInWords: amountInWords(amount),
+        amountInWords: amountInWords(Math.max(0, amount)),
         lines: lines.length || form.querySelector("[name=lineTitle]") ? lines : base.lines,
       });
     };

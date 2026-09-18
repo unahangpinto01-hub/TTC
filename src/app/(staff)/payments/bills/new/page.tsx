@@ -8,6 +8,7 @@ import { PageHeader } from "@/components/ui";
 import { SearchSelect } from "@/components/search-select";
 import { PayLines, type PayRow } from "./pay-lines";
 import { recordSupplierPayment } from "../actions";
+import { directPaidOf } from "@/lib/dv";
 
 const METHODS = ["Cash", "Check", "Bank Transfer", "E-Wallet"];
 const ERRORS: Record<string, string> = {
@@ -15,7 +16,7 @@ const ERRORS: Record<string, string> = {
   dv: "That voucher could not be found.", dvstatus: "Only a Posted voucher can be paid — it must be approved and posted first.",
   bill: "A bill on this payment is not open.", payee: "All bills on one payment must belong to the same payee.",
   over: "A bill is being paid more than it is owed.", notondv: "That bill is not on the voucher.", overdv: "A bill is being paid more than the voucher authorised for it.",
-  empty: "Enter an amount against at least one bill.", dupecheck: "That cheque number is already recorded on this account (see payment",
+  empty: "Enter an amount against at least one bill or the voucher's own items.", overdirect: "The voucher's own items are being paid more than it authorised.", dupecheck: "That cheque number is already recorded on this account (see payment",
 };
 
 export default async function NewSupplierPaymentPage({ searchParams }: { searchParams: { dv?: string; supplier?: string; error?: string; bill?: string } }) {
@@ -26,6 +27,8 @@ export default async function NewSupplierPaymentPage({ searchParams }: { searchP
     ? await prisma.disbursementVoucher.findFirst({ where: { id: searchParams.dv, companyId: company.id }, include: { supplier: true, bills: { include: { bill: true } }, payments: { where: { status: "Posted" }, include: { lines: true } } } })
     : null;
   const supplier = dv?.supplier ?? (searchParams.supplier ? await prisma.supplier.findUnique({ where: { id: searchParams.supplier } }) : null);
+  // the voucher's own items: what it authorised less what earlier payments already covered
+  const directLeft = dv && dv.directAmount > 0 ? round2(Math.max(0, dv.directAmount - directPaidOf(dv.payments))) : 0;
   const accounts = await prisma.cashAccount.findMany({ where: { companyId: company.id, status: "Active" }, orderBy: { name: "asc" } });
   const today = new Date();
   const ymd = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
@@ -49,7 +52,7 @@ export default async function NewSupplierPaymentPage({ searchParams }: { searchP
   return (
     <div className="max-w-4xl">
       <Link href="/payments/bills" className="mb-3 inline-flex items-center gap-1 text-sm font-medium text-emerald-700 hover:underline">← Back to Pay Bills</Link>
-      <PageHeader title="Record Supplier Payment" />
+      <PageHeader title="Record Payment" />
       {searchParams.error && ERRORS[searchParams.error] && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">⚠ {ERRORS[searchParams.error]}{searchParams.bill ? ` ${searchParams.bill})` : ""}</p>}
       {!accounts.length && <p className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">No cash or bank account is set up for {company.companyName} — add one under Finance → Cash / Bank Accounts first.</p>}
 
@@ -79,10 +82,10 @@ export default async function NewSupplierPaymentPage({ searchParams }: { searchP
             <div><label className="label">Cheque Date</label><input name="checkDate" type="date" className="input" /></div>
             <div className="sm:col-span-2"><label className="label">Remarks</label><input name="remarks" className="input" /></div>
           </div>
-          <PayLines rows={rows} />
+          <PayLines rows={rows} direct={directLeft > 0 ? { label: `${dv!.dvNo} — the voucher's own items (no bill)`, max: directLeft } : null} />
           <div className="flex items-center gap-3">
-            <button className="btn-primary" type="submit" disabled={!accounts.length || !rows.length}>💸 Record Payment</button>
-            <p className="text-xs text-gray-500">Posts at once: Dr Accounts Payable per bill, Cr the account chosen. Bills and the voucher move to Partially Paid / Paid.</p>
+            <button className="btn-primary" type="submit" disabled={!accounts.length || (!rows.length && directLeft <= 0)}>💸 Record Payment</button>
+            <p className="text-xs text-gray-500">Posts at once: Dr Accounts Payable per bill and for the voucher&rsquo;s own items, Cr the account chosen. Bills and the voucher move to Partially Paid / Paid.</p>
           </div>
         </form>
       )}

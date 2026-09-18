@@ -42,7 +42,7 @@ export default async function DvListPage({ searchParams }: { searchParams: { sta
                 <td className="table-td"><Link href={`/dv/${d.id}`} className="font-mono text-xs font-semibold text-emerald-700 hover:underline">{d.dvNo}</Link>{d.padRef && <span className="block text-[10px] text-gray-400">pad {d.padRef}</span>}</td>
                 <td className="table-td text-sm">{fmtDate(d.date)}</td>
                 <td className="table-td text-sm">{d.payee}</td>
-                <td className="table-td font-mono text-[11px] text-gray-600">{d.bills.map((b) => b.bill.billNo).join(", ") || "—"}</td>
+                <td className="table-td font-mono text-[11px] text-gray-600">{d.bills.map((b) => b.bill.billNo).join(", ") || (d.directAmount ? <span className="font-sans text-gray-500">own items</span> : "—")}</td>
                 <td className="table-td max-w-xs truncate text-xs text-gray-600">{d.particulars || "—"}</td>
                 <td className="table-td text-right font-semibold">{peso(d.amount)}</td>
                 <td className={`table-td text-right ${d.paidAmount ? "text-emerald-700" : "text-gray-400"}`}>{d.paidAmount ? peso(d.paidAmount) : "—"}</td>
@@ -54,7 +54,7 @@ export default async function DvListPage({ searchParams }: { searchParams: { sta
           {dvs.length > 0 && <tfoot className="border-t border-gray-200 bg-gray-50 font-bold"><tr><td className="table-td" colSpan={5}>AUTHORISED, NOT YET PAID</td><td className="table-td text-right text-amber-700">{peso(open)}</td><td colSpan={2} /></tr></tfoot>}
         </table>
       </div>
-      <p className="mt-2 text-xs text-gray-500">A voucher authorises paying posted supplier bills; it creates no accounting entry of its own. Draft → Prepared → Checked → Approved → Posted, then a Payment settles it.</p>
+      <p className="mt-2 text-xs text-gray-500">A voucher authorises paying anyone — a supplier's posted bills, or its own itemised expenses (an employee's liquidation, a permit, a reimbursement), which are booked when it is posted. Draft → Prepared → Checked → Approved → Posted, then a Payment settles it.</p>
     </div>
   );
 }

@@ -17,15 +17,17 @@ export default async function NewDvPage({ searchParams }: { searchParams: { erro
     <div className="max-w-4xl">
       <Link href="/dv" className="mb-3 inline-flex items-center gap-1 text-sm font-medium text-emerald-700 hover:underline">← Back to Disbursement Vouchers</Link>
       <PageHeader title="New Disbursement Voucher" />
-      {searchParams.error === "supplier" && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">⚠ Choose the payee.</p>}
+      {searchParams.error === "payee" && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">⚠ Name the payee — pick a supplier or an employee, or type the name.</p>}
       <form id="dv-form" action={createDV} className="card space-y-4">
         <p className="text-xs text-gray-500">
-          One voucher per payee. On the next screen you choose which of the payee&rsquo;s posted bills it authorises paying and how
-          much of each. The voucher then goes Prepared → Checked → Approved → Posted; payment is recorded separately against it.
+          One voucher per payee, for any expense. Pick a <span className="font-semibold">supplier</span> to pay their posted bills, an <span className="font-semibold">employee</span> for a
+          liquidation or reimbursement, or just type the payee. What the voucher pays (bills, or its own itemised particulars) and the account lines are filled in on the next screen.
+          The voucher then goes Prepared → Checked → Approved → Posted; payment is recorded separately against it.
         </p>
         <div className="grid gap-3 sm:grid-cols-2">
-          <div className="sm:col-span-2"><label className="label">Payee (supplier)</label><SearchSelect entity="suppliers" name="supplierId" required placeholder="Type supplier name…" /></div>
-          <div><label className="label">Payee name as printed <span className="font-normal text-gray-400">(blank = supplier name)</span></label><input name="payee" className="input" /></div>
+          <div><label className="label">Supplier <span className="font-normal text-gray-400">(to pay their bills)</span></label><SearchSelect entity="suppliers" name="supplierId" placeholder="Type supplier name…" /></div>
+          <div><label className="label">or Employee</label><SearchSelect entity="employees" name="employeeId" placeholder="Type employee name…" /></div>
+          <div className="sm:col-span-2"><label className="label">Payee name as printed <span className="font-normal text-gray-400">(blank = the supplier&rsquo;s or employee&rsquo;s name; required when neither is picked)</span></label><input name="payee" className="input" placeholder="e.g. Bureau of Internal Revenue, Juan dela Cruz…" /></div>
           <div><label className="label">Date</label><input name="date" type="date" defaultValue={ymd} required className="input" /></div>
           <div><label className="label">Terms</label><input name="terms" className="input" placeholder="e.g. 30 days, COD" /></div>
           <div><label className="label">Pad DVN <span className="font-normal text-gray-400">(if stamped)</span></label><input name="padRef" className="input" placeholder="e.g. 24251" /></div>
@@ -40,7 +42,7 @@ export default async function NewDvPage({ searchParams }: { searchParams: { erro
           formId="dv-form"
           base={{ companyName: company.companyName, dvNo: null, padRef: null, payee: "", date: fmtDate(today), terms: "", particulars: "", items: [], amount: 0, amountInWords: "", lines: [], signatures: {}, payments: [], paidTotal: 0, status: "Draft" }}
         />
-        <p className="mt-1 text-xs text-gray-500">The bills, amounts and account lines are added on the next screen; the DV number is assigned when the voucher is created.</p>
+        <p className="mt-1 text-xs text-gray-500">The bills or items, amounts and account lines are added on the next screen; the DV number is assigned when the voucher is created.</p>
       </div>
     </div>
   );

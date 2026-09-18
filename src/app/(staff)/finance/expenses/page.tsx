@@ -186,19 +186,19 @@ export default async function ExpensesPage({
 
           {bills.length > 0 && (
             <>
-              <h2 className="mb-2 mt-6 font-semibold">Non-inventory bills in the period <span className="text-sm font-normal text-gray-500">(accrued expenses, ex-VAT)</span></h2>
+              <h2 className="mb-2 mt-6 font-semibold">Non-inventory bills and posted vouchers in the period <span className="text-sm font-normal text-gray-500">(accrued expenses, ex-VAT)</span></h2>
               <div className="card overflow-x-auto p-0">
                 <table className="w-full min-w-[900px]">
                   <thead className="border-b border-gray-200 bg-gray-50">
                     <tr>
-                      <th className="table-th">Bill No.</th><th className="table-th">Bill Date</th><th className="table-th">Period</th><th className="table-th">Supplier</th>
+                      <th className="table-th">Bill / DV No.</th><th className="table-th">Date</th><th className="table-th">Period</th><th className="table-th">Payee</th>
                       <th className="table-th">Account</th><th className="table-th">Description</th><th className="table-th">Status</th><th className="table-th text-right">Amount</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {bills.map((b) => (
                       <tr key={b.id} className="hover:bg-gray-50">
-                        <td className="table-td"><a href={`/bills/${b.billId}`} className="font-mono text-xs font-semibold text-emerald-700 hover:underline">{b.billNo}</a></td>
+                        <td className="table-td"><a href={b.href} className="font-mono text-xs font-semibold text-emerald-700 hover:underline">{b.billNo}</a></td>
                         <td className="table-td whitespace-nowrap text-sm">{fmtDate(b.billDate)}</td>
                         <td className="table-td whitespace-nowrap text-xs text-gray-600">{b.accountingYear ? periodLabel(b.accountingYear, b.accountingMonth) : "—"}</td>
                         <td className="table-td text-sm">{b.supplier}</td>

@@ -1,6 +1,7 @@
 import { prisma } from "./db";
 import { LIVE_BILL_STATUSES, OPEN_BILL_STATUSES, outstandingOf, round2 } from "./bills";
 import { lineCartonSize, ctnValue } from "./units";
+import { OPEN_DV_STATUSES, BOOKED_DV_STATUSES, directPaidOf } from "./dv";
 
 /**
  * Accounts Payable and purchasing, read from supplier bills.
@@ -29,6 +30,8 @@ export type ApAgingRow = {
 
 export type OpenBill = {
   id: string;
+  /** where the document lives — a bill, or a voucher whose own items are owed */
+  href: string;
   billNo: string;
   company: string;
   supplierId: string;
@@ -60,28 +63,53 @@ export async function getApAging(companyIds: string[], asOf: Date = new Date()) 
     orderBy: [{ dueDate: "asc" }, { billNo: "asc" }],
   });
 
+  // posted vouchers whose own items are still owed to their payee — a supplier, an employee, or a name
+  const dvs = await prisma.disbursementVoucher.findMany({
+    where: { companyId: { in: companyIds }, status: { in: OPEN_DV_STATUSES }, directAmount: { gt: 0 }, date: { lte: asOfEnd } },
+    select: {
+      id: true, dvNo: true, padRef: true, date: true, directAmount: true, supplierId: true, payee: true,
+      company: { select: { companyName: true } },
+      payments: { where: { status: "Posted" }, select: { amount: true, lines: { select: { amount: true } } } },
+    },
+    orderBy: [{ date: "asc" }, { dvNo: "asc" }],
+  });
+
   const day = 86400000;
   const open: OpenBill[] = [];
   const bySupplier = new Map<string, ApAgingRow>();
+  const add = (o: OpenBill) => {
+    open.push(o);
+    const key = `${o.company}:${o.supplierId}`;
+    const row = bySupplier.get(key) ?? {
+      supplierId: o.supplierId, supplier: o.supplier, company: o.company, bills: 0,
+      current: 0, d1_30: 0, d31_60: 0, d61_90: 0, d90plus: 0, total: 0,
+    };
+    row.bills++;
+    row[o.bucket] = round2(row[o.bucket] + o.outstanding);
+    row.total = round2(row.total + o.outstanding);
+    bySupplier.set(key, row);
+  };
   for (const b of bills) {
     const outstanding = outstandingOf(b);
     if (outstanding <= 0) continue;
     const daysOverdue = Math.floor((asOf.getTime() - b.dueDate.getTime()) / day);
-    const bucket = bucketFor(daysOverdue);
-    open.push({
-      id: b.id, billNo: b.billNo, company: b.company.companyName, supplierId: b.supplier.id, supplier: b.supplier.name,
+    add({
+      id: b.id, href: `/bills/${b.id}`, billNo: b.billNo, company: b.company.companyName, supplierId: b.supplier.id, supplier: b.supplier.name,
       supplierInvoiceNo: b.supplierInvoiceNo, billDate: b.billDate, dueDate: b.dueDate,
-      total: b.total, paid: b.paidAmount, outstanding, daysOverdue, bucket,
+      total: b.total, paid: b.paidAmount, outstanding, daysOverdue, bucket: bucketFor(daysOverdue),
     });
-    const key = `${b.company.companyName}:${b.supplier.id}`;
-    const row = bySupplier.get(key) ?? {
-      supplierId: b.supplier.id, supplier: b.supplier.name, company: b.company.companyName, bills: 0,
-      current: 0, d1_30: 0, d31_60: 0, d61_90: 0, d90plus: 0, total: 0,
-    };
-    row.bills++;
-    row[bucket] = round2(row[bucket] + outstanding);
-    row.total = round2(row.total + outstanding);
-    bySupplier.set(key, row);
+  }
+  for (const d of dvs) {
+    const paid = directPaidOf(d.payments);
+    const outstanding = round2(Math.max(0, d.directAmount - paid));
+    if (outstanding <= 0) continue;
+    // a voucher has no terms of its own: it is due on its date
+    const daysOverdue = Math.floor((asOf.getTime() - d.date.getTime()) / day);
+    add({
+      id: d.id, href: `/dv/${d.id}`, billNo: d.dvNo, company: d.company.companyName, supplierId: d.supplierId ?? `payee:${d.payee}`, supplier: d.payee,
+      supplierInvoiceNo: d.padRef ? `pad DVN ${d.padRef}` : null, billDate: d.date, dueDate: d.date,
+      total: d.directAmount, paid, outstanding, daysOverdue, bucket: bucketFor(daysOverdue),
+    });
   }
 
   const rows = [...bySupplier.values()].sort((a, b) => b.total - a.total);
@@ -134,8 +162,15 @@ export async function getSupplierStatement(supplierId: string, companyIds: strin
     select: { id: true, paymentNo: true, date: true, amount: true, method: true, checkNo: true, refNo: true, company: { select: { companyName: true } }, dv: { select: { dvNo: true } }, lines: { select: { bill: { select: { billNo: true } } } } },
     orderBy: [{ date: "asc" }, { paymentNo: "asc" }],
   });
+  // vouchers whose own items were booked to this supplier
+  const dvs = await prisma.disbursementVoucher.findMany({
+    where: { companyId: { in: companyIds }, supplierId, status: { in: BOOKED_DV_STATUSES }, directAmount: { gt: 0 }, date: { lte: range.to } },
+    select: { id: true, dvNo: true, padRef: true, date: true, directAmount: true, status: true, particulars: true, company: { select: { companyName: true } } },
+    orderBy: [{ date: "asc" }, { dvNo: "asc" }],
+  });
   let opening = 0;
   for (const b of bills) if (b.billDate < range.from) opening = round2(opening + b.total);
+  for (const d of dvs) if (d.date < range.from) opening = round2(opening + d.directAmount);
   for (const p of pays) if (p.date < range.from) opening = round2(opening - p.amount);
   type Entry = Omit<StatementLine, "balance">;
   const entries: Entry[] = [
@@ -145,10 +180,16 @@ export async function getSupplierStatement(supplierId: string, companyIds: strin
       description: b.memo ?? (b.kind === "EXPENSE" ? "Non-inventory bill" : "Inventory purchase"),
       charges: b.total, payments: 0, status: b.status, dueDate: b.dueDate,
     })),
+    ...dvs.filter((d) => d.date >= range.from).map((d) => ({
+      date: d.date, billId: "", billNo: d.dvNo, company: d.company.companyName,
+      ref: d.padRef ? `pad DVN ${d.padRef}` : "",
+      description: d.particulars || "Voucher — own items",
+      charges: d.directAmount, payments: 0, status: d.status, dueDate: d.date,
+    })),
     ...pays.filter((p) => p.date >= range.from).map((p) => ({
       date: p.date, billId: "", billNo: p.paymentNo, company: p.company.companyName,
       ref: [p.dv?.dvNo, p.checkNo ? `cheque ${p.checkNo}` : p.refNo].filter(Boolean).join(" · "),
-      description: `Payment — ${p.method} for ${p.lines.map((l) => l.bill.billNo).join(", ")}`,
+      description: `Payment — ${p.method}${p.lines.length ? ` for ${p.lines.map((l) => l.bill.billNo).join(", ")}` : p.dv ? ` on ${p.dv.dvNo}` : ""}`,
       charges: 0, payments: p.amount, status: "Paid", dueDate: p.date,
     })),
   ].sort((a, b) => a.date.getTime() - b.date.getTime());

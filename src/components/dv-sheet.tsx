@@ -16,7 +16,7 @@ export type DvSheetData = {
   date: string;
   terms: string;
   particulars: string;
-  /** what the amount column lists — one line per bill covered */
+  /** what the amount column lists — one line per bill covered and per item; a negative is a deduction */
   items: { label: string; amount: number }[];
   amount: number;
   amountInWords: string;
@@ -27,7 +27,7 @@ export type DvSheetData = {
   status?: string;
 };
 
-const peso = (n: number) => n.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const peso = (n: number) => (n < 0 ? "(" : "") + Math.abs(n).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + (n < 0 ? ")" : "");
 const cell = "border border-gray-800 px-2 py-1 align-top";
 const head = `${cell} bg-white text-center text-[10px] font-semibold uppercase tracking-wide`;
 
