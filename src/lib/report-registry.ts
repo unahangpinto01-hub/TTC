@@ -78,8 +78,12 @@ export const REPORTS: ReportDef[] = [
     href: "/reports/supplier-statement", desc: "Statement of account for one supplier — bills, payments and balance" },
   { key: "supplier-payments", title: "Supplier Payments", module: "Finance", fn: "payBills", exportKey: "supplier-payments",
     href: "/reports/supplier-payments", desc: "Every payment to a supplier in the period — account, method, cheque, voucher and bills settled" },
-  { key: "dv-register", title: "Disbursement Voucher Register", module: "Finance", fn: "dv", exportKey: "dv-register",
-    href: "/reports/dv-register", desc: "Every voucher in the period — payee, bills, amount authorised, paid, status and signatories" },
+  { key: "dv-register", title: "Voucher Register", module: "Finance", fn: "dv", exportKey: "dv-register",
+    href: "/reports/dv-register", desc: "The official register of vouchers — payee, bills, amount, number of cheques, paid, remaining, status and signatories; filter unpaid, partially paid, fully paid or voided" },
+  { key: "check-register", title: "Check Register", module: "Finance", fn: "payBills", exportKey: "check-register",
+    href: "/reports/check-register", desc: "Every cheque and payment as its own line — number, dates, payee, voucher, bank, amount, status; voided cheques struck through" },
+  { key: "attention", title: "Management Attention", module: "Executive", fn: "dv",
+    href: "/reports/attention", desc: "What is waiting in the purchase-to-payment chain — invoice pending, discrepancies, bills without a voucher, vouchers awaiting approval or payment, voided cheques, cost variances" },
 
   // ---------------------------------------------------------------- Inventory
   { key: "merchandise-inventory", title: "Merchandise Inventory", module: "Inventory", fn: "reports", exportKey: "merchandise-inventory",

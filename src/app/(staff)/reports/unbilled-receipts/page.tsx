@@ -38,7 +38,7 @@ export default async function UnbilledReceiptsPage({ searchParams }: { searchPar
       <p className="mb-4 text-sm text-gray-600">
         <span className="font-semibold">{scope.label}</span> · as of {fmtDate(rep.asOf)} · goods in stock whose supplier invoice has not been posted:{" "}
         <span className="font-bold">{rep.totals.receipts}</span> receipt(s), {rep.totals.pcs.toLocaleString()} PCS, worth{" "}
-        <span className="font-bold text-amber-700">{peso(rep.totals.value)}</span> at receiving cost
+        <span className="font-bold text-amber-700">{peso(rep.totals.value)}</span> at estimated (PO) cost
         {rep.totals.over30 > 0 && <> · <span className="font-semibold text-red-600">{rep.totals.over30} older than 30 days</span></>}
       </p>
 
@@ -62,7 +62,7 @@ export default async function UnbilledReceiptsPage({ searchParams }: { searchPar
               <th className="table-th">PO / Supplier DR</th>
               <th className="table-th">Unbilled items</th>
               <th className="table-th text-right">Unbilled PCS</th>
-              <th className="table-th text-right">Value (receiving cost)</th>
+              <th className="table-th text-right">Value (estimated — PO cost)</th>
               <th className="table-th">Invoice</th>
             </tr>
           </thead>
@@ -117,8 +117,9 @@ export default async function UnbilledReceiptsPage({ searchParams }: { searchPar
         </form>
       )}
       <p className="mt-2 text-xs text-gray-500">
-        These goods are in stock and available for sale. The value here sits in Goods Received Not Billed until the supplier&rsquo;s
-        invoice is entered and posted, when it moves to Accounts Payable. A receipt older than 30 days without an invoice is worth
+        These goods are in stock and available for sale. Until the supplier&rsquo;s invoice arrives they are valued at an
+        <span className="font-semibold"> estimated, unbilled cost</span> — the purchase order cost — which sits in Goods Received Not Billed;
+        when the bill is entered and posted the actual cost replaces the estimate and the liability moves to Accounts Payable. A receipt older than 30 days without an invoice is worth
         chasing with the supplier.
       </p>
     </div>

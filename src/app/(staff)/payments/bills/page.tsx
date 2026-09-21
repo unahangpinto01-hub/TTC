@@ -21,7 +21,7 @@ export default async function PayBillsPage({ searchParams }: { searchParams: { q
   return (
     <div>
       <PageHeader title="Pay Bills — Payments">
-        {user.perm === "READ_WRITE" && <Link href="/payments/bills/new" className="btn-primary">+ Record Payment</Link>}
+        {user.perm === "READ_WRITE" && <Link href="/payments/bills/new" className="btn-primary">+ Add Cheque / Payment</Link>}
       </PageHeader>
       {openDvs.length > 0 && (
         <div className="card mb-4">
@@ -38,7 +38,7 @@ export default async function PayBillsPage({ searchParams }: { searchParams: { q
       </form>
       <div className="card overflow-x-auto p-0">
         <table className="w-full min-w-[900px]">
-          <thead className="border-b border-gray-200 bg-gray-50"><tr><th className="table-th">Payment #</th><th className="table-th">Date</th><th className="table-th">Supplier</th><th className="table-th">Voucher</th><th className="table-th">Bills</th><th className="table-th">From / Method</th><th className="table-th text-right">Amount</th><th className="table-th">Status</th></tr></thead>
+          <thead className="border-b border-gray-200 bg-gray-50"><tr><th className="table-th">Payment #</th><th className="table-th">Date</th><th className="table-th">Payee</th><th className="table-th">Voucher</th><th className="table-th">Bills</th><th className="table-th">From / Method</th><th className="table-th text-right">Amount</th><th className="table-th">Status</th></tr></thead>
           <tbody className="divide-y divide-gray-100">
             {payments.map((p) => (
               <tr key={p.id} className={p.status === "Void" ? "opacity-50" : "hover:bg-gray-50"}>
@@ -56,7 +56,7 @@ export default async function PayBillsPage({ searchParams }: { searchParams: { q
           </tbody>
         </table>
       </div>
-      <p className="mt-2 text-xs text-gray-500">A payment settles posted bills — Dr Accounts Payable, Cr the cash or bank account — normally under a posted Disbursement Voucher. Bills and vouchers move to Partially Paid or Paid as payments come in.</p>
+      <p className="mt-2 text-xs text-gray-500">Every cheque or payment is made against a posted Disbursement Voucher — Dr Accounts Payable, Cr the bank or cash account. Bills and vouchers move to Partially Paid or Fully Paid as the cheques come in; a voided cheque no longer counts.</p>
     </div>
   );
 }

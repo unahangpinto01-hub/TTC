@@ -152,3 +152,24 @@ export function voucherLines(dv: DvForLines & { accountLines?: { title: string; 
 export const accountingLines = generateAccountLines;
 
 export { amountInWords } from "./dv-words";
+
+/**
+ * What a status is called on screen. The stored values stay as they are (Posted, Paid…);
+ * the office reads them as the paper form does: a posted voucher is Unpaid until a cheque
+ * settles it, then Partially Paid, then Fully Paid.
+ */
+export function dvStatusLabel(status: string): string {
+  if (status === "Posted") return "Unpaid";
+  if (status === "Paid") return "Fully Paid";
+  return status;
+}
+
+/** Register filters: which stored statuses each one covers. */
+export const DV_FILTERS: Record<string, { label: string; statuses: string[] }> = {
+  pending: { label: "Awaiting approval", statuses: ["Draft", "Prepared", "Checked", "Approved"] },
+  unpaid: { label: "Unpaid", statuses: ["Posted"] },
+  partial: { label: "Partially Paid", statuses: ["Partially Paid"] },
+  paid: { label: "Fully Paid", statuses: ["Paid"] },
+  open: { label: "Unpaid + Partially Paid", statuses: ["Posted", "Partially Paid"] },
+  void: { label: "Voided", statuses: ["Void"] },
+};

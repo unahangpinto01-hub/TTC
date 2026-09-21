@@ -15,6 +15,8 @@ import {
   getPurchasingMetrics, getCreditMetrics,
 } from "@/lib/executive";
 import { prisma } from "@/lib/db";
+import { DV_FILTERS, dvStatusLabel } from "@/lib/dv";
+import { checkRegisterWhere } from "@/lib/check-register";
 import { reportByExportKey } from "@/lib/report-registry";
 import { canExportReport, reportPerm } from "@/lib/report-access";
 
@@ -844,19 +846,36 @@ export async function GET(req: NextRequest, { params }: { params: { report: stri
       ];
       return sheetResponse(rows, "Supplier Payments", `supplier-payments-${tag}.xlsx`);
     }
+    case "check-register": {
+      const pays = await prisma.supplierPayment.findMany({
+        where: checkRegisterWhere(scope.ids, range, { checkNo: sp.checkNo ?? undefined, payee: sp.payee ?? undefined, dv: sp.dv ?? undefined, bank: sp.bank ?? undefined, method: sp.method ?? undefined, status: sp.status ?? undefined, min: sp.min ?? undefined, max: sp.max ?? undefined }),
+        include: { company: { select: { companyName: true } }, supplier: { select: { name: true } }, cashAccount: { select: { name: true } }, dv: { select: { dvNo: true } }, lines: { include: { bill: { select: { billNo: true } } } }, createdBy: { select: { name: true } }, voidedBy: { select: { name: true } } },
+        orderBy: [{ checkDate: "asc" }, { date: "asc" }, { paymentNo: "asc" }],
+      });
+      const d = (x: Date | null) => (x ? x.toISOString().slice(0, 10) : "");
+      const rows: (string | number)[][] = [
+        ["CHECK REGISTER", tag, scope.label],
+        [],
+        ["Cheque No.", "Cheque Date", "Payment Date", ...(scope.combined ? ["Company"] : []), "Payee", "Voucher", "Bank / Cash", "Method", "Reference", "Bills", "Amount", "Status", "Payment No.", "Issued by", "Voided by", "Void reason"],
+        ...pays.map((p) => [p.checkNo ?? "", d(p.checkDate), d(p.date), ...(scope.combined ? [p.company.companyName] : []), p.payee || p.supplier?.name || "", p.dv?.dvNo ?? "", p.cashAccount.name, p.method, p.refNo ?? "", p.lines.map((l) => l.bill.billNo).join(", ") || "voucher items", p.amount, p.status === "Posted" ? "Issued" : p.status, p.paymentNo, p.createdBy?.name ?? "", p.voidedBy?.name ?? "", p.voidReason ?? ""]),
+        [],
+        ["TOTAL ISSUED", "", "", ...(scope.combined ? [""] : []), "", "", "", "", "", "", pays.filter((p) => p.status === "Posted").reduce((s, p) => s + p.amount, 0), "", "", "", "", ""],
+      ];
+      return sheetResponse(rows, "Check Register", `check-register-${tag}.xlsx`);
+    }
     case "dv-register": {
       const dvs = await prisma.disbursementVoucher.findMany({
-        where: { companyId: { in: scope.ids }, date: { gte: range.from, lte: range.to } },
-        include: { company: { select: { companyName: true } }, bills: { include: { bill: { select: { billNo: true } } } }, preparedBy: { select: { name: true } }, checkedBy: { select: { name: true } }, approvedBy: { select: { name: true } }, notedBy: { select: { name: true } }, postedBy: { select: { name: true } } },
+        where: { companyId: { in: scope.ids }, date: { gte: range.from, lte: range.to }, ...(sp.status && DV_FILTERS[sp.status] ? { status: { in: DV_FILTERS[sp.status].statuses } } : {}) },
+        include: { company: { select: { companyName: true } }, bills: { include: { bill: { select: { billNo: true } } } }, _count: { select: { payments: { where: { status: "Posted" } } } }, preparedBy: { select: { name: true } }, checkedBy: { select: { name: true } }, approvedBy: { select: { name: true } }, notedBy: { select: { name: true } }, postedBy: { select: { name: true } } },
         orderBy: [{ date: "asc" }, { dvNo: "asc" }],
       });
       const rows: (string | number)[][] = [
         ["DISBURSEMENT VOUCHER REGISTER", tag, scope.label],
         [],
-        ["Date", "DV No.", "Pad DVN", ...(scope.combined ? ["Company"] : []), "Payee", "Bills", "Particulars", "Amount", "Paid", "Status", "Prepared", "Checked", "Approved", "Noted", "Posted"],
-        ...dvs.map((d) => [d.date.toISOString().slice(0, 10), d.dvNo, d.padRef ?? "", ...(scope.combined ? [d.company.companyName] : []), d.payee, [d.bills.map((b) => b.bill.billNo).join(", "), d.directAmount > 0 ? `own items ${d.directAmount.toFixed(2)}` : ""].filter(Boolean).join(" + "), d.particulars, d.amount, d.paidAmount, d.status, d.preparedBy?.name ?? "", d.checkedBy?.name ?? "", d.approvedBy?.name ?? "", d.notedBy?.name ?? "", d.postedBy?.name ?? ""]),
+        ["Date", "DV No.", "Pad DVN", ...(scope.combined ? ["Company"] : []), "Payee", "Bills", "Particulars", "Amount", "Cheques", "Paid", "Remaining", "Status", "Prepared", "Checked", "Approved", "Noted", "Posted"],
+        ...dvs.map((d) => [d.date.toISOString().slice(0, 10), d.dvNo, d.padRef ?? "", ...(scope.combined ? [d.company.companyName] : []), d.payee, [d.bills.map((b) => b.bill.billNo).join(", "), d.directAmount > 0 ? `own items ${d.directAmount.toFixed(2)}` : ""].filter(Boolean).join(" + "), d.particulars, d.amount, d._count.payments, d.paidAmount, d.status === "Void" ? 0 : Math.round(Math.max(0, d.amount - d.paidAmount) * 100) / 100, dvStatusLabel(d.status), d.preparedBy?.name ?? "", d.checkedBy?.name ?? "", d.approvedBy?.name ?? "", d.notedBy?.name ?? "", d.postedBy?.name ?? ""]),
         [],
-        ["TOTAL", "", "", ...(scope.combined ? [""] : []), "", "", "", dvs.filter((d) => d.status !== "Void").reduce((s, d) => s + d.amount, 0), dvs.reduce((s, d) => s + d.paidAmount, 0), "", "", "", "", "", ""],
+        ["TOTAL", "", "", ...(scope.combined ? [""] : []), "", "", "", dvs.filter((d) => d.status !== "Void").reduce((s, d) => s + d.amount, 0), dvs.filter((d) => d.status !== "Void").reduce((s, d) => s + d._count.payments, 0), dvs.reduce((s, d) => s + d.paidAmount, 0), dvs.filter((d) => d.status !== "Void").reduce((s, d) => s + Math.max(0, d.amount - d.paidAmount), 0), "", "", "", "", "", ""],
       ];
       return sheetResponse(rows, "DV Register", `dv-register-${tag}.xlsx`);
     }

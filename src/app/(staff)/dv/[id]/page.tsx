@@ -7,7 +7,9 @@ import { peso, fmtDate, fmtDateTime } from "@/lib/format";
 import { PageHeader, StatusBadge } from "@/components/ui";
 import { getAuditTrail } from "@/lib/salespeople";
 import { OPEN_BILL_STATUSES, outstandingOf } from "@/lib/bills";
-import { availableForVoucher, generateAccountLines, voucherLines, amountInWords, dvEditBlocker } from "@/lib/dv";
+import { availableForVoucher, voucherLines, amountInWords, dvEditBlocker, dvStatusLabel } from "@/lib/dv";
+import { getPerm } from "@/lib/permissions";
+import { PaymentForm } from "@/app/(staff)/payments/bills/new/payment-form";
 import { DvAllocations, type OpenBillRow } from "./dv-allocations";
 import { DvAccountLines } from "./dv-account-lines";
 import { DvItems } from "./dv-items";
@@ -31,7 +33,7 @@ const ERRORS: Record<string, string> = {
 };
 const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
-export default async function DvDetailPage({ params, searchParams }: { params: { id: string }; searchParams: { error?: string; saved?: string; bill?: string } }) {
+export default async function DvDetailPage({ params, searchParams }: { params: { id: string }; searchParams: { error?: string; saved?: string; bill?: string; perror?: string; pbill?: string } }) {
   const user = await requirePerm("dv");
   const company = await getActiveCompany(user);
   const dv = await prisma.disbursementVoucher.findUnique({
@@ -40,11 +42,11 @@ export default async function DvDetailPage({ params, searchParams }: { params: {
       supplier: true, employee: { select: { id: true, name: true, position: true } },
       items: { orderBy: { sortOrder: "asc" }, include: { glAccount: { select: { code: true, description: true } } } },
       company: { select: { companyName: true, glPayablesId: true, glPayables: { select: { code: true, description: true } }, glInputVatId: true, glInputVat: { select: { code: true, description: true } } } },
-      bills: { include: { bill: { select: { id: true, billNo: true, kind: true, billDate: true, dueDate: true, supplierInvoiceNo: true, total: true, inputVat: true, paidAmount: true, status: true, supplier: { select: { name: true } }, expenseLines: { include: { glAccount: { select: { code: true, description: true } } } } } } } },
+      bills: { include: { bill: { select: { id: true, billNo: true, kind: true, billDate: true, dueDate: true, supplierInvoiceNo: true, total: true, inputVat: true, paidAmount: true, status: true, supplier: { select: { name: true } }, expenseLines: { include: { glAccount: { select: { code: true, description: true } } } }, purchaseOrder: { select: { id: true, poNumber: true } }, goodsReceipt: { select: { id: true, grnNumber: true } } } } } },
       accountLines: { orderBy: { sortOrder: "asc" } },
       preparedBy: { select: { name: true } }, checkedBy: { select: { name: true } }, approvedBy: { select: { name: true } },
       notedBy: { select: { name: true } }, postedBy: { select: { name: true } }, voidedBy: { select: { name: true } },
-      payments: { include: { lines: { select: { amount: true } }, cashAccount: { include: { glAccount: { select: { code: true, description: true } } } } }, orderBy: { date: "asc" } },
+      payments: { include: { lines: { select: { billId: true, amount: true } }, cashAccount: { include: { glAccount: { select: { code: true, description: true } } } }, createdBy: { select: { name: true } } }, orderBy: [{ date: "asc" }, { paymentNo: "asc" }] },
     },
   });
   if (!dv || dv.companyId !== company.id) notFound();
@@ -52,6 +54,9 @@ export default async function DvDetailPage({ params, searchParams }: { params: {
   const canWrite = user.perm === "READ_WRITE";
   const canEdit = canWrite && !dvEditBlocker(dv);
   const isAdmin = ["SUPER_ADMIN", "ADMIN"].includes(user.role);
+  const canPay = getPerm(user, "payBills") === "READ_WRITE" && ["Posted", "Partially Paid"].includes(dv.status);
+  const remaining = Math.round((dv.amount - dv.paidAmount) * 100) / 100;
+  const liveCheques = dv.payments.filter((p) => p.status === "Posted");
 
   // the payee's open bills, with what is available to this voucher
   const openBills = canEdit && dv.supplierId
@@ -96,19 +101,21 @@ export default async function DvDetailPage({ params, searchParams }: { params: {
     <div>
       <Link href="/dv" className="mb-3 inline-flex items-center gap-1 text-sm font-medium text-emerald-700 hover:underline">← Back to Disbursement Vouchers</Link>
       <PageHeader title={`Disbursement Voucher ${dv.dvNo}`}>
-        <StatusBadge status={dv.status} />
+        <StatusBadge status={dvStatusLabel(dv.status)} />
         <Link href={`/dv/${dv.id}/print`} className="btn-secondary">🖨 Print DV</Link>
       </PageHeader>
 
       {searchParams.error && ERRORS[searchParams.error] && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700"><span className="font-semibold">⚠</span> {ERRORS[searchParams.error]}{searchParams.bill ? ` (${searchParams.bill})` : ""}</p>}
       {searchParams.saved === "ok" && <p className="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">✔ Saved.</p>}
       {dv.status === "Void" && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">Voided by {dv.voidedBy?.name ?? "—"} · {fmtDateTime(dv.voidedAt)}: {dv.voidReason}</p>}
-      {dv.status === "Posted" && <p className="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">Payment of {peso(dv.amount)} to {dv.payee} is authorised. The payee is paid when a Payment is recorded against this voucher.{dv.items.length > 0 && <> Its own items ({peso(dv.directAmount)}) are booked: Dr their accounts / Cr Accounts Payable — {dv.payee}.</>}</p>}
+      {dv.status === "Partially Paid" && <p className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">{peso(dv.paidAmount)} of {peso(dv.amount)} has been paid on {liveCheques.length} cheque(s); {peso(remaining)} remains.</p>}
+      {dv.status === "Paid" && <p className="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">Fully paid — {peso(dv.amount)} on {liveCheques.length} cheque(s).</p>}
+      {dv.status === "Posted" && <p className="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">Payment of {peso(dv.amount)} to {dv.payee} is authorised. Nothing has left the bank yet — the payee is paid when a cheque or payment is added below.{dv.items.length > 0 && <> Its own items ({peso(dv.directAmount)}) are booked: Dr their accounts / Cr Accounts Payable — {dv.payee}.</>}</p>}
 
       <div className="mb-4 grid grid-cols-2 gap-3 text-sm md:grid-cols-4">
         <div className="card py-3"><p className="text-xs text-gray-500">Payee</p><p className="font-semibold">{dv.payee}</p><p className="text-xs text-gray-500">{dv.supplier ? `supplier · ${dv.supplier.name}` : dv.employee ? `employee · ${dv.employee.name}` : "named payee"}</p></div>
         <div className="card py-3"><p className="text-xs text-gray-500">Amount authorised</p><p className="font-semibold">{peso(dv.amount)}</p><p className="text-xs text-gray-500">{[dv.bills.length ? `${dv.bills.length} bill(s)` : "", dv.items.length ? `${dv.items.length} item(s) ${peso(dv.directAmount)}` : ""].filter(Boolean).join(" + ") || "nothing yet"}</p></div>
-        <div className="card py-3"><p className="text-xs text-gray-500">Paid so far</p><p className={`font-semibold ${dv.paidAmount ? "text-emerald-700" : ""}`}>{peso(dv.paidAmount)}</p><p className="text-xs text-gray-500">{dv.amount - dv.paidAmount > 0.005 ? `${peso(dv.amount - dv.paidAmount)} to pay` : dv.amount ? "fully paid" : ""}</p></div>
+        <div className="card py-3"><p className="text-xs text-gray-500">Paid so far</p><p className={`font-semibold ${dv.paidAmount ? "text-emerald-700" : ""}`}>{peso(dv.paidAmount)}</p><p className="text-xs text-gray-500">{liveCheques.length ? `${liveCheques.length} cheque(s) · ` : ""}{remaining > 0.005 ? `${peso(remaining)} remaining` : dv.amount ? "fully paid" : ""}</p></div>
         <div className="card py-3"><p className="text-xs text-gray-500">Date / Terms</p><p className="font-semibold">{fmtDate(dv.date)}</p><p className="text-xs text-gray-500">{dv.terms ?? "—"}{dv.padRef ? ` · pad DVN ${dv.padRef}` : ""}</p></div>
       </div>
 
@@ -142,14 +149,55 @@ export default async function DvDetailPage({ params, searchParams }: { params: {
         <form action={regenerateDVLines} className="-mt-2 mb-4 text-right"><input type="hidden" name="id" value={dv.id} /><button type="submit" className="text-xs text-gray-500 hover:underline">↺ Rebuild the account lines from the bills and items</button></form>
       )}
 
-      {dv.payments.length > 0 && (
+      {(dv.bills.length > 0 || dv.items.length > 0) && (
         <div className="card mb-4 text-sm">
-          <p className="mb-1 font-semibold">Payments</p>
-          {dv.payments.map((p) => (
-            <p key={p.id} className={`text-xs ${p.status === "Void" ? "line-through opacity-60" : ""}`}>
-              <Link href={`/payments/bills/${p.id}`} className="font-mono font-semibold text-emerald-700 hover:underline">{p.paymentNo}</Link> · {fmtDate(p.date)} · {p.cashAccount.name} · {p.method}{p.checkNo ? ` #${p.checkNo}` : ""} · {peso(p.amount)}{p.status === "Void" ? " · VOID" : ""}
-            </p>
-          ))}
+          <p className="mb-1 font-semibold">Supporting transactions</p>
+          <table className="w-full text-xs"><thead className="text-gray-500"><tr><th className="py-1 text-left font-medium">Bill</th><th className="py-1 text-left font-medium">Supplier invoice</th><th className="py-1 text-left font-medium">Purchase order</th><th className="py-1 text-left font-medium">Receipt</th><th className="py-1 text-right font-medium">Bill total</th><th className="py-1 text-right font-medium">On this voucher</th></tr></thead>
+            <tbody className="divide-y divide-gray-100">
+              {dv.bills.map((b) => (
+                <tr key={b.id}>
+                  <td className="py-1"><Link href={`/bills/${b.bill.id}`} className="font-mono font-semibold text-emerald-700 hover:underline">{b.bill.billNo}</Link> <span className="text-gray-500">{b.bill.kind === "EXPENSE" ? "non-inventory" : "inventory"}</span></td>
+                  <td className="py-1 text-gray-600">{b.bill.supplierInvoiceNo ?? "—"}</td>
+                  <td className="py-1">{b.bill.purchaseOrder ? <Link href={`/purchase-orders/${b.bill.purchaseOrder.id}`} className="font-mono text-emerald-700 hover:underline">{b.bill.purchaseOrder.poNumber}</Link> : "—"}</td>
+                  <td className="py-1">{b.bill.goodsReceipt ? <Link href={`/receiving/${b.bill.goodsReceipt.id}`} className="font-mono text-emerald-700 hover:underline">{b.bill.goodsReceipt.grnNumber}</Link> : "—"}</td>
+                  <td className="py-1 text-right">{peso(b.bill.total)}</td>
+                  <td className="py-1 text-right font-semibold">{peso(b.amount)}</td>
+                </tr>
+              ))}
+              {dv.items.length > 0 && <tr><td className="py-1" colSpan={4}>The voucher&rsquo;s own items ({dv.items.length}) — no bill; booked when the voucher is posted</td><td className="py-1 text-right">{peso(dv.directAmount)}</td><td className="py-1 text-right font-semibold">{peso(dv.directAmount)}</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {(dv.payments.length > 0 || canPay) && (
+        <div className="mb-4">
+          <div className="card mb-3 text-sm">
+            <p className="mb-1 font-semibold">Cheques / Payments <span className="font-normal text-gray-500">— {liveCheques.length} issued · {peso(dv.paidAmount)} paid · {peso(Math.max(0, remaining))} remaining</span></p>
+            {dv.payments.length > 0 ? (
+              <div className="overflow-x-auto"><table className="w-full min-w-[700px] text-xs">
+                <thead className="text-gray-500"><tr><th className="py-1 text-left font-medium">Payment</th><th className="py-1 text-left font-medium">Cheque No.</th><th className="py-1 text-left font-medium">Cheque date</th><th className="py-1 text-left font-medium">Payment date</th><th className="py-1 text-left font-medium">Bank / Cash</th><th className="py-1 text-left font-medium">Method</th><th className="py-1 text-right font-medium">Amount</th><th className="py-1 text-left font-medium">Status</th><th className="py-1 text-left font-medium">By</th></tr></thead>
+                <tbody className="divide-y divide-gray-100">
+                  {dv.payments.map((p) => (
+                    <tr key={p.id} className={p.status === "Void" ? "opacity-50" : ""}>
+                      <td className="py-1"><Link href={`/payments/bills/${p.id}`} className="font-mono font-semibold text-emerald-700 hover:underline">{p.paymentNo}</Link></td>
+                      <td className="py-1 font-mono">{p.checkNo ?? (p.refNo ? `ref ${p.refNo}` : "—")}</td>
+                      <td className="py-1">{p.checkDate ? fmtDate(p.checkDate) : "—"}</td>
+                      <td className="py-1">{fmtDate(p.date)}</td>
+                      <td className="py-1">{p.cashAccount.name}</td>
+                      <td className="py-1">{p.method}</td>
+                      <td className={`py-1 text-right font-semibold ${p.status === "Void" ? "line-through" : ""}`}>{peso(p.amount)}</td>
+                      <td className="py-1"><StatusBadge status={p.status} /></td>
+                      <td className="py-1 text-gray-500">{p.createdBy?.name ?? "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table></div>
+            ) : <p className="text-xs text-gray-500">No cheque issued yet.</p>}
+          </div>
+          {canPay && remaining > 0.005 && (
+            <PaymentForm dv={{ ...dv, payments: dv.payments.map((p) => ({ amount: p.amount, status: p.status, lines: p.lines })) }} backTo={`/dv/${dv.id}`} error={searchParams.perror} errorRef={searchParams.pbill} />
+          )}
         </div>
       )}
 
@@ -170,9 +218,6 @@ export default async function DvDetailPage({ params, searchParams }: { params: {
           )}
           {isAdmin && !dv.notedById && (
             <form action={noteDV}><input type="hidden" name="id" value={dv.id} /><button className="btn-secondary" type="submit">Noted by me</button></form>
-          )}
-          {dv.status === "Posted" && (
-            <Link href={`/payments/bills/new?dv=${dv.id}`} className="btn-primary ml-auto">💸 Record Payment</Link>
           )}
           {isAdmin && (
             <form action={voidDV} className="ml-auto flex gap-2">

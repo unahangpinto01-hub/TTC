@@ -40,8 +40,9 @@ async function settleVoucher(tx: Pick<typeof prisma, "supplierPayment" | "disbur
 }
 
 /**
- * Record a payment. It posts at once — the Disbursement Voucher is the authorisation, so
- * the payment is the fact of money leaving. Each bill paid must be open, must belong to the
+ * Record a cheque or payment. Always against a POSTED Disbursement Voucher — the voucher is
+ * the authorisation, so there is no route that pays without one. It posts at once: the
+ * payment is the fact of money leaving. Each bill paid must be open, must belong to the
  * payee, and must not be paid beyond what is owed (or, under a voucher, beyond what the
  * voucher authorised for it). A voucher's own items (the part with no bill) are paid as one
  * amount, never beyond what the voucher authorised less what was already paid on them. The
@@ -60,75 +61,76 @@ export async function recordSupplierPayment(formData: FormData) {
   const checkDate = method === "Check" ? formDate(formData.get("checkDate")) : null;
   const refNo = String(formData.get("refNo") || "").trim() || null;
   const remarks = String(formData.get("remarks") || "").trim() || null;
-  const back = dvId ? `/payments/bills/new?dv=${dvId}` : "/payments/bills/new";
+  if (!dvId) redirect("/payments/bills/new?error=dv");
+  // errors return to the form that was used: the voucher page, or Pay Bills
+  const backTo = String(formData.get("back") || "");
+  const back = /^\/dv\/[A-Za-z0-9]+$/.test(backTo) ? `${backTo}?perror=` : `/payments/bills/new?dv=${dvId}&error=`;
 
-  if (!(PAYMENT_METHODS as readonly string[]).includes(method)) redirect(`${back}&error=method`);
+  if (!(PAYMENT_METHODS as readonly string[]).includes(method)) redirect(`${back}method`);
   const cashAccount = await prisma.cashAccount.findFirst({ where: { id: cashAccountId, companyId: company.id, status: "Active" } });
-  if (!cashAccount) redirect(`${back}&error=account`);
-  if (method === "Check" && !checkNo) redirect(`${back}&error=check`);
+  if (!cashAccount) redirect(`${back}account`);
+  if (method === "Check" && !checkNo) redirect(`${back}check`);
 
   const dv = dvId ? await prisma.disbursementVoucher.findUnique({ where: { id: dvId }, include: { bills: true, supplier: true, payments: { where: { status: "Posted" }, select: { amount: true, lines: { select: { amount: true } } } } } }) : null;
-  if (dvId && (!dv || dv.companyId !== company.id)) redirect("/payments/bills/new?error=dv");
-  if (dv && !["Posted", "Partially Paid"].includes(dv.status)) redirect(`${back}&error=dvstatus`);
+  if (!dv || dv.companyId !== company.id) redirect("/payments/bills/new?error=dv");
+  if (!["Posted", "Partially Paid"].includes(dv.status)) redirect(`${back}dvstatus`);
 
   const billIds = formData.getAll("billId").map(String);
   const amounts = formData.getAll("pay").map((v) => round2(Math.max(0, Number(v) || 0)));
   const lines: { billId: string; amount: number; billNo: string }[] = [];
-  let supplierId: string | null = dv ? dv.supplierId : String(formData.get("supplierId") || "") || null;
+  const supplierId: string | null = dv.supplierId;
   for (let i = 0; i < billIds.length; i++) {
     if (!billIds[i] || amounts[i] <= 0) continue;
     const bill = await prisma.supplierBill.findFirst({ where: { id: billIds[i], companyId: company.id, status: { in: OPEN_BILL_STATUSES } }, select: { id: true, billNo: true, supplierId: true, total: true, paidAmount: true } });
-    if (!bill) redirect(`${back}&error=bill`);
-    if (!supplierId) supplierId = bill.supplierId;
-    if (bill.supplierId !== supplierId) redirect(`${back}&error=payee`);
+    if (!bill) redirect(`${back}bill`);
+    if (bill.supplierId !== supplierId) redirect(`${back}payee`);
     const outstanding = round2(bill.total - bill.paidAmount);
-    if (amounts[i] > outstanding + 0.005) redirect(`${back}&error=over&bill=${encodeURIComponent(bill.billNo)}`);
-    if (dv) {
-      const alloc = dv.bills.find((b) => b.billId === bill.id);
-      if (!alloc) redirect(`${back}&error=notondv&bill=${encodeURIComponent(bill.billNo)}`);
-      const paidUnderDv = await prisma.supplierPaymentLine.aggregate({ where: { billId: bill.id, payment: { dvId: dv.id, status: "Posted" } }, _sum: { amount: true } });
-      const left = round2(alloc.amount - (paidUnderDv._sum.amount ?? 0));
-      if (amounts[i] > left + 0.005) redirect(`${back}&error=overdv&bill=${encodeURIComponent(bill.billNo)}`);
-    }
+    if (amounts[i] > outstanding + 0.005) redirect(`${back}over&pbill=${encodeURIComponent(bill.billNo)}`);
+    const alloc = dv.bills.find((b) => b.billId === bill.id);
+    if (!alloc) redirect(`${back}notondv&pbill=${encodeURIComponent(bill.billNo)}`);
+    const paidUnderDv = await prisma.supplierPaymentLine.aggregate({ where: { billId: bill.id, payment: { dvId: dv.id, status: "Posted" } }, _sum: { amount: true } });
+    const left = round2(alloc.amount - (paidUnderDv._sum.amount ?? 0));
+    if (amounts[i] > left + 0.005) redirect(`${back}overdv&pbill=${encodeURIComponent(bill.billNo)}`);
     lines.push({ billId: bill.id, amount: amounts[i], billNo: bill.billNo });
   }
   // the voucher's own items, paid as one amount
   let direct = 0;
-  if (dv && dv.directAmount > 0) {
+  if (dv.directAmount > 0) {
     direct = round2(Math.max(0, Number(formData.get("payDirect")) || 0));
     const left = round2(dv.directAmount - directPaidOf(dv.payments));
-    if (direct > left + 0.005) redirect(`${back}&error=overdirect`);
+    if (direct > left + 0.005) redirect(`${back}overdirect`);
   }
-  if (!lines.length && direct <= 0) redirect(`${back}&error=empty`);
+  if (!lines.length && direct <= 0) redirect(`${back}empty`);
   const amount = round2(lines.reduce((s, l) => s + l.amount, 0) + direct);
-  const payee = dv?.payee ?? (supplierId ? (await prisma.supplier.findUnique({ where: { id: supplierId }, select: { name: true } }))?.name ?? "" : "");
-  if (!payee) redirect(`${back}&error=payee`);
+  // the voucher's balance is the ceiling, whatever the lines add up to
+  if (amount > round2(dv.amount - dv.paidAmount) + 0.005) redirect(`${back}overvoucher`);
+  const payee = dv.payee;
   if (checkNo) {
     const dupe = await prisma.supplierPayment.findFirst({ where: { cashAccountId, checkNo: { equals: checkNo, mode: "insensitive" }, status: "Posted" }, select: { paymentNo: true } });
-    if (dupe) redirect(`${back}&error=dupecheck&bill=${encodeURIComponent(dupe.paymentNo)}`);
+    if (dupe) redirect(`${back}dupecheck&pbill=${encodeURIComponent(dupe.paymentNo)}`);
   }
 
   const paymentNo = await nextSeriesNo("PY", company.id, date);
   const payment = await prisma.$transaction(async (tx) => {
     const p = await tx.supplierPayment.create({
       data: {
-        companyId: company.id, paymentNo, date, supplierId, payee, dvId: dv?.id ?? null, cashAccountId, method, checkNo, checkDate, refNo, amount, remarks,
+        companyId: company.id, paymentNo, date, supplierId, payee, dvId: dv.id, cashAccountId, method, checkNo, checkDate, refNo, amount, remarks,
         status: "Posted", createdById: user.id, lines: { create: lines.map((l) => ({ billId: l.billId, amount: l.amount })) },
       },
     });
     for (const l of lines) await settleBill(tx, l.billId);
-    if (dv) await settleVoucher(tx, dv.id);
+    await settleVoucher(tx, dv.id);
     return p;
   });
   await logAudit({
     entity: "SupplierPayment", entityId: payment.id, action: "PAID",
-    detail: `${paymentNo} · ₱${amount.toFixed(2)} to ${payee} from ${cashAccount.name} by ${method}${checkNo ? ` cheque ${checkNo}` : ""}${dv ? ` under ${dv.dvNo}` : ""} · ${[...lines.map((l) => `${l.billNo} ₱${l.amount.toFixed(2)}`), direct > 0 ? `voucher items ₱${direct.toFixed(2)}` : ""].filter(Boolean).join(", ")} · Dr Accounts Payable / Cr ${cashAccount.name}`,
+    detail: `${paymentNo} · ₱${amount.toFixed(2)} to ${payee} from ${cashAccount.name} by ${method}${checkNo ? ` cheque ${checkNo}` : ""}${` under ${dv.dvNo}`} · ${[...lines.map((l) => `${l.billNo} ₱${l.amount.toFixed(2)}`), direct > 0 ? `voucher items ₱${direct.toFixed(2)}` : ""].filter(Boolean).join(", ")} · Dr Accounts Payable / Cr ${cashAccount.name}`,
     actorName: user.name, actorEmail: user.email, companyId: company.id,
   });
-  for (const l of lines) await logAudit({ entity: "SupplierBill", entityId: l.billId, action: "PAID", detail: `₱${l.amount.toFixed(2)} paid by ${paymentNo}${dv ? ` under ${dv.dvNo}` : ""}`, actorName: user.name, actorEmail: user.email, companyId: company.id });
-  if (dv) await logAudit({ entity: "DisbursementVoucher", entityId: dv.id, action: "PAID", detail: `₱${amount.toFixed(2)} paid by ${paymentNo}`, actorName: user.name, actorEmail: user.email, companyId: company.id });
+  for (const l of lines) await logAudit({ entity: "SupplierBill", entityId: l.billId, action: "PAID", detail: `₱${l.amount.toFixed(2)} paid by ${paymentNo} under ${dv.dvNo}`, actorName: user.name, actorEmail: user.email, companyId: company.id });
+  await logAudit({ entity: "DisbursementVoucher", entityId: dv.id, action: "PAID", detail: `₱${amount.toFixed(2)} paid by ${paymentNo}${checkNo ? ` — cheque ${checkNo}` : ` — ${method}`} from ${cashAccount.name}`, actorName: user.name, actorEmail: user.email, companyId: company.id });
   revalidatePath("/payments/bills");
-  if (dv) revalidatePath(`/dv/${dv.id}`);
+  revalidatePath(`/dv/${dv.id}`);
   redirect(`/payments/bills/${payment.id}?posted=ok`);
 }
 

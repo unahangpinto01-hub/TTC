@@ -17,6 +17,14 @@ const STATUS_COLORS: Record<string, string> = {
   Closed: "bg-gray-200 text-gray-700",
   Cancelled: "bg-red-100 text-red-700",
   Void: "bg-red-100 text-red-700",
+  // vouchers and cheques
+  Prepared: "bg-blue-100 text-blue-800",
+  Checked: "bg-indigo-100 text-indigo-800",
+  Approved: "bg-purple-100 text-purple-800",
+  Posted: "bg-amber-100 text-amber-800",
+  Unpaid: "bg-amber-100 text-amber-800",
+  "Partially Paid": "bg-amber-100 text-amber-800",
+  "Fully Paid": "bg-emerald-100 text-emerald-800",
   // AR
   Open: "bg-blue-100 text-blue-800",
   Partial: "bg-amber-100 text-amber-800",
