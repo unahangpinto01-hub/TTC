@@ -192,7 +192,7 @@ export default async function BillPrintPage({ params }: { params: { id: string }
             Terms: {bill.terms}. {bill.kind === "EXPENSE"
               ? "On posting this bill debits the accounts listed, debits Input VAT, and credits Accounts Payable for the total. It does not affect inventory."
               : "On posting this bill debits Inventory for the product cost plus allocated freight and other purchasing costs, debits Input VAT, and credits Accounts Payable for the total. Goods are carried at weighted average cost."}{" "}
-            Payment is recorded separately through Pay Bills.
+            Payment is recorded separately, by cheque against a Disbursement Voucher.
           </p>
 
           <div className="flex border-2 border-gray-800" style={{ breakInside: "avoid", height: "1.6in" }}>

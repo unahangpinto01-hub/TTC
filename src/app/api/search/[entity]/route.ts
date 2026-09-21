@@ -190,7 +190,7 @@ export async function GET(req: NextRequest, { params }: { params: { entity: stri
       break;
     }
     case "disbursement-vouchers": {
-      // open=1 → posted vouchers not yet fully paid (the Pay Bills picker)
+      // open=1 → posted vouchers not yet fully paid (the Cheques / Payments picker)
       const rows = await prisma.disbursementVoucher.findMany({
         where: {
           companyId: { in: companyIds },

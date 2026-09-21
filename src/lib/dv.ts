@@ -7,8 +7,8 @@ import { OPEN_BILL_STATUSES, round2 } from "./bills";
  * authorisation for ANY expense. A voucher names one payee — a supplier, an employee or just
  * a name — and carries either the posted bills it authorises paying, or its own itemised
  * particulars (a liquidation, a permit fee, a reimbursement), or both. It moves
- * Draft → Prepared → Checked → Approved → Posted, and a Posted voucher is what Pay Bills
- * settles. A bill-backed voucher books nothing itself (the bills already did); a voucher's
+ * Draft → Prepared → Checked → Approved → Posted, and a Posted voucher is what Cheques /
+ * Payments settles. A bill-backed voucher books nothing itself (the bills already did); a voucher's
  * own items are booked when it is posted: Dr each item's account / Cr Accounts Payable.
  */
 

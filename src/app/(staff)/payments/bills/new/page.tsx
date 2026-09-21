@@ -7,7 +7,7 @@ import { SearchSelect } from "@/components/search-select";
 import { PaymentForm, PAYMENT_ERRORS } from "./payment-form";
 
 /**
- * Pay Bills: every payment is a cheque or transfer against a POSTED Disbursement Voucher —
+ * Cheques / Payments: every payment is a cheque or transfer against a POSTED Disbursement Voucher —
  * the voucher is the company's authorisation, so there is no way to pay without one.
  */
 export default async function NewSupplierPaymentPage({ searchParams }: { searchParams: { dv?: string; error?: string; bill?: string } }) {
@@ -23,7 +23,7 @@ export default async function NewSupplierPaymentPage({ searchParams }: { searchP
 
   return (
     <div className="max-w-4xl">
-      <Link href="/payments/bills" className="mb-3 inline-flex items-center gap-1 text-sm font-medium text-emerald-700 hover:underline">← Back to Pay Bills</Link>
+      <Link href="/payments/bills" className="mb-3 inline-flex items-center gap-1 text-sm font-medium text-emerald-700 hover:underline">← Back to Cheques / Payments</Link>
       <PageHeader title="Add Cheque / Payment" />
       {!dv && searchParams.error && PAYMENT_ERRORS[searchParams.error] && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">⚠ {PAYMENT_ERRORS[searchParams.error]}</p>}
       {!dv ? (

@@ -108,7 +108,7 @@ export default async function SupplierStatementPage({
             </table>
           </div>
           <p className="mt-2 text-xs text-gray-500">
-            Charges are posted supplier bills; payments are supplier payments recorded under Pay Bills, by date.
+            Charges are posted supplier bills; payments are the cheques and payments recorded against vouchers, by date.
           </p>
         </>
       )}

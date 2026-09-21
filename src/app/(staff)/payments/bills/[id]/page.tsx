@@ -30,7 +30,7 @@ export default async function SupplierPaymentPage({ params, searchParams }: { pa
 
   return (
     <div>
-      <Link href="/payments/bills" className="mb-3 inline-flex items-center gap-1 text-sm font-medium text-emerald-700 hover:underline">← Back to Pay Bills</Link>
+      <Link href="/payments/bills" className="mb-3 inline-flex items-center gap-1 text-sm font-medium text-emerald-700 hover:underline">← Back to Cheques / Payments</Link>
       <PageHeader title={`Payment ${p.paymentNo}`}><StatusBadge status={p.status} /></PageHeader>
       {searchParams.posted === "ok" && <p className="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">✔ Payment recorded. {peso(p.amount)} paid to {payee} from {p.cashAccount.name}.</p>}
       {searchParams.error && ERRORS[searchParams.error] && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">⚠ {ERRORS[searchParams.error]}</p>}

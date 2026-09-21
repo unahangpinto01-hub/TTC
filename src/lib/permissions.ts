@@ -18,7 +18,7 @@ export const FUNCTIONS = [
   ["bills", "Enter Bills (Inventory)"],
   ["ap", "AP / Aging & Supplier Balances"],
   ["dv", "Disbursement Vouchers"],
-  ["payBills", "Pay Bills / Supplier Payments"],
+  ["payBills", "Cheques / Payments"],
   ["ar", "AR / Aging & Payments"],
   ["receivePayments", "Receive Payments"],
   ["refundsCredits", "Refunds & Credits"],

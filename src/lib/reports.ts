@@ -570,7 +570,7 @@ export async function getLedger({ from, to }: Range, companyIds: string[]) {
       amount: round2(p.amount),
     })),
     // a posted voucher's own items: each charged to its account (a deduction credited back),
-    // and the net owed to the payee until Pay Bills settles it
+    // and the net owed to the payee until a cheque settles it
     ...directDvs.flatMap((d) => {
       const ap = `${acctOf(d.company.glPayables, "Accounts Payable")} — ${d.payee}`;
       return d.items.filter((it) => it.amount !== 0).map((it) => {

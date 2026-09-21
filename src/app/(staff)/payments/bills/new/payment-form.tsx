@@ -23,7 +23,7 @@ type DvForPayment = {
 
 /**
  * Add Cheque / Payment against a posted voucher — the one form used from the voucher page and
- * from Pay Bills. Each cheque is its own record with its own number, date, bank and amount;
+ * from Cheques / Payments. Each cheque is its own record with its own number, date, bank and amount;
  * the voucher's remaining balance is what caps it.
  */
 export async function PaymentForm({ dv, backTo, error, errorRef }: { dv: DvForPayment; backTo?: string; error?: string; errorRef?: string }) {

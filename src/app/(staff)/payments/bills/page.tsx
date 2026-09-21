@@ -20,7 +20,7 @@ export default async function PayBillsPage({ searchParams }: { searchParams: { q
 
   return (
     <div>
-      <PageHeader title="Pay Bills — Payments">
+      <PageHeader title="Cheques / Payments">
         {user.perm === "READ_WRITE" && <Link href="/payments/bills/new" className="btn-primary">+ Add Cheque / Payment</Link>}
       </PageHeader>
       {openDvs.length > 0 && (

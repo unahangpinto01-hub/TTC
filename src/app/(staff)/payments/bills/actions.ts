@@ -62,7 +62,7 @@ export async function recordSupplierPayment(formData: FormData) {
   const refNo = String(formData.get("refNo") || "").trim() || null;
   const remarks = String(formData.get("remarks") || "").trim() || null;
   if (!dvId) redirect("/payments/bills/new?error=dv");
-  // errors return to the form that was used: the voucher page, or Pay Bills
+  // errors return to the form that was used: the voucher page, or Cheques / Payments
   const backTo = String(formData.get("back") || "");
   const back = /^\/dv\/[A-Za-z0-9]+$/.test(backTo) ? `${backTo}?perror=` : `/payments/bills/new?dv=${dvId}&error=`;
 
