@@ -247,7 +247,8 @@ export async function GET(req: NextRequest, { params }: { params: { entity: stri
           ...(sp.get("all") === "1" ? {} : { status: "Active" }),
           ...(sp.get("statement") ? { statement: sp.get("statement")! } : {}),
           ...(sp.get("group") ? { group: sp.get("group")! } : {}),
-          ...(q ? { OR: [{ code: starts(q) }, { description: starts(q) }] } : {}),
+          // the code from its start, the name anywhere in it — "licenses" finds Taxes, Licenses & Permits
+          ...(q ? { OR: [{ code: starts(q) }, { description: { contains: q, mode: "insensitive" } }] } : {}),
         },
         select: { id: true, code: true, description: true, statement: true, group: true, normalBalance: true },
         orderBy: { code: "asc" },

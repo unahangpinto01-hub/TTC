@@ -53,6 +53,20 @@ export function SearchSelect({
   const inputRef = useRef<HTMLInputElement>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const seq = useRef(0);
+  // where the results list sits on screen: it is fixed to the viewport, not to the box, so a
+  // picker inside a scrolling table (bill lines, voucher items) is never clipped by the table
+  const [rect, setRect] = useState<{ top: number; left: number; width: number } | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    const place = () => {
+      const r = inputRef.current?.getBoundingClientRect();
+      if (r) setRect({ top: r.bottom + 4, left: r.left, width: r.width });
+    };
+    place();
+    window.addEventListener("scroll", place, true);
+    window.addEventListener("resize", place);
+    return () => { window.removeEventListener("scroll", place, true); window.removeEventListener("resize", place); };
+  }, [open]);
 
   const search = useCallback(
     (q: string) => {
@@ -179,7 +193,7 @@ export function SearchSelect({
         )}
       </div>
       {open && (
-        <ul className="absolute z-50 mt-1 max-h-64 w-full min-w-[240px] overflow-auto rounded-md border border-gray-200 bg-white py-1 shadow-lg">
+        <ul style={rect ? { position: "fixed", top: rect.top, left: rect.left, width: Math.max(rect.width, 240) } : undefined} className={`z-50 max-h-64 overflow-auto rounded-md border border-gray-200 bg-white py-1 shadow-lg ${rect ? "" : "absolute mt-1 w-full min-w-[240px]"}`}>
           {hits.map((h, i) => (
             <li key={h.id}>
               <button
