@@ -14,7 +14,7 @@ import { SALESPERSON_WHERE } from "@/lib/salespeople";
 
 export type SearchHit = { id: string; label: string; sub?: string; data?: Record<string, unknown> };
 
-const MAX_LIMIT = 50;
+const MAX_LIMIT = 200;
 
 const starts = (q: string) => ({ startsWith: q, mode: "insensitive" as const });
 

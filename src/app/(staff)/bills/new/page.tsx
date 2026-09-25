@@ -56,14 +56,14 @@ export default async function NewBillPage({ searchParams }: { searchParams: { er
               <SearchSelect
                 entity="goods-receipts"
                 name="goodsReceiptId"
-                params={{ company: company.id, billable: "1" }}
+                params={{ company: company.id, billable: "1", limit: "200" }}
                 placeholder="Posted receipt, not yet billed…"
                 defaultValue={preGrn ? { id: preGrn.id, label: preGrn.grnNumber, sub: `${preGrn.purchaseOrder.supplier.name} · ${preGrn.purchaseOrder.poNumber}` } : null}
               />
             </div>
             <div>
               <label className="label">Purchase Order</label>
-              <SearchSelect entity="purchase-orders" name="purchaseOrderId" params={{ company: company.id, billable: "1" }} placeholder="Only if there is no receipt…" />
+              <SearchSelect entity="purchase-orders" name="purchaseOrderId" params={{ company: company.id, billable: "1", limit: "200" }} placeholder="Only if there is no receipt…" />
             </div>
           </div>
         </div>
