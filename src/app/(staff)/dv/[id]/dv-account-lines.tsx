@@ -9,7 +9,7 @@ type Row = AccountLineRow & { key: number; picking: boolean };
 
 /** What the page knows about the bills on offer and the voucher, so the block can be drawn as the form is typed. */
 export type LiveLinesContext = {
-  bills: Record<string, { billNo: string; kind: string; total: number; inputVat: number; supplierName: string; expenseLines: { glAccountId: string; code: string; description: string; amount: number }[] }>;
+  bills: Record<string, { billNo: string; kind: string; total: number; inputVat: number; ewtAmount: number; supplierName: string; expenseLines: { glAccountId: string; code: string; description: string; amount: number }[] }>;
   payee: string;
   company: DvForLines["company"];
   payments: NonNullable<DvForLines["payments"]>;
@@ -44,7 +44,7 @@ export function DvAccountLines({ lines, canEdit, formId, customised: initialCust
         const tr = inp.closest("tr");
         const amount = Number(tr?.querySelector<HTMLInputElement>("input[name=alloc]")?.value) || 0;
         const meta = ctx.bills[inp.value];
-        if (amount > 0 && meta) bills.push({ amount, bill: { billNo: meta.billNo, kind: meta.kind, total: meta.total, inputVat: meta.inputVat, supplier: { name: meta.supplierName }, expenseLines: meta.expenseLines.map((l) => ({ amount: l.amount, glAccountId: l.glAccountId, glAccount: { code: l.code, description: l.description } })) } });
+        if (amount > 0 && meta) bills.push({ amount, bill: { billNo: meta.billNo, kind: meta.kind, total: meta.total, inputVat: meta.inputVat, ewtAmount: meta.ewtAmount, supplier: { name: meta.supplierName }, expenseLines: meta.expenseLines.map((l) => ({ amount: l.amount, glAccountId: l.glAccountId, glAccount: { code: l.code, description: l.description } })) } });
       });
       const items: NonNullable<DvForLines["items"]> = [];
       form.querySelectorAll<HTMLInputElement>("input[name=itemAmount]").forEach((inp) => {

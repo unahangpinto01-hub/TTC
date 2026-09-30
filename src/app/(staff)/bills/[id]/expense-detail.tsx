@@ -47,6 +47,7 @@ export async function ExpenseBillDetail({ bill, user, companyName, searchParams 
   const canEdit = canWrite && !billEditBlocker(bill);
   const canApprove = canWrite && ["SUPER_ADMIN", "ADMIN"].includes(user.role);
   const isDraft = bill.status === "Draft";
+  const ewtTypes = await prisma.withholdingTaxType.findMany({ where: { status: "Active" }, orderBy: [{ sortOrder: "asc" }, { code: "asc" }], select: { id: true, code: true, name: true, rate: true, appliesTo: true } });
   const blockers = isDraft ? await postBlockers({ ...bill, lines: [] }, undefined, bill.expenseLines) : [];
   const period = periodOf(bill.billDate);
   const periodCheck = isDraft
@@ -73,7 +74,7 @@ export async function ExpenseBillDetail({ bill, user, companyName, searchParams 
       <div className="mb-4 grid grid-cols-2 gap-3 text-sm md:grid-cols-4">
         <div className="card py-3"><p className="text-xs text-gray-500">Supplier / Payee</p><p className="font-semibold">{bill.supplier.name}</p><p className="text-xs text-gray-500">{bill.supplierInvoiceNo ? `Invoice ${bill.supplierInvoiceNo}` : bill.invoiceUnavailable ? "invoice no. not available" : "no invoice no. yet"}</p></div>
         <div className="card py-3"><p className="text-xs text-gray-500">Charged to</p><p className="text-sm font-semibold">{[...new Set(bill.expenseLines.map((l) => l.glAccount.description))].join(", ") || "—"}</p></div>
-        <div className="card py-3"><p className="text-xs text-gray-500">Total payable</p><p className="font-semibold">{peso(bill.total)}</p><p className="text-xs text-gray-500">ex-VAT {peso(bill.subtotal)}{bill.inputVat ? ` · VAT ${peso(bill.inputVat)}` : ""}</p></div>
+        <div className="card py-3"><p className="text-xs text-gray-500">Net payable to supplier</p><p className="font-semibold">{peso(bill.total)}</p><p className="text-xs text-gray-500">net of VAT {peso(bill.subtotal)}{bill.inputVat ? ` · VAT ${peso(bill.inputVat)}` : ""}{bill.ewtAmount ? ` · less EWT ${peso(bill.ewtAmount)}` : ""}</p></div>
         <div className="card py-3">
           <p className="text-xs text-gray-500">{isDraft || bill.status === "Void" ? "Due" : "Outstanding"}</p>
           <p className={`font-semibold ${outstanding ? "text-red-600" : ""}`}>{isDraft || bill.status === "Void" ? fmtDate(bill.dueDate) : peso(outstanding)}</p>
@@ -104,9 +105,11 @@ export async function ExpenseBillDetail({ bill, user, companyName, searchParams 
         </div>
 
         <ExpenseEditor
-          lines={bill.expenseLines.map((l) => ({ id: l.id, glAccountId: l.glAccountId, account: `${l.glAccount.code} ${l.glAccount.description}`, description: l.description, amount: l.amount }))}
+          lines={bill.expenseLines.map((l) => ({ id: l.id, glAccountId: l.glAccountId, account: `${l.glAccount.code} ${l.glAccount.description}`, description: l.description, amount: l.enteredAmount || (bill.vatMode === "INCLUSIVE" ? l.amount + l.taxAmount : l.amount) }))}
           canEdit={canEdit}
-          applyVat={bill.vatRate > 0}
+          vatMode={bill.vatMode}
+          ewtTypeId={bill.ewtTypeId ?? ""}
+          ewtTypes={ewtTypes}
         />
 
         {canEdit && (
@@ -134,7 +137,7 @@ export async function ExpenseBillDetail({ bill, user, companyName, searchParams 
               )}
               <button className="btn-primary" type="submit">📒 Post — expense booked, payable up</button>
               <p className="text-xs text-gray-500">
-                {bill.expenseLines.map((l) => `Dr ${l.glAccount.description} ${peso(l.amount)}`).join(" · ")}{bill.inputVat ? ` · Dr Input VAT ${peso(bill.inputVat)}` : ""} · Cr Accounts Payable {peso(bill.total)}.
+                {bill.expenseLines.map((l) => `Dr ${l.glAccount.description} ${peso(l.amount)}`).join(" · ")}{bill.inputVat ? ` · Dr Input VAT ${peso(bill.inputVat)}` : ""}{bill.ewtAmount ? ` · Cr Withholding Tax Payable ${peso(bill.ewtAmount)}` : ""} · Cr Accounts Payable {peso(bill.total)}.
               </p>
             </form>
           )}

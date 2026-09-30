@@ -687,6 +687,7 @@ model GLAccount {
   inventoryFor            Company[]                 @relation("GLInventory")
   payablesFor             Company[]                 @relation("GLPayables")
   inputVatFor             Company[]                 @relation("GLInputVat")
+  ewtPayableFor           Company[]                 @relation("GLEwtPayable")
   SupplierBillExpenseLine SupplierBillExpenseLine[]
   accountLines            DVAccountLine[]
   dvItems                 DVItem[]
@@ -907,6 +908,9 @@ model Company {
   glPayables          GLAccount? @relation("GLPayables", fields: [glPayablesId], references: [id])
   glInputVatId        String?
   glInputVat          GLAccount? @relation("GLInputVat", fields: [glInputVatId], references: [id])
+  /// where expanded withholding tax withheld from suppliers is owed to the BIR
+  glEwtPayableId      String?
+  glEwtPayable        GLAccount? @relation("GLEwtPayable", fields: [glEwtPayableId], references: [id])
   createdAt           DateTime   @default(now())
   updatedAt           DateTime   @updatedAt
 
@@ -984,22 +988,35 @@ model SupplierBill {
   status             String         @default("Draft")
 
   /// Σ line amounts (qty × unit cost − discount), before freight, other costs and VAT
-  subtotal        Float  @default(0)
+  subtotal        Float               @default(0)
   /// freight billed by this supplier, allocated across the lines into inventory cost
-  freight         Float  @default(0)
+  freight         Float               @default(0)
   /// other directly attributable purchasing costs, allocated the same way
-  otherCosts      Float  @default(0)
+  otherCosts      Float               @default(0)
   /// "value" (by line amount, default) or "qty" (by pieces)
-  allocationBasis String @default("value")
+  allocationBasis String              @default("value")
   /// 0 or 0.12 — input VAT is a receivable from the BIR, never part of inventory cost
-  vatRate         Float  @default(0)
-  inputVat        Float  @default(0)
+  vatRate         Float               @default(0)
+  /// INCLUSIVE — the amounts entered carry the VAT inside them (the general rule);
+  /// EXCLUSIVE — VAT is added on top; NONE — no VAT (exempt or non-VAT supplier)
+  vatMode         String              @default("EXCLUSIVE")
+  inputVat        Float               @default(0)
+  /// the supplier's invoice as it reads: net of VAT + VAT, before anything is withheld
+  grossTotal      Float               @default(0)
+  /// what goes into stock: product cost + freight + other costs, all net of VAT
+  inventoryTotal  Float               @default(0)
+  /// expanded withholding tax: the type chosen, its rate as it was when the bill was saved,
+  /// and the amount withheld from the supplier and owed to the BIR instead
+  ewtTypeId       String?
+  ewtType         WithholdingTaxType? @relation(fields: [ewtTypeId], references: [id])
+  ewtRate         Float               @default(0)
+  ewtAmount       Float               @default(0)
   /// subtotal + freight + otherCosts + inputVat — what the supplier is owed
-  total           Float  @default(0)
+  total           Float               @default(0)
   /// what the receipt behind this bill had already put into inventory (its accepted qty ×
   /// receiving cost), fixed at posting. The ledger books the bill as clearing that amount
   /// and moving only the difference into inventory. 0 for a bill that stocked the goods itself.
-  receiptCost     Float  @default(0)
+  receiptCost     Float               @default(0)
 
   /// None | Matched | Partial | Over — the bill's quantities against what its receipt still had to bill
   matchStatus     String  @default("None")
@@ -1073,17 +1090,37 @@ model SupplierBillLine {
 }
 
 /// A line of a non-inventory supplier bill: which account it is charged to and for how much.
+/// The BIR's expanded withholding tax rates, kept as data so the office can add or change
+/// them without a program change. A bill picks one; the rate is copied onto the bill when
+/// it is saved, so an old bill keeps the rate that applied to it.
+model WithholdingTaxType {
+  id        String @id @default(cuid())
+  /// the BIR alphanumeric tax code, e.g. WC158
+  code      String @unique
+  name      String
+  /// as a fraction: 0.01 for 1%
+  rate      Float
+  /// GOODS | SERVICES | ANY — which bills offer it by default
+  appliesTo String @default("ANY")
+  status    String @default("Active")
+  sortOrder Int    @default(0)
+
+  bills SupplierBill[]
+}
+
 model SupplierBillExpenseLine {
-  id          String       @id @default(cuid())
-  billId      String
-  bill        SupplierBill @relation(fields: [billId], references: [id], onDelete: Cascade)
-  glAccountId String
-  glAccount   GLAccount    @relation(fields: [glAccountId], references: [id])
-  description String
+  id            String       @id @default(cuid())
+  billId        String
+  bill          SupplierBill @relation(fields: [billId], references: [id], onDelete: Cascade)
+  glAccountId   String
+  glAccount     GLAccount    @relation(fields: [glAccountId], references: [id])
+  description   String
   /// ex-VAT amount charged to the account
-  amount      Float
+  amount        Float
   /// input VAT on this line
-  taxAmount   Float        @default(0)
+  taxAmount     Float        @default(0)
+  /// the figure as typed — VAT-inclusive when the bill is; amount + taxAmount otherwise
+  enteredAmount Float        @default(0)
 
   @@index([billId])
 }

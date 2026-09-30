@@ -15,8 +15,8 @@ export default async function DvPrintPage({ params }: { params: { id: string } }
   const dv = await prisma.disbursementVoucher.findUnique({
     where: { id: params.id },
     include: {
-      company: { select: { companyName: true, glPayablesId: true, glPayables: { select: { code: true, description: true } }, glInputVatId: true, glInputVat: { select: { code: true, description: true } } } },
-      bills: { include: { bill: { select: { billNo: true, kind: true, total: true, inputVat: true, supplierInvoiceNo: true, billDate: true, supplier: { select: { name: true } }, expenseLines: { include: { glAccount: { select: { code: true, description: true } } } } } } } },
+      company: { select: { companyName: true, glPayablesId: true, glPayables: { select: { code: true, description: true } }, glInputVatId: true, glInputVat: { select: { code: true, description: true } }, glEwtPayableId: true, glEwtPayable: { select: { code: true, description: true } } } },
+      bills: { include: { bill: { select: { billNo: true, kind: true, total: true, inputVat: true, ewtAmount: true, supplierInvoiceNo: true, billDate: true, supplier: { select: { name: true } }, expenseLines: { include: { glAccount: { select: { code: true, description: true } } } } } } } },
       items: { orderBy: { sortOrder: "asc" }, include: { glAccount: { select: { code: true, description: true } } } },
       accountLines: { orderBy: { sortOrder: "asc" } },
       preparedBy: { select: { name: true } }, checkedBy: { select: { name: true } }, approvedBy: { select: { name: true } },

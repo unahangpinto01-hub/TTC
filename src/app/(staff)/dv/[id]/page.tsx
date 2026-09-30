@@ -41,8 +41,8 @@ export default async function DvDetailPage({ params, searchParams }: { params: {
     include: {
       supplier: true, employee: { select: { id: true, name: true, position: true } },
       items: { orderBy: { sortOrder: "asc" }, include: { glAccount: { select: { code: true, description: true } } } },
-      company: { select: { companyName: true, glPayablesId: true, glPayables: { select: { code: true, description: true } }, glInputVatId: true, glInputVat: { select: { code: true, description: true } } } },
-      bills: { include: { bill: { select: { id: true, billNo: true, kind: true, billDate: true, dueDate: true, supplierInvoiceNo: true, total: true, inputVat: true, paidAmount: true, status: true, supplier: { select: { name: true } }, expenseLines: { include: { glAccount: { select: { code: true, description: true } } } }, purchaseOrder: { select: { id: true, poNumber: true } }, goodsReceipt: { select: { id: true, grnNumber: true } } } } } },
+      company: { select: { companyName: true, glPayablesId: true, glPayables: { select: { code: true, description: true } }, glInputVatId: true, glInputVat: { select: { code: true, description: true } }, glEwtPayableId: true, glEwtPayable: { select: { code: true, description: true } } } },
+      bills: { include: { bill: { select: { id: true, billNo: true, kind: true, billDate: true, dueDate: true, supplierInvoiceNo: true, total: true, inputVat: true, ewtAmount: true, paidAmount: true, status: true, supplier: { select: { name: true } }, expenseLines: { include: { glAccount: { select: { code: true, description: true } } } }, purchaseOrder: { select: { id: true, poNumber: true } }, goodsReceipt: { select: { id: true, grnNumber: true } } } } } },
       accountLines: { orderBy: { sortOrder: "asc" } },
       preparedBy: { select: { name: true } }, checkedBy: { select: { name: true } }, approvedBy: { select: { name: true } },
       notedBy: { select: { name: true } }, postedBy: { select: { name: true } }, voidedBy: { select: { name: true } },
@@ -62,7 +62,7 @@ export default async function DvDetailPage({ params, searchParams }: { params: {
   const openBills = canEdit && dv.supplierId
     ? await prisma.supplierBill.findMany({
         where: { companyId: company.id, supplierId: dv.supplierId, status: { in: OPEN_BILL_STATUSES } },
-        select: { id: true, billNo: true, kind: true, billDate: true, dueDate: true, supplierInvoiceNo: true, total: true, inputVat: true, paidAmount: true, status: true, supplier: { select: { name: true } }, expenseLines: { select: { glAccountId: true, amount: true, glAccount: { select: { code: true, description: true } } } } },
+        select: { id: true, billNo: true, kind: true, billDate: true, dueDate: true, supplierInvoiceNo: true, total: true, inputVat: true, ewtAmount: true, paidAmount: true, status: true, supplier: { select: { name: true } }, expenseLines: { select: { glAccountId: true, amount: true, glAccount: { select: { code: true, description: true } } } } },
         orderBy: [{ dueDate: "asc" }],
       })
     : dv.bills.map((b) => ({ ...b.bill }));
@@ -81,9 +81,9 @@ export default async function DvDetailPage({ params, searchParams }: { params: {
   const customised = dv.accountLines.length > 0 && !linesEqual(dv.accountLines, generatedNow);
   const lines = customised ? dv.accountLines.map((l) => ({ title: l.title, debit: l.debit, credit: l.credit, ref: "", glAccountId: l.glAccountId })) : generatedNow;
   const liveCtx: LiveLinesContext = {
-    bills: Object.fromEntries(openBills.map((b) => [b.id, { billNo: b.billNo, kind: b.kind, total: b.total, inputVat: b.inputVat, supplierName: b.supplier.name, expenseLines: b.expenseLines.map((l) => ({ glAccountId: l.glAccountId, code: l.glAccount.code, description: l.glAccount.description, amount: l.amount })) }])),
+    bills: Object.fromEntries(openBills.map((b) => [b.id, { billNo: b.billNo, kind: b.kind, total: b.total, inputVat: b.inputVat, ewtAmount: b.ewtAmount, supplierName: b.supplier.name, expenseLines: b.expenseLines.map((l) => ({ glAccountId: l.glAccountId, code: l.glAccount.code, description: l.glAccount.description, amount: l.amount })) }])),
     payee: dv.payee,
-    company: { glPayablesId: dv.company.glPayablesId, glPayables: dv.company.glPayables, glInputVatId: dv.company.glInputVatId, glInputVat: dv.company.glInputVat },
+    company: { glPayablesId: dv.company.glPayablesId, glPayables: dv.company.glPayables, glInputVatId: dv.company.glInputVatId, glInputVat: dv.company.glInputVat, glEwtPayableId: dv.company.glEwtPayableId, glEwtPayable: dv.company.glEwtPayable },
     payments: posted.map((p) => ({ amount: p.amount, lines: p.lines.map((l) => ({ amount: l.amount })), cashAccount: { name: p.cashAccount.name, glAccountId: p.cashAccount.glAccountId, glAccount: p.cashAccount.glAccount } })),
   };
   const sheet: DvSheetData = {

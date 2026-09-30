@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { SearchSelect, type SearchHit } from "@/components/search-select";
-import { computeBill, ALLOCATION_BASES, round2 } from "@/lib/bill-math";
+import { computeBill, ALLOCATION_BASES, VAT_MODES, round2 } from "@/lib/bill-math";
 
 export type EditorLine = {
   id: string;
@@ -23,10 +23,12 @@ export type EditorLine = {
   received?: number | null;
   remaining?: number | null;
 };
+export type EwtTypeOption = { id: string; code: string; name: string; rate: number; appliesTo: string };
 
 type Row = EditorLine & { key: number; isNew: boolean };
 
 const peso = (n: number) => "₱" + n.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const pct = (r: number) => `${Math.round(r * 10000) / 100}%`;
 
 /**
  * The line table of a supplier bill, totalled as it is typed with the same arithmetic the
@@ -42,7 +44,9 @@ export function BillEditor({
   freight: freight0,
   otherCosts: other0,
   allocationBasis: basis0,
-  applyVat: vat0,
+  vatMode: vatMode0,
+  ewtTypeId: ewt0,
+  ewtTypes,
 }: {
   lines: EditorLine[];
   /** raised from a receipt: lines stay tied to the receipt's lines; the quantity is the invoice's own */
@@ -52,18 +56,22 @@ export function BillEditor({
   freight: number;
   otherCosts: number;
   allocationBasis: string;
-  applyVat: boolean;
+  vatMode: string;
+  ewtTypeId: string;
+  ewtTypes: EwtTypeOption[];
 }) {
   const [rows, setRows] = useState<Row[]>(lines.map((l, i) => ({ ...l, key: i, isNew: false })));
   const [freight, setFreight] = useState(freight0);
   const [other, setOther] = useState(other0);
   const [basis, setBasis] = useState(basis0);
-  const [vat, setVat] = useState(vat0);
+  const [vatMode, setVatMode] = useState(vatMode0);
+  const [ewtId, setEwtId] = useState(ewt0);
+  const ewt = ewtTypes.find((t) => t.id === ewtId) ?? null;
 
   const baseQtyOf = (r: Row) => (r.unit === "CARTON" && r.ppc ? r.qty * r.ppc : r.qty);
   const math = computeBill(
     rows.map((r) => ({ qty: r.qty, baseQty: baseQtyOf(r), unitCost: r.unitCost, discount: r.discount })),
-    { freight, otherCosts: other, allocationBasis: basis, vatRate: vat ? 0.12 : 0 }
+    { freight, otherCosts: other, allocationBasis: basis, vatMode, ewtRate: ewt?.rate ?? 0 }
   );
   const patch = (key: number, p: Partial<Row>) => setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...p } : r)));
   const remove = (key: number) => setRows((rs) => rs.filter((r) => r.key !== key));
@@ -85,6 +93,8 @@ export function BillEditor({
   const editable = canEdit;
   const cell = "table-td align-top";
   const inp = "input w-full py-1 text-right";
+  const inclusive = vatMode === "INCLUSIVE";
+  const vatLabel = VAT_MODES.find(([k]) => k === vatMode)?.[1] ?? vatMode;
 
   return (
     <div>
@@ -96,11 +106,11 @@ export function BillEditor({
               <th className="table-th">Batch No.</th>
               <th className="table-th text-right">Qty</th>
               <th className="table-th">Unit</th>
-              <th className="table-th text-right">Unit Cost</th>
+              <th className="table-th text-right">Unit Cost{inclusive ? " (VAT-incl.)" : ""}</th>
               <th className="table-th text-right">Discount</th>
               <th className="table-th text-right">Freight / Other</th>
-              <th className="table-th text-right">Tax</th>
-              <th className="table-th text-right">Amount</th>
+              <th className="table-th text-right">VAT</th>
+              <th className="table-th text-right">Amount (net)</th>
               <th className="table-th text-right">Inventory Cost</th>
               {editable && <th className="table-th" />}
             </tr>
@@ -185,7 +195,7 @@ export function BillEditor({
                   </td>
                   <td className={`${cell} text-right text-sm ${m.freightAlloc ? "" : "text-gray-300"}`}>{m.freightAlloc ? peso(m.freightAlloc) : "—"}</td>
                   <td className={`${cell} text-right text-sm ${m.taxAmount ? "" : "text-gray-300"}`}>{m.taxAmount ? peso(m.taxAmount) : "—"}</td>
-                  <td className={`${cell} text-right font-semibold`}>{peso(m.amount)}</td>
+                  <td className={`${cell} text-right font-semibold`}>{peso(m.amount)}{inclusive && m.grossAmount !== m.amount && <span className="block text-[10px] font-normal text-gray-400">{peso(m.grossAmount)} incl. VAT</span>}</td>
                   <td className={`${cell} text-right font-semibold text-emerald-800`}>{peso(m.inventoryCost)}</td>
                   {editable && (
                     <td className={cell}>
@@ -214,24 +224,43 @@ export function BillEditor({
       )}
 
       <div className="mt-4 grid gap-4 md:grid-cols-2">
-        <div className="text-xs text-gray-500">
+        <div className="space-y-3 text-xs text-gray-500">
+          <div>
+            <label className="label">VAT</label>
+            {editable ? (
+              <select name="vatMode" value={vatMode} onChange={(e) => setVatMode(e.target.value)} className="input max-w-md">
+                {VAT_MODES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+              </select>
+            ) : <p className="text-sm text-gray-700">{vatLabel}</p>}
+            <p className="mt-1">{inclusive ? "The general rule: the unit costs, freight and other costs entered already include 12% VAT; the VAT is carved out of them." : vatMode === "EXCLUSIVE" ? "12% VAT is added on top of the amounts entered." : "No VAT on this bill — an exempt or non-VAT supplier."}</p>
+          </div>
+          <div>
+            <label className="label">Expanded withholding tax (EWT)</label>
+            {editable ? (
+              <select name="ewtTypeId" value={ewtId} onChange={(e) => setEwtId(e.target.value)} className="input max-w-md">
+                <option value="">None — nothing withheld</option>
+                {ewtTypes.map((t) => <option key={t.id} value={t.id}>{t.code} · {t.name} · {pct(t.rate)}</option>)}
+              </select>
+            ) : <p className="text-sm text-gray-700">{ewt ? `${ewt.code} · ${ewt.name} · ${pct(ewt.rate)}` : "None"}</p>}
+            <p className="mt-1">Withheld on the VAT-exclusive amount under BIR rules and remitted to the BIR; the supplier is paid the rest. Rates are kept under Finance → Withholding Tax Rates.</p>
+          </div>
           <p>
             <span className="font-semibold text-gray-700">Inventory cost</span> = product cost + this bill&rsquo;s share of freight and other
-            purchasing costs. That is the cost each piece is carried in stock at and folds into the weighted average.
+            purchasing costs, all net of VAT. That is the cost each piece is carried in stock at and folds into the weighted average.
+            Input VAT is a claim against the BIR, not a cost of the goods.
           </p>
-          <p className="mt-1">Input VAT is a claim against the BIR, not a cost of the goods — it is owed to the supplier but never enters inventory.</p>
         </div>
         <table className="w-full max-w-md justify-self-end text-sm">
           <tbody className="divide-y divide-gray-100">
-            <tr><td className="py-1.5">Product cost (subtotal)</td><td className="py-1.5 text-right font-semibold">{peso(math.subtotal)}</td></tr>
+            <tr><td className="py-1.5">Product cost (net of VAT)</td><td className="py-1.5 text-right font-semibold">{peso(math.subtotal)}</td></tr>
             <tr>
-              <td className="py-1.5">Freight</td>
+              <td className="py-1.5">Freight{inclusive ? " (VAT-incl.)" : ""}</td>
               <td className="py-1.5 text-right">
                 {editable ? <input name="freight" type="number" min={0} step="0.01" value={freight || ""} onChange={(e) => setFreight(Math.max(0, Number(e.target.value) || 0))} placeholder="0.00" className={`${inp} w-32`} /> : peso(freight)}
               </td>
             </tr>
             <tr>
-              <td className="py-1.5">Other purchasing costs</td>
+              <td className="py-1.5">Other purchasing costs{inclusive ? " (VAT-incl.)" : ""}</td>
               <td className="py-1.5 text-right">
                 {editable ? <input name="otherCosts" type="number" min={0} step="0.01" value={other || ""} onChange={(e) => setOther(Math.max(0, Number(e.target.value) || 0))} placeholder="0.00" className={`${inp} w-32`} /> : peso(other)}
               </td>
@@ -249,21 +278,14 @@ export function BillEditor({
               </td>
             </tr>
             <tr className="border-t border-gray-300">
-              <td className="py-1.5 font-semibold">Into inventory</td>
-              <td className="py-1.5 text-right font-bold text-emerald-800">{peso(round2(math.subtotal + math.freight + math.otherCosts))}</td>
+              <td className="py-1.5 font-semibold">Into inventory (net of VAT)</td>
+              <td className="py-1.5 text-right font-bold text-emerald-800">{peso(math.inventoryTotal)}</td>
             </tr>
-            <tr>
-              <td className="py-1.5">
-                {editable ? (
-                  <label className="flex items-center gap-2"><input type="checkbox" name="applyVat" checked={vat} onChange={(e) => setVat(e.target.checked)} /> Input VAT 12%</label>
-                ) : (
-                  `Input VAT${vat ? " 12%" : " (none)"}`
-                )}
-              </td>
-              <td className={`py-1.5 text-right ${math.inputVat ? "" : "text-gray-300"}`}>{math.inputVat ? peso(math.inputVat) : "—"}</td>
-            </tr>
+            <tr><td className="py-1.5">Input VAT {vatMode === "NONE" ? "(none)" : "12%"}</td><td className={`py-1.5 text-right ${math.inputVat ? "" : "text-gray-300"}`}>{math.inputVat ? peso(math.inputVat) : "—"}</td></tr>
+            <tr className="border-t border-gray-300"><td className="py-1.5 font-semibold">Invoice total{inclusive ? " (as it reads)" : ""}</td><td className="py-1.5 text-right font-semibold">{peso(math.grossTotal)}</td></tr>
+            <tr><td className="py-1.5">Less: EWT {ewt ? `${pct(ewt.rate)} of ${peso(math.ewtBase)}` : "(none)"}</td><td className={`py-1.5 text-right ${math.ewtAmount ? "text-red-700" : "text-gray-300"}`}>{math.ewtAmount ? `(${peso(math.ewtAmount)})` : "—"}</td></tr>
             <tr className="border-t-2 border-gray-400">
-              <td className="py-2 font-bold">TOTAL PAYABLE</td>
+              <td className="py-2 font-bold">NET PAYABLE TO SUPPLIER</td>
               <td className="py-2 text-right text-lg font-bold">{peso(math.total)}</td>
             </tr>
           </tbody>

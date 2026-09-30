@@ -178,11 +178,13 @@ export default async function BillPrintPage({ params }: { params: { id: string }
                 <tr><td className="py-0.5 text-gray-600">Product cost</td><td className="py-0.5 text-right">{peso(bill.subtotal)}</td></tr>
                 <tr><td className="py-0.5 text-gray-600">Freight</td><td className="py-0.5 text-right">{peso(bill.freight)}</td></tr>
                 <tr><td className="py-0.5 text-gray-600">Other purchasing costs</td><td className="py-0.5 text-right">{peso(bill.otherCosts)}</td></tr>
-                <tr className="border-t border-gray-400"><td className="py-0.5 font-semibold">Inventory cost</td><td className="py-0.5 text-right font-semibold">{peso(bill.subtotal + bill.freight + bill.otherCosts)}</td></tr>
+                <tr className="border-t border-gray-400"><td className="py-0.5 font-semibold">Inventory cost (net of VAT)</td><td className="py-0.5 text-right font-semibold">{peso(bill.inventoryTotal || bill.subtotal + bill.freight + bill.otherCosts)}</td></tr>
                   </>
                 )}
-                <tr><td className="py-0.5 text-gray-600">Input VAT {bill.vatRate ? "12%" : "(none)"}</td><td className="py-0.5 text-right">{bill.inputVat ? peso(bill.inputVat) : "—"}</td></tr>
-                <tr className="border-t-2 border-gray-800"><td className="py-1 font-bold">TOTAL PAYABLE</td><td className="py-1 text-right text-base font-bold">{peso(bill.total)}</td></tr>
+                <tr><td className="py-0.5 text-gray-600">Input VAT {bill.vatMode === "NONE" ? "(none)" : bill.vatMode === "INCLUSIVE" ? "12% (inclusive)" : "12%"}</td><td className="py-0.5 text-right">{bill.inputVat ? peso(bill.inputVat) : "—"}</td></tr>
+                <tr className="border-t border-gray-400"><td className="py-0.5 font-semibold">Invoice total</td><td className="py-0.5 text-right font-semibold">{peso(bill.grossTotal || bill.total)}</td></tr>
+                {bill.ewtAmount > 0 && <tr><td className="py-0.5 text-gray-600">Less: EWT {(bill.ewtRate * 100).toFixed(2)}%</td><td className="py-0.5 text-right">({peso(bill.ewtAmount)})</td></tr>}
+                <tr className="border-t-2 border-gray-800"><td className="py-1 font-bold">NET PAYABLE</td><td className="py-1 text-right text-base font-bold">{peso(bill.total)}</td></tr>
               </tbody>
             </table>
           </div>
@@ -190,8 +192,8 @@ export default async function BillPrintPage({ params }: { params: { id: string }
           {bill.memo && <p className="mb-4 text-xs text-gray-600"><span className="font-semibold">Memo:</span> {bill.memo}</p>}
           <p className="mb-6 text-xs text-gray-500">
             Terms: {bill.terms}. {bill.kind === "EXPENSE"
-              ? "On posting this bill debits the accounts listed, debits Input VAT, and credits Accounts Payable for the total. It does not affect inventory."
-              : "On posting this bill debits Inventory for the product cost plus allocated freight and other purchasing costs, debits Input VAT, and credits Accounts Payable for the total. Goods are carried at weighted average cost."}{" "}
+              ? "On posting this bill debits the accounts listed net of VAT, debits Input VAT, credits Withholding Tax Payable for any EWT, and credits Accounts Payable for the net payable. It does not affect inventory."
+              : "On posting this bill debits Inventory for the product cost plus allocated freight and other purchasing costs (net of VAT), debits Input VAT, credits Withholding Tax Payable for any EWT, and credits Accounts Payable for the net payable. Goods are carried at weighted average cost."}{" "}
             Payment is recorded separately, by cheque against a Disbursement Voucher.
           </p>
 

@@ -170,13 +170,14 @@ export default async function CompanyPage({ searchParams }: { searchParams: { sa
           <p className="mb-3 text-xs text-gray-500">
             Which Chart of Accounts entry a posted supplier bill moves: inventory is debited for the product cost plus
             allocated freight and other purchasing costs, input VAT is debited separately (it is never part of inventory
-            cost), and the supplier&rsquo;s payable is credited for the whole bill.
+            cost), expanded withholding tax is credited to Withholding Tax Payable, and the supplier&rsquo;s payable is credited for the net.
           </p>
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {([
               ["glInventoryId", "Inventory Asset", company.glInventoryId],
               ["glPayablesId", "Accounts Payable", company.glPayablesId],
               ["glInputVatId", "Input VAT", company.glInputVatId],
+              ["glEwtPayableId", "Withholding Tax Payable (EWT)", company.glEwtPayableId],
             ] as const).map(([field, label, current]) => (
               <div key={field}>
                 <label className="label">{label}</label>

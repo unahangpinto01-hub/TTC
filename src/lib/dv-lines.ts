@@ -9,10 +9,10 @@ import { round2 } from "./bill-math";
 export type AccountingLine = { title: string; debit: number; credit: number; ref: string; glAccountId: string | null };
 
 export type DvForLines = {
-  bills: { amount: number; bill: { billNo: string; kind: string; total: number; inputVat: number; supplier: { name: string }; expenseLines?: { amount: number; glAccountId: string; glAccount: { code: string; description: string } }[] } }[];
+  bills: { amount: number; bill: { billNo: string; kind: string; total: number; inputVat: number; ewtAmount?: number; supplier: { name: string }; expenseLines?: { amount: number; glAccountId: string; glAccount: { code: string; description: string } }[] } }[];
   items?: { amount: number; description: string; glAccountId: string | null; glAccount?: { code: string; description: string } | null }[];
   payee?: string;
-  company: { glPayablesId?: string | null; glPayables: { code: string; description: string } | null; glInputVatId?: string | null; glInputVat?: { code: string; description: string } | null };
+  company: { glPayablesId?: string | null; glPayables: { code: string; description: string } | null; glInputVatId?: string | null; glInputVat?: { code: string; description: string } | null; glEwtPayableId?: string | null; glEwtPayable?: { code: string; description: string } | null };
   payments?: { amount: number; status?: string; lines?: { amount: number }[]; cashAccount: { name: string; glAccountId?: string | null; glAccount: { code: string; description: string } | null } | null }[];
 };
 
@@ -28,17 +28,20 @@ export type DvForLines = {
 export function generateAccountLines(dv: DvForLines): AccountingLine[] {
   const ap = dv.company.glPayables ? `${dv.company.glPayables.code} ${dv.company.glPayables.description}` : "Accounts Payable";
   const vat = dv.company.glInputVat ? `${dv.company.glInputVat.code} ${dv.company.glInputVat.description}` : "Input VAT";
+  const ewt = dv.company.glEwtPayable ? `${dv.company.glEwtPayable.code} ${dv.company.glEwtPayable.description}` : "Withholding Tax Payable";
   const lines: AccountingLine[] = [];
   for (const b of dv.bills) {
     const share = b.bill.total > 0 ? b.amount / b.bill.total : 1;
     if (b.bill.kind === "EXPENSE" && b.bill.expenseLines?.length) {
       for (const l of b.bill.expenseLines) lines.push({ title: `${l.glAccount.code} ${l.glAccount.description}`, debit: round2(l.amount * share), credit: 0, ref: b.bill.billNo, glAccountId: l.glAccountId });
       if (b.bill.inputVat) lines.push({ title: vat, debit: round2(b.bill.inputVat * share), credit: 0, ref: b.bill.billNo, glAccountId: dv.company.glInputVatId ?? null });
+      // what was withheld is owed to the BIR, not to the supplier
+      if (b.bill.ewtAmount) lines.push({ title: ewt, debit: 0, credit: round2(b.bill.ewtAmount * share), ref: b.bill.billNo, glAccountId: dv.company.glEwtPayableId ?? null });
     } else {
       lines.push({ title: `${ap} — ${b.bill.supplier.name}`, debit: round2(b.amount), credit: 0, ref: b.bill.billNo, glAccountId: dv.company.glPayablesId ?? null });
     }
   }
-  const billTotal = round2(lines.reduce((s, l) => s + l.debit, 0));
+  const billTotal = round2(lines.reduce((s, l) => s + l.debit - l.credit, 0));
   // the bills' credit: the cash or bank account of what was paid so far, else Cash in Bank
   const paidLines = (dv.payments ?? []).filter((p) => !p.status || p.status === "Posted");
   let credited = 0;

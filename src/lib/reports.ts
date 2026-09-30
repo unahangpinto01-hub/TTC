@@ -471,6 +471,7 @@ export async function getLedger({ from, to }: Range, companyIds: string[]) {
             glInventory: { select: { code: true, description: true } },
             glPayables: { select: { code: true, description: true } },
             glInputVat: { select: { code: true, description: true } },
+            glEwtPayable: { select: { code: true, description: true } },
           },
         },
       },
@@ -556,14 +557,16 @@ export async function getLedger({ from, to }: Range, companyIds: string[]) {
     ...bills.flatMap((b) => {
       const base = { date: b.billDate, company: b.company.companyName, ref: b.billNo, credit: acctOf(b.company.glPayables, "Accounts Payable") };
       const rows = [];
-      const inventory = round2(b.subtotal + b.freight + b.otherCosts);
+      const inventory = b.inventoryTotal || round2(b.subtotal + b.freight + b.otherCosts);
+      // expanded withholding tax: withheld from the supplier, owed to the BIR instead
+      const ewtRow = b.ewtAmount > 0 ? [{ ...base, description: `EWT withheld ${(b.ewtRate * 100).toFixed(2)}% — ${b.supplier.name}`, debit: acctOf(b.company.glPayables, "Accounts Payable"), credit: acctOf(b.company.glEwtPayable, "Withholding Tax Payable"), amount: round2(b.ewtAmount) }] : [];
       const who = `${b.supplier.name}${b.supplierInvoiceNo ? ` (Inv ${b.supplierInvoiceNo})` : ""}`;
       if (b.kind === "EXPENSE") {
         for (const l of b.expenseLines)
           rows.push({ ...base, description: `${l.description || l.glAccount.description} — ${who}`, debit: `${l.glAccount.code} ${l.glAccount.description}`, amount: round2(l.amount) });
         if (b.inputVat !== 0)
           rows.push({ ...base, description: `Input VAT — ${b.supplier.name}`, debit: acctOf(b.company.glInputVat, "Input VAT (account not set)"), amount: round2(b.inputVat) });
-        return rows;
+        return [...rows, ...ewtRow];
       }
       if (b.receiptCost > 0) {
         rows.push({ ...base, description: `Receipt billed — ${who}`, debit: "Goods Received Not Billed", amount: round2(b.receiptCost) });
@@ -577,7 +580,7 @@ export async function getLedger({ from, to }: Range, companyIds: string[]) {
       }
       if (b.inputVat !== 0)
         rows.push({ ...base, description: `Input VAT — ${b.supplier.name}`, debit: acctOf(b.company.glInputVat, "Input VAT (account not set)"), amount: round2(b.inputVat) });
-      return rows;
+      return [...rows, ...ewtRow];
     }),
   ];
   return entries.sort((a, b) => b.date.getTime() - a.date.getTime());

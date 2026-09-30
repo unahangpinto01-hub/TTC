@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
+import { VAT_MODES, DEFAULT_VAT_MODE } from "@/lib/bill-math";
 import { requirePermWrite, requireStepUp } from "@/lib/auth";
 import { getActiveCompany } from "@/lib/company";
 import { getPerm } from "@/lib/permissions";
@@ -51,9 +52,27 @@ function header(formData: FormData) {
     freight: money(formData.get("freight")),
     otherCosts: money(formData.get("otherCosts")),
     allocationBasis: String(formData.get("allocationBasis")) === "qty" ? "qty" : "value",
-    vatRate: formData.get("applyVat") === "on" ? 0.12 : 0,
+    vatMode: (VAT_MODES as readonly (readonly [string, string])[]).some(([k]) => k === formData.get("vatMode")) ? String(formData.get("vatMode")) : DEFAULT_VAT_MODE,
+    // the EWT select: absent on the New Bill form (→ undefined, take the default type), "" when None was chosen
+    ewtTypeId: formData.has("ewtTypeId") ? String(formData.get("ewtTypeId") || "") : undefined,
   };
 }
+
+/** The withholding tax type a bill carries: the one chosen, or the default for its kind when the form did not ask. */
+async function ewtFor(chosen: string | undefined, defaultFor: "GOODS" | "SERVICES" | null): Promise<{ id: string | null; rate: number }> {
+  if (chosen) {
+    const t = await prisma.withholdingTaxType.findFirst({ where: { id: chosen, status: "Active" } });
+    return t ? { id: t.id, rate: t.rate } : { id: null, rate: 0 };
+  }
+  if (chosen === "" || !defaultFor) return { id: null, rate: 0 };
+  const t = await prisma.withholdingTaxType.findFirst({ where: { status: "Active", appliesTo: defaultFor }, orderBy: [{ sortOrder: "asc" }, { code: "asc" }] });
+  return t ? { id: t.id, rate: t.rate } : { id: null, rate: 0 };
+}
+const lineData = (m: { amount: number; freightAlloc: number; taxAmount: number; inventoryCost: number }) => ({ amount: m.amount, freightAlloc: m.freightAlloc, taxAmount: m.taxAmount, inventoryCost: m.inventoryCost });
+const billTotals = (h: { vatMode: string }, ewt: { id: string | null; rate: number }, m: { subtotal: number; inputVat: number; grossTotal: number; ewtAmount: number; total: number; inventoryTotal?: number }) => ({
+  subtotal: m.subtotal, vatMode: h.vatMode, vatRate: h.vatMode === "NONE" ? 0 : 0.12, inputVat: m.inputVat, grossTotal: m.grossTotal, inventoryTotal: m.inventoryTotal ?? 0,
+  ewtTypeId: ewt.id, ewtRate: ewt.rate, ewtAmount: m.ewtAmount, total: m.total,
+});
 
 /**
  * Start a bill. Raised from a posted receipt it copies the lines the receipt still has to
@@ -127,7 +146,8 @@ export async function createBill(formData: FormData) {
   const supplier = await prisma.supplier.findUnique({ where: { id: supplierId }, select: { id: true, name: true } });
   if (!supplier) redirect("/bills/new?error=supplier");
 
-  const math = computeBill(lines, h);
+  const ewt = await ewtFor(h.ewtTypeId, "GOODS");
+  const math = computeBill(lines, { ...h, ewtRate: ewt.rate });
   const billNo = await nextBillNo(company.id, billDate);
   const bill = await prisma.supplierBill.create({
     data: {
@@ -144,15 +164,12 @@ export async function createBill(formData: FormData) {
       memo: h.memo,
       status: "Draft",
       matchStatus: goodsReceiptId ? "Matched" : "None",
-      subtotal: math.subtotal,
       freight: math.freight,
       otherCosts: math.otherCosts,
       allocationBasis: h.allocationBasis,
-      vatRate: h.vatRate,
-      inputVat: math.inputVat,
-      total: math.total,
+      ...billTotals(h, ewt, math),
       createdById: user.id,
-      lines: { create: lines.map((l, i) => ({ ...l, ...math.lines[i] })) },
+      lines: { create: lines.map((l, i) => ({ ...l, ...lineData(math.lines[i]) })) },
     },
   });
   if (goodsReceiptId) {
@@ -266,7 +283,8 @@ export async function saveBill(formData: FormData) {
     });
   }
 
-  const math = computeBill(rows, h);
+  const ewt = await ewtFor(h.ewtTypeId, "GOODS");
+  const math = computeBill(rows, { ...h, ewtRate: ewt.rate });
   const match = bill.goodsReceiptId
     ? await matchBillLines(prisma, { id, goodsReceiptId: bill.goodsReceiptId, lines: rows })
     : { status: "None" as const, lines: [], unbilledAfter: 0 };
@@ -289,7 +307,9 @@ export async function saveBill(formData: FormData) {
   if (bill.dueDate.toDateString() !== dueDate.toDateString()) changes.push(`Due date: ${bill.dueDate.toDateString()} → ${dueDate.toDateString()}`);
   if (Math.abs(bill.freight - math.freight) > 0.004 || Math.abs(bill.otherCosts - math.otherCosts) > 0.004)
     changes.push(`Freight/other: ${bill.freight.toFixed(2)} + ${bill.otherCosts.toFixed(2)} → ${math.freight.toFixed(2)} + ${math.otherCosts.toFixed(2)}`);
-  if (Math.abs(bill.total - math.total) > 0.004) changes.push(`Total: ${bill.total.toFixed(2)} → ${math.total.toFixed(2)}`);
+  if (bill.vatMode !== h.vatMode) changes.push(`VAT: ${bill.vatMode} → ${h.vatMode}`);
+  if (Math.abs(bill.ewtAmount - math.ewtAmount) > 0.004 || (bill.ewtTypeId ?? null) !== ewt.id) changes.push(`EWT: ₱${bill.ewtAmount.toFixed(2)} → ₱${math.ewtAmount.toFixed(2)} at ${(ewt.rate * 100).toFixed(2)}%`);
+  if (Math.abs(bill.total - math.total) > 0.004) changes.push(`Net payable: ${bill.total.toFixed(2)} → ${math.total.toFixed(2)}`);
   if (bill.matchStatus !== match.status) changes.push(`Match: ${bill.matchStatus} → ${match.status}`);
   if ((bill.discrepancyNote ?? "") !== (h.discrepancyNote ?? "")) changes.push(`Discrepancy note: ${h.discrepancyNote ?? "(cleared)"}`);
 
@@ -305,7 +325,7 @@ export async function saveBill(formData: FormData) {
       const r = rows[i];
       const data = {
         productId: r.productId, grnLineId: r.grnLineId, poLineId: r.poLineId, batchNo: r.batchNo, expDate: r.expDate,
-        qty: r.qty, unit: r.unit, baseQty: r.baseQty, unitCost: r.unitCost, discount: r.discount, ...math.lines[i],
+        qty: r.qty, unit: r.unit, baseQty: r.baseQty, unitCost: r.unitCost, discount: r.discount, ...lineData(math.lines[i]),
       };
       if (r.id) await tx.supplierBillLine.update({ where: { id: r.id }, data });
       else await tx.supplierBillLine.create({ data: { billId: id, ...data } });
@@ -324,13 +344,10 @@ export async function saveBill(formData: FormData) {
         discrepancyNote: h.discrepancyNote,
         overrideReason,
         overrideById: overrideReason ? user.id : null,
-        subtotal: math.subtotal,
         freight: math.freight,
         otherCosts: math.otherCosts,
         allocationBasis: h.allocationBasis,
-        vatRate: h.vatRate,
-        inputVat: math.inputVat,
-        total: math.total,
+        ...billTotals(h, ewt, math),
       },
     });
     if (bill.goodsReceiptId) await refreshInvoiceStatus(tx, bill.goodsReceiptId);
@@ -496,8 +513,9 @@ export async function postBill(formData: FormData) {
       `${bill.billNo} posted · ${periodLabel(year, month)} · ` +
       (isExpense
         ? bill.expenseLines.map((l) => `Dr ${l.glAccount.description} ₱${l.amount.toFixed(2)}`).join(" · ")
-        : `Dr Inventory ₱${round2(bill.subtotal + bill.freight + bill.otherCosts).toFixed(2)}`) +
+        : `Dr Inventory ₱${(bill.inventoryTotal || round2(bill.subtotal + bill.freight + bill.otherCosts)).toFixed(2)}`) +
       (bill.inputVat ? ` · Dr Input VAT ₱${bill.inputVat.toFixed(2)}` : "") +
+      (bill.ewtAmount ? ` · Cr Withholding Tax Payable ₱${bill.ewtAmount.toFixed(2)} (EWT ${(bill.ewtRate * 100).toFixed(2)}%)` : "") +
       ` · Cr Accounts Payable ₱${bill.total.toFixed(2)} (${bill.supplier.name}, due ${bill.dueDate.toDateString()})` +
       (match ? ` · match ${match.status}${match.unbilledAfter > 0 ? ` (${match.unbilledAfter} still unbilled on ${grn?.grnNumber})` : ""}` : "") +
       (match?.status === "Over" ? ` · over-billing approved: ${bill.overrideReason}` : "") +
@@ -629,7 +647,7 @@ export async function createExpenseBill(formData: FormData) {
     data: {
       companyId: company.id, billNo, kind: "EXPENSE", supplierId: supplier.id,
       supplierInvoiceNo: h.supplierInvoiceNo, invoiceUnavailable: h.invoiceUnavailable,
-      billDate, dueDate, terms: h.terms, memo: h.memo, status: "Draft", matchStatus: "None", createdById: user.id,
+      billDate, dueDate, terms: h.terms, memo: h.memo, status: "Draft", matchStatus: "None", vatMode: h.vatMode, createdById: user.id,
     },
   });
   await logAudit({ entity: "SupplierBill", entityId: bill.id, action: "CREATED", detail: `${billNo} (non-inventory) raised for ${supplier.name}`, actorName: user.name, actorEmail: user.email, companyId: company.id });
@@ -669,7 +687,8 @@ export async function saveExpenseBill(formData: FormData) {
   if (accounts.length !== accountIds.length) redirect(`/bills/${id}?error=account`);
   const nameOf = (gid: string) => { const a = accounts.find((x) => x.id === gid); return a ? `${a.code} ${a.description}` : "(no account)"; };
 
-  const math = computeExpenseBill(rows, h.vatRate);
+  const ewt = await ewtFor(h.ewtTypeId, null);
+  const math = computeExpenseBill(rows, { vatMode: h.vatMode, ewtRate: ewt.rate });
   for (const r of rows) {
     const before = r.id ? bill.expenseLines.find((l) => l.id === r.id) : null;
     if (!before) { changes.push(`Added ${nameOf(r.glAccountId)} — ${r.description || "(no description)"} ₱${r.amount.toFixed(2)}`); continue; }
@@ -681,14 +700,16 @@ export async function saveExpenseBill(formData: FormData) {
   if ((bill.supplierInvoiceNo ?? "") !== (h.supplierInvoiceNo ?? "")) changes.push(`Reference: ${bill.supplierInvoiceNo ?? "(none)"} → ${h.supplierInvoiceNo ?? "(none)"}`);
   if (bill.billDate.toDateString() !== billDate.toDateString()) changes.push(`Bill date: ${bill.billDate.toDateString()} → ${billDate.toDateString()}`);
   if (bill.dueDate.toDateString() !== dueDate.toDateString()) changes.push(`Due date: ${bill.dueDate.toDateString()} → ${dueDate.toDateString()}`);
-  if (Math.abs(bill.total - math.total) > 0.004) changes.push(`Total: ${bill.total.toFixed(2)} → ${math.total.toFixed(2)}`);
+  if (bill.vatMode !== h.vatMode) changes.push(`VAT: ${bill.vatMode} → ${h.vatMode}`);
+  if (Math.abs(bill.ewtAmount - math.ewtAmount) > 0.004 || (bill.ewtTypeId ?? null) !== ewt.id) changes.push(`EWT: ₱${bill.ewtAmount.toFixed(2)} → ₱${math.ewtAmount.toFixed(2)} at ${(ewt.rate * 100).toFixed(2)}%`);
+  if (Math.abs(bill.total - math.total) > 0.004) changes.push(`Net payable: ${bill.total.toFixed(2)} → ${math.total.toFixed(2)}`);
 
   await prisma.$transaction(async (tx) => {
     const keep = rows.filter((r) => r.id).map((r) => r.id!);
     await tx.supplierBillExpenseLine.deleteMany({ where: { billId: id, id: { notIn: keep } } });
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
-      const data = { glAccountId: r.glAccountId, description: r.description, amount: r.amount, taxAmount: math.lines[i].taxAmount };
+      const data = { glAccountId: r.glAccountId, description: r.description, amount: math.lines[i].amount, taxAmount: math.lines[i].taxAmount, enteredAmount: math.lines[i].entered };
       if (r.id) await tx.supplierBillExpenseLine.update({ where: { id: r.id }, data });
       else await tx.supplierBillExpenseLine.create({ data: { billId: id, ...data } });
     }
@@ -696,7 +717,7 @@ export async function saveExpenseBill(formData: FormData) {
       where: { id },
       data: {
         supplierId, supplierInvoiceNo: h.supplierInvoiceNo, invoiceUnavailable: h.invoiceUnavailable, billDate, dueDate, terms: h.terms, memo: h.memo,
-        subtotal: math.subtotal, freight: 0, otherCosts: 0, vatRate: h.vatRate, inputVat: math.inputVat, total: math.total,
+        freight: 0, otherCosts: 0, ...billTotals(h, ewt, math),
       },
     });
   });

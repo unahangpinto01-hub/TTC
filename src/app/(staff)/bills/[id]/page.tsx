@@ -83,6 +83,8 @@ export default async function BillDetailPage({
   const canEdit = canWrite && !billEditBlocker(bill);
   const canApprove = canWrite && ["SUPER_ADMIN", "ADMIN"].includes(user.role);
   const isDraft = bill.status === "Draft";
+  const ewtTypes = await prisma.withholdingTaxType.findMany({ where: { status: "Active" }, orderBy: [{ sortOrder: "asc" }, { code: "asc" }], select: { id: true, code: true, name: true, rate: true, appliesTo: true } });
+  const inventoryTotal = bill.inventoryTotal || bill.subtotal + bill.freight + bill.otherCosts;
   const match = bill.goodsReceiptId ? await matchBillLines(prisma, bill) : null;
   const blockers = isDraft ? await postBlockers(bill, match ? { status: match.status, overrideReason: bill.overrideReason } : undefined) : [];
   const period = periodOf(bill.billDate);
@@ -181,9 +183,9 @@ export default async function BillDetailPage({
           )}
         </div>
         <div className="card py-3">
-          <p className="text-xs text-gray-500">Total payable</p>
+          <p className="text-xs text-gray-500">Net payable to supplier</p>
           <p className="font-semibold">{peso(bill.total)}</p>
-          <p className="text-xs text-gray-500">{pcs.toLocaleString()} PCS · into inventory {peso(bill.subtotal + bill.freight + bill.otherCosts)}{bill.inputVat ? ` · VAT ${peso(bill.inputVat)}` : ""}</p>
+          <p className="text-xs text-gray-500">{pcs.toLocaleString()} PCS · into inventory {peso(inventoryTotal)}{bill.inputVat ? ` · VAT ${peso(bill.inputVat)}` : ""}{bill.ewtAmount ? ` · less EWT ${peso(bill.ewtAmount)}` : ""}{bill.grossTotal && Math.abs(bill.grossTotal - bill.total) > 0.005 ? ` · invoice ${peso(bill.grossTotal)}` : ""}</p>
         </div>
         <div className="card py-3">
           <p className="text-xs text-gray-500">{bill.status === "Draft" || bill.status === "Void" ? "Due" : "Outstanding"}</p>
@@ -251,7 +253,9 @@ export default async function BillDetailPage({
           freight={bill.freight}
           otherCosts={bill.otherCosts}
           allocationBasis={bill.allocationBasis}
-          applyVat={bill.vatRate > 0}
+          vatMode={bill.vatMode}
+          ewtTypeId={bill.ewtTypeId ?? ""}
+          ewtTypes={ewtTypes}
         />
 
         {canEdit && (
@@ -285,8 +289,8 @@ export default async function BillDetailPage({
               )}
               <button className="btn-primary" type="submit">📦 Post — stock in, payable up</button>
               <p className="text-xs text-gray-500">
-                Dr Inventory {peso(bill.subtotal + bill.freight + bill.otherCosts)}
-                {bill.inputVat ? <> · Dr Input VAT {peso(bill.inputVat)}</> : null} · Cr Accounts Payable {peso(bill.total)}.
+                Dr Inventory {peso(inventoryTotal)}
+                {bill.inputVat ? <> · Dr Input VAT {peso(bill.inputVat)}</> : null}{bill.ewtAmount ? <> · Cr Withholding Tax Payable {peso(bill.ewtAmount)}</> : null} · Cr Accounts Payable {peso(bill.total)}.
                 {bill.goodsReceipt?.stockedAt
                   ? " The receipt put these goods into stock; posting re-costs the pieces on hand to the billed price and raises the payable."
                   : ` ${pcs.toLocaleString()} PCS go into stock at their inventory cost.`}
