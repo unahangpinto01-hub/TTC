@@ -71,7 +71,7 @@ export const REPORTS: ReportDef[] = [
   { key: "refunds-credits", title: "Refunds & Credits", module: "Finance", fn: "reports",
     href: "/reports/refunds-credits", desc: "Credit memos and customer refunds raised in the period" },
   { key: "expenses", title: "Expense Report", module: "Finance", fn: "expenses", exportKey: "expenses",
-    href: "/finance/expenses", desc: "By category with detail listing" },
+    href: "/finance/expenses", desc: "Expenses of the period by account — non-inventory bill lines and posted voucher items; also the accounting period and cutoff controls" },
   { key: "ap-aging", title: "AP Aging", module: "Finance", fn: "ap", exportKey: "ap-aging",
     href: "/finance/ap", desc: "What is owed to each supplier, by days past due" },
   { key: "supplier-statement", title: "Supplier Statement", module: "Finance", fn: "ap", exportKey: "supplier-statement",

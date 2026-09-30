@@ -28,7 +28,6 @@ model User {
 
   salesOrders      SalesOrder[]
   stockMoves       StockMovement[]
-  expenses         Expense[]
   notifications    Notification[]
   evaluations      Evaluation[]
   sessions         AuthSession[]
@@ -647,50 +646,6 @@ model POLine {
   grnLines GRNLine[]
 }
 
-/// An expense voucher.
-///
-/// Four dates that are deliberately NOT the same thing:
-///   voucherDate   decides the accounting year, the period and the number series
-///   date          the actual date on the invoice or receipt
-///   receivedDate  when the company received the document
-///   createdAt     when it was typed into the BMS
-/// A late-December invoice received in January is voucher-dated 31 December, so it keeps a
-/// December number and lands in the December period, however long afterwards it is encoded.
-model Expense {
-  id        String   @id @default(cuid())
-  companyId String
-  company   Company  @relation(fields: [companyId], references: [id])
-  /// ACTUAL EXPENSE DATE — what the invoice or receipt itself says
-  date      DateTime @default(now())
-  category  String // Fuel | Salaries | Utilities | Freight | Rent | Supplies | Others
-  amount    Float
-  notes     String?
-  userId    String?
-  user      User?    @relation(fields: [userId], references: [id])
-
-  /// EV-TTC-2026-000001 — unique per company, never reused
-  voucherNo       String?
-  /// drives the number series, the accounting year and the accounting period
-  voucherDate     DateTime   @default(now())
-  /// when the document reached the company
-  receivedDate    DateTime?
-  payee           String?
-  /// derived from voucherDate and stored so reports can group and index on them
-  accountingYear  Int        @default(0)
-  accountingMonth Int        @default(0)
-  /// true when the voucher was encoded in a later calendar year than it is dated —
-  /// the year-end cutoff case, called out in the audit trail
-  priorYearEntry  Boolean    @default(false)
-  /// ENCODED DATE/TIME
-  createdAt       DateTime   @default(now())
-  // which GL account this expense books to — picked from the Chart of Accounts
-  glAccountId     String?
-  glAccount       GLAccount? @relation(fields: [glAccountId], references: [id])
-
-  @@unique([companyId, voucherNo])
-  @@index([companyId, accountingYear, accountingMonth])
-}
-
 /// Accounting period control, one row per company/year/month that has been moved off Open.
 /// A period with no row is Open — periods are not created in advance, they are only closed.
 model AccountingPeriod {
@@ -726,7 +681,6 @@ model GLAccount {
   updatedAt        DateTime @updatedAt
 
   cashAccounts            CashAccount[]
-  expenses                Expense[]
   salesFor                Company[]                 @relation("GLSales")
   freightFor              Company[]                 @relation("GLFreight")
   otherFor                Company[]                 @relation("GLOther")
@@ -967,7 +921,6 @@ model Company {
   cashAccounts      CashAccount[]
   receivePayments   ReceivePayment[]
   refundCredits     RefundCredit[]
-  expenses          Expense[]
   forecasts         Forecast[]
   bills             SupplierBill[]
   vouchers          DisbursementVoucher[]

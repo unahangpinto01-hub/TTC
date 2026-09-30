@@ -254,38 +254,20 @@ export async function GET(req: NextRequest, { params }: { params: { report: stri
       const year = Number(sp.year) || 0;
       const month = Number(sp.month) || 0;
       const r = await getExpenseReport(range, scope.ids, year ? { year, month: month || null } : undefined);
-      const heading = year ? `Accounting period: ${month ? month + "/" : ""}${year}` : `Voucher dates ${tag}`;
+      const heading = year ? `Accounting period: ${month ? month + "/" : ""}${year}` : `Dates ${tag}`;
       const d = (x: Date | null) => (x ? x.toISOString().slice(0, 10) : "");
       const rows: (string | number)[][] = [
-        ["EXPENSE VOUCHER REPORT", heading, scope.label],
-        ["Selected on the accounting period, which comes from the voucher date — not from when the voucher was encoded."],
+        ["EXPENSE REPORT", heading, scope.label],
+        ["Non-inventory bill lines and posted voucher items, by accounting period (from the document date, not when it was encoded)."],
         [],
-        ["Voucher No.", "Voucher Date", "Actual Expense Date", "Date Received", "Encoded Date", "Accounting Period",
-         ...(scope.combined ? ["Company"] : []), "Payee", "Category", "Description", "Entered in a later year", "Amount"],
-        ...r.expenses.map((x) => [
-          x.voucherNo ?? "",
-          d(x.voucherDate),
-          d(x.date),
-          d(x.receivedDate),
-          d(x.createdAt),
-          x.accountingYear ? `${x.accountingMonth}/${x.accountingYear}` : "",
-          ...(scope.combined ? [x.company.companyName] : []),
-          x.payee ?? "",
-          x.category,
-          x.notes ?? "",
-          x.priorYearEntry ? "YES" : "",
-          x.amount,
-        ]),
+        ["Bill / DV No.", "Date", "Due Date", "Accounting Period", ...(scope.combined ? ["Company"] : []), "Payee", "Account", "Description", "Status", "Amount"],
+        ...r.bills.map((b) => [b.billNo, d(b.billDate), d(b.dueDate), b.accountingYear ? `${b.accountingMonth}/${b.accountingYear}` : "", ...(scope.combined ? [b.company] : []), b.supplier, b.account, b.description, b.status, b.amount]),
         [],
-        ["NON-INVENTORY BILLS (accrued expenses, ex-VAT)"],
-        ["Bill No.", "Bill Date", "Due Date", "", "", "Accounting Period", ...(scope.combined ? ["Company"] : []), "Supplier", "Account", "Description", "Status", "Amount"],
-        ...r.bills.map((b) => [b.billNo, d(b.billDate), d(b.dueDate), "", "", b.accountingYear ? `${b.accountingMonth}/${b.accountingYear}` : "", ...(scope.combined ? [b.company] : []), b.supplier, b.account, b.description, b.status, b.amount]),
-        [],
-        ["BY CATEGORY / ACCOUNT"],
-        ...r.byCategory.map((c) => [c.category, "", "", "", "", "", ...(scope.combined ? [""] : []), "", "", "", "", c.amount]),
-        ["TOTAL", "", "", "", "", "", ...(scope.combined ? [""] : []), "", "", "", "", r.total],
+        ["BY ACCOUNT"],
+        ...r.byCategory.map((c) => [c.category, "", "", "", ...(scope.combined ? [""] : []), "", "", "", "", c.amount]),
+        ["TOTAL", "", "", "", ...(scope.combined ? [""] : []), "", "", "", "", r.total],
       ];
-      return sheetResponse(rows, "Expense Vouchers", `expense-vouchers-${year || tag}.xlsx`);
+      return sheetResponse(rows, "Expense Report", `expense-report-${year || tag}.xlsx`);
     }
     case "pnl": {
       const r = await getPnl(range, scope.ids);

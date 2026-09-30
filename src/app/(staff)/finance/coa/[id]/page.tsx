@@ -19,12 +19,13 @@ export default async function GLAccountPage({
     where: { id: params.id },
     include: {
       cashAccounts: { select: { id: true, name: true } },
-      _count: { select: { expenses: true } },
+      _count: { select: { SupplierBillExpenseLine: true, dvItems: true, accountLines: true } },
     },
   });
   if (!a) notFound();
   const canEdit = user.perm === "READ_WRITE" && (!a.isSystem || user.role === "SUPER_ADMIN");
-  const inUse = a.cashAccounts.length > 0 || a._count.expenses > 0;
+  const uses = a._count.SupplierBillExpenseLine + a._count.dvItems + a._count.accountLines;
+  const inUse = a.cashAccounts.length > 0 || uses > 0;
   const audit = await getAuditTrail("GLAccount", a.id, 30);
   const groups = (await prisma.gLAccount.findMany({ distinct: ["group"], select: { group: true }, orderBy: { group: "asc" } })).map((g) => g.group);
 
@@ -46,8 +47,8 @@ export default async function GLAccountPage({
       {inUse && (
         <p className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
           In use: {a.cashAccounts.length > 0 && `${a.cashAccounts.length} cash/bank account(s) (${a.cashAccounts.map((c) => c.name).join(", ")})`}
-          {a.cashAccounts.length > 0 && a._count.expenses > 0 && " · "}
-          {a._count.expenses > 0 && `${a._count.expenses} expense(s)`} — this account can be deactivated but never deleted.
+          {a.cashAccounts.length > 0 && uses > 0 && " · "}
+          {uses > 0 && `${uses} bill line(s) / voucher line(s)`} — this account can be deactivated but never deleted.
         </p>
       )}
 

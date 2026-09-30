@@ -59,7 +59,6 @@ export async function nextSeriesNo(docType: string, companyId: string, docDate: 
 }
 
 /** EV-TTC-2026-000001 — the expense voucher series. Supplier bills run the same way under BL. */
-export const nextVoucherNo = (companyId: string, voucherDate: Date) => nextSeriesNo("EV", companyId, voucherDate);
 
 /** A period with no row has never been closed, so it is Open. */
 export async function periodStatus(companyId: string, year: number, month: number): Promise<PeriodStatus> {

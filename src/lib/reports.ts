@@ -163,14 +163,7 @@ export async function getExpenseReport(
   companyIds: string[],
   period?: { year: number; month?: number | null }
 ) {
-  const where: any = { companyId: { in: companyIds } };
-  if (period?.year) {
-    where.accountingYear = period.year;
-    if (period.month) where.accountingMonth = period.month;
-  } else {
-    where.voucherDate = { gte: from, lte: to };
-  }
-  // non-inventory supplier bills are the accrued expenses of the period; the same period rule applies
+  // non-inventory supplier bills are the accrued expenses of the period
   const billWhere: any = { companyId: { in: companyIds }, kind: "EXPENSE", status: { in: LIVE_BILL_STATUSES } };
   if (period?.year) {
     billWhere.accountingYear = period.year;
@@ -186,12 +179,7 @@ export async function getExpenseReport(
   } else {
     dvWhere.date = { gte: from, lte: to };
   }
-  const [expenses, billLines, dvItems] = await Promise.all([
-    prisma.expense.findMany({
-      where,
-      orderBy: [{ voucherDate: "desc" }, { voucherNo: "desc" }],
-      include: { company: { select: { companyName: true } }, user: { select: { name: true } } },
-    }),
+  const [billLines, dvItems] = await Promise.all([
     prisma.supplierBillExpenseLine.findMany({
       where: { bill: billWhere },
       include: {
@@ -212,13 +200,6 @@ export async function getExpenseReport(
   const byCategory = new Map<string, number>();
   const byCompany = new Map<string, { name: string; amount: number }>();
   let total = 0;
-  for (const e of expenses) {
-    total += e.amount;
-    byCategory.set(e.category, round2((byCategory.get(e.category) ?? 0) + e.amount));
-    const co = byCompany.get(e.companyId) ?? { name: e.company.companyName, amount: 0 };
-    co.amount = round2(co.amount + e.amount);
-    byCompany.set(e.companyId, co);
-  }
   // a bill line is an expense under its account's name (ex-VAT — the VAT is a receivable, not a cost)
   const bills = billLines.map((l) => ({
     id: l.id, billId: l.bill.id, href: `/bills/${l.bill.id}`, billNo: l.bill.billNo, billDate: l.bill.billDate, dueDate: l.bill.dueDate, status: l.bill.status,
@@ -244,7 +225,6 @@ export async function getExpenseReport(
     byCompany.set(b.companyId, co);
   }
   return {
-    expenses,
     bills,
     billsTotal: round2(bills.reduce((s, b) => s + b.amount, 0)),
     total: round2(total),
@@ -453,9 +433,9 @@ export async function getDeliveryPerformance({ from, to }: Range, companyIds: st
   return [...byDay.entries()].map(([date, r]) => ({ date, count: r.count, byCompany: r.byCompany })).sort((a, b) => a.date.localeCompare(b.date));
 }
 
-/** Journal-style ledger entries derived from sales, purchases, expenses, collections. */
+/** Journal-style ledger entries derived from sales, purchases, bills, vouchers, payments and collections. */
 export async function getLedger({ from, to }: Range, companyIds: string[]) {
-  const [srs, payments, expenses, poIns, bills, supplierPayments, directDvs] = await Promise.all([
+  const [srs, payments, poIns, bills, supplierPayments, directDvs] = await Promise.all([
     prisma.salesReceipt.findMany({
       where: { companyId: { in: companyIds }, status: { not: "Void" }, invoiceDate: { gte: from, lte: to } },
       include: {
@@ -472,7 +452,6 @@ export async function getLedger({ from, to }: Range, companyIds: string[]) {
       },
     }),
     prisma.payment.findMany({ where: { date: { gte: from, lte: to }, salesReceipt: { companyId: { in: companyIds } } }, include: { salesReceipt: { include: { company: { select: { companyName: true } }, customer: true } } } }),
-    prisma.expense.findMany({ where: { companyId: { in: companyIds }, date: { gte: from, lte: to } }, include: { company: { select: { companyName: true } } } }),
     // receipts at their RECEIVING cost — the product's current cost has since been re-costed by bills
     prisma.gRNLine.findMany({
       where: { acceptedQty: { gt: 0 }, goodsReceipt: { companyId: { in: companyIds }, status: "Posted", receivedDate: { gte: from, lte: to } } },
@@ -538,15 +517,6 @@ export async function getLedger({ from, to }: Range, companyIds: string[]) {
       debit: "Cash",
       credit: "Accounts Receivable",
       amount: p.amount,
-    })),
-    ...expenses.map((e) => ({
-      date: e.date,
-      company: e.company.companyName,
-      ref: "EXP",
-      description: `${e.category} expense${e.notes ? ` — ${e.notes}` : ""}`,
-      debit: `Expense: ${e.category}`,
-      credit: "Cash",
-      amount: e.amount,
     })),
     // a posted receipt stocks the goods before any bill exists, so the receiving cost sits
     // against a clearing account until the supplier bill moves it to Accounts Payable
