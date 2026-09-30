@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { SearchSelect, type SearchHit } from "@/components/search-select";
 
-export type DvItemRow = { glAccountId: string; account: string; description: string; amount: number };
+export type DvItemRow = { glAccountId: string; accountCode: string; accountName: string; description: string; amount: number };
 type Row = DvItemRow & { key: number; picking: boolean };
 
 const peso = (n: number) => (n < 0 ? "(" : "") + "₱" + Math.abs(n).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + (n < 0 ? ")" : "");
@@ -13,15 +13,17 @@ const peso = (n: number) => (n < 0 ? "(" : "") + "₱" + Math.abs(n).toLocaleStr
  * Each item is charged to an account from the Chart of Accounts (fuel to Fuel, a permit to
  * Taxes, Licenses and Permits…) and a negative amount is a deduction. These items are the
  * entry when the voucher is posted, so the account matters; the description is what prints.
+ * Every row also carries its account's code and name as hidden fields, so the Account Title
+ * block below can be drawn from them as they are typed.
  */
 export function DvItems({ items, canEdit }: { items: DvItemRow[]; canEdit: boolean }) {
   const [rows, setRows] = useState<Row[]>(items.map((it, i) => ({ ...it, key: i, picking: false })));
   const patch = (key: number, p: Partial<Row>) => setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...p } : r)));
   const remove = (key: number) => setRows((rs) => rs.filter((r) => r.key !== key));
-  const add = () => setRows((rs) => [...rs, { key: (rs[rs.length - 1]?.key ?? -1) + 1, glAccountId: "", account: "", description: "", amount: 0, picking: true }]);
+  const add = () => setRows((rs) => [...rs, { key: (rs[rs.length - 1]?.key ?? -1) + 1, glAccountId: "", accountCode: "", accountName: "", description: "", amount: 0, picking: true }]);
   const pick = (key: number, h: SearchHit | null) => {
     const r = rows.find((x) => x.key === key);
-    patch(key, { glAccountId: h?.id ?? "", account: h ? `${h.data?.code ?? ""} ${h.label}`.trim() : "", description: r?.description || (h ? h.label : ""), picking: false });
+    patch(key, { glAccountId: h?.id ?? "", accountCode: String(h?.data?.code ?? ""), accountName: h?.label ?? "", description: r?.description || (h ? h.label : ""), picking: false });
   };
   const total = rows.reduce((s, r) => s + (r.amount || 0), 0);
 
@@ -37,11 +39,13 @@ export function DvItems({ items, canEdit }: { items: DvItemRow[]; canEdit: boole
               <tr key={r.key} data-item-label={r.description}>
                 <td className="table-td">
                   <input type="hidden" name="itemAccountId" value={r.glAccountId} />
+                  <input type="hidden" name="itemAccountCode" value={r.accountCode} />
+                  <input type="hidden" name="itemAccountName" value={r.accountName} />
                   {canEdit && r.picking ? (
                     <SearchSelect entity="gl-accounts" placeholder="Type account code or name…" onSelect={(h) => pick(r.key, h)} />
                   ) : (
                     <div className="flex items-center gap-2">
-                      <span className={`text-sm ${r.account ? "" : "text-red-600"}`}>{r.account || "no account yet"}</span>
+                      <span className={`text-sm ${r.glAccountId ? "" : "text-red-600"}`}>{r.glAccountId ? `${r.accountCode} ${r.accountName}`.trim() : "no account yet"}</span>
                       {canEdit && <button type="button" className="text-xs text-emerald-700 hover:underline" onClick={() => patch(r.key, { picking: true })}>change</button>}
                     </div>
                   )}

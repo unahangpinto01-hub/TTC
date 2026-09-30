@@ -7,15 +7,15 @@ import { peso, fmtDate, fmtDateTime } from "@/lib/format";
 import { PageHeader, StatusBadge } from "@/components/ui";
 import { getAuditTrail } from "@/lib/salespeople";
 import { OPEN_BILL_STATUSES, outstandingOf } from "@/lib/bills";
-import { availableForVoucher, voucherLines, amountInWords, dvEditBlocker, dvStatusLabel } from "@/lib/dv";
+import { availableForVoucher, generateAccountLines, linesEqual, amountInWords, dvEditBlocker, dvStatusLabel } from "@/lib/dv";
 import { getPerm } from "@/lib/permissions";
 import { PaymentForm } from "@/app/(staff)/payments/bills/new/payment-form";
 import { DvAllocations, type OpenBillRow } from "./dv-allocations";
-import { DvAccountLines } from "./dv-account-lines";
+import { DvAccountLines, type LiveLinesContext } from "./dv-account-lines";
 import { DvItems } from "./dv-items";
 import { DvPreview } from "../dv-preview";
 import type { DvSheetData } from "@/components/dv-sheet";
-import { saveDV, regenerateDVLines, advanceDV, noteDV, voidDV } from "../actions";
+import { saveDV, advanceDV, noteDV, voidDV } from "../actions";
 
 const ERRORS: Record<string, string> = {
   locked: "This voucher can only be changed while it is a Draft.",
@@ -62,7 +62,7 @@ export default async function DvDetailPage({ params, searchParams }: { params: {
   const openBills = canEdit && dv.supplierId
     ? await prisma.supplierBill.findMany({
         where: { companyId: company.id, supplierId: dv.supplierId, status: { in: OPEN_BILL_STATUSES } },
-        select: { id: true, billNo: true, kind: true, billDate: true, dueDate: true, supplierInvoiceNo: true, total: true, paidAmount: true, status: true },
+        select: { id: true, billNo: true, kind: true, billDate: true, dueDate: true, supplierInvoiceNo: true, total: true, inputVat: true, paidAmount: true, status: true, supplier: { select: { name: true } }, expenseLines: { select: { glAccountId: true, amount: true, glAccount: { select: { code: true, description: true } } } } },
         orderBy: [{ dueDate: "asc" }],
       })
     : dv.bills.map((b) => ({ ...b.bill }));
@@ -75,8 +75,17 @@ export default async function DvDetailPage({ params, searchParams }: { params: {
       allocated: dv.bills.find((x) => x.billId === b.id)?.amount ?? 0,
     });
   }
-  const lines = voucherLines({ ...dv, payments: dv.payments.filter((p) => p.status === "Posted") });
-  const generated = !dv.accountLines.length;
+  // the block as it would be generated now; stored lines count only when they differ from it
+  const posted = dv.payments.filter((p) => p.status === "Posted");
+  const generatedNow = generateAccountLines({ ...dv, payments: posted });
+  const customised = dv.accountLines.length > 0 && !linesEqual(dv.accountLines, generatedNow);
+  const lines = customised ? dv.accountLines.map((l) => ({ title: l.title, debit: l.debit, credit: l.credit, ref: "", glAccountId: l.glAccountId })) : generatedNow;
+  const liveCtx: LiveLinesContext = {
+    bills: Object.fromEntries(openBills.map((b) => [b.id, { billNo: b.billNo, kind: b.kind, total: b.total, inputVat: b.inputVat, supplierName: b.supplier.name, expenseLines: b.expenseLines.map((l) => ({ glAccountId: l.glAccountId, code: l.glAccount.code, description: l.glAccount.description, amount: l.amount })) }])),
+    payee: dv.payee,
+    company: { glPayablesId: dv.company.glPayablesId, glPayables: dv.company.glPayables, glInputVatId: dv.company.glInputVatId, glInputVat: dv.company.glInputVat },
+    payments: posted.map((p) => ({ amount: p.amount, lines: p.lines.map((l) => ({ amount: l.amount })), cashAccount: { name: p.cashAccount.name, glAccountId: p.cashAccount.glAccountId, glAccount: p.cashAccount.glAccount } })),
+  };
   const sheet: DvSheetData = {
     companyName: dv.company.companyName, dvNo: dv.dvNo, padRef: dv.padRef, payee: dv.payee, date: fmtDate(dv.date), terms: dv.terms ?? "", particulars: dv.particulars,
     items: [
@@ -137,17 +146,14 @@ export default async function DvDetailPage({ params, searchParams }: { params: {
         )}
         <div>
           <p className="mb-1 text-sm font-semibold">Items with no bill behind them <span className="font-normal text-gray-500">— a liquidation, a permit, a reimbursement; each charged to its account, a negative is a deduction</span></p>
-          <DvItems key={dv.items.map((it) => `${it.id}:${it.amount}`).join("|")} items={dv.items.map((it) => ({ glAccountId: it.glAccountId ?? "", account: it.glAccount ? `${it.glAccount.code} ${it.glAccount.description}` : "", description: it.description, amount: it.amount }))} canEdit={canEdit} />
+          <DvItems key={dv.items.map((it) => `${it.id}:${it.amount}`).join("|")} items={dv.items.map((it) => ({ glAccountId: it.glAccountId ?? "", accountCode: it.glAccount?.code ?? "", accountName: it.glAccount?.description ?? "", description: it.description, amount: it.amount }))} canEdit={canEdit} />
         </div>
         <div>
-          <p className="mb-1 text-sm font-semibold">Account Title / Debit (Credit) <span className="font-normal text-gray-500">— {generated ? "suggested from the bills' and items' accounts; edit freely, any account from the chart" : "as saved on this voucher"}</span></p>
-          <DvAccountLines key={lines.map((l) => `${l.title}:${l.debit}:${l.credit}`).join("|")} lines={lines.map((l, i) => ({ id: String(i), glAccountId: l.glAccountId ?? "", title: l.title, debit: l.debit, credit: l.credit }))} canEdit={canEdit} />
+          <p className="mb-1 text-sm font-semibold">Account Title / Debit (Credit) <span className="font-normal text-gray-500">— {customised ? "as edited by the office" : "drawn from the bills and items, any account from the chart"}</span></p>
+          <DvAccountLines key={`${customised}|${lines.map((l) => `${l.title}:${l.debit}:${l.credit}`).join("|")}`} lines={lines.map((l, i) => ({ id: String(i), glAccountId: l.glAccountId ?? "", title: l.title, debit: l.debit, credit: l.credit }))} canEdit={canEdit} formId="dv-form" customised={customised} ctx={liveCtx} />
         </div>
         {canEdit && <div className="flex items-center gap-3"><button className="btn-primary" type="submit">💾 Save Voucher</button><p className="text-xs text-gray-500">Allocations are checked against each bill&rsquo;s available balance so no peso is authorised twice. The account lines print exactly as saved. The books are posted from the bills and payments — and, when the voucher is posted, from its own items.</p></div>}
       </form>
-      {canEdit && !generated && (
-        <form action={regenerateDVLines} className="-mt-2 mb-4 text-right"><input type="hidden" name="id" value={dv.id} /><button type="submit" className="text-xs text-gray-500 hover:underline">↺ Rebuild the account lines from the bills and items</button></form>
-      )}
 
       {(dv.bills.length > 0 || dv.items.length > 0) && (
         <div className="card mb-4 text-sm">
