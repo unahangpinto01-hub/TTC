@@ -8,6 +8,7 @@ import { PageHeader, StatusBadge } from "@/components/ui";
 import { PrintButton } from "@/components/print-button";
 import { CompanyFilter, CompanyTag } from "@/components/company-filter";
 import { DV_FILTERS, dvStatusLabel } from "@/lib/dv";
+import { voucherAccountTotals } from "@/lib/dv-account-totals";
 
 const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
@@ -24,7 +25,7 @@ export default async function DvRegisterPage({ searchParams }: { searchParams: {
       ...(searchParams.amount && !Number.isNaN(amount) ? { amount: { gte: amount - 0.005, lte: amount + 0.005 } } : {}),
       ...(q ? { OR: [{ dvNo: { contains: q, mode: "insensitive" } }, { padRef: { contains: q, mode: "insensitive" } }, { payee: { contains: q, mode: "insensitive" } }, { particulars: { contains: q, mode: "insensitive" } }, { bills: { some: { bill: { billNo: { contains: q, mode: "insensitive" } } } } }, { bills: { some: { bill: { supplierInvoiceNo: { contains: q, mode: "insensitive" } } } } }, { payments: { some: { checkNo: { contains: q, mode: "insensitive" } } } }] } : {}),
     },
-    include: { company: { select: { companyName: true } }, bills: { include: { bill: { select: { id: true, billNo: true } } } }, _count: { select: { payments: { where: { status: "Posted" } }, bills: true } }, preparedBy: { select: { name: true } }, checkedBy: { select: { name: true } }, approvedBy: { select: { name: true } }, postedBy: { select: { name: true } } },
+    include: { company: { select: { companyName: true, glInventory: { select: { code: true, description: true } }, glInputVat: { select: { code: true, description: true } }, glEwtPayable: { select: { code: true, description: true } }, glPayables: { select: { code: true, description: true } } } }, bills: { include: { bill: { select: { id: true, billNo: true, kind: true, total: true, inventoryTotal: true, subtotal: true, freight: true, otherCosts: true, inputVat: true, ewtAmount: true, expenseLines: { select: { amount: true, glAccount: { select: { code: true, description: true } } } } } } } }, items: { select: { amount: true, glAccountId: true, description: true, glAccount: { select: { code: true, description: true } } } }, _count: { select: { payments: { where: { status: "Posted" } }, bills: true } }, preparedBy: { select: { name: true } }, checkedBy: { select: { name: true } }, approvedBy: { select: { name: true } }, postedBy: { select: { name: true } } },
     orderBy: [{ date: "asc" }, { dvNo: "asc" }],
   });
   const fromStr = ymd(range.from), toStr = ymd(range.to);
@@ -32,6 +33,8 @@ export default async function DvRegisterPage({ searchParams }: { searchParams: {
   const total = live.reduce((s, d) => s + d.amount, 0);
   const paid = live.reduce((s, d) => s + d.paidAmount, 0);
   const cheques = live.reduce((s, d) => s + d._count.payments, 0);
+  // the register's column totals: every account the period's vouchers charged or credited
+  const totals = voucherAccountTotals(dvs, dvs[0]?.company ?? {});
   const statusQ = `${searchParams.status ? `&status=${searchParams.status}` : ""}${q ? `&q=${encodeURIComponent(q)}` : ""}${searchParams.amount ? `&amount=${searchParams.amount}` : ""}`;
 
   return (
@@ -77,6 +80,33 @@ export default async function DvRegisterPage({ searchParams }: { searchParams: {
           </tbody>
         </table>
       </div>
+
+      {totals.rows.length > 0 && (
+        <div className="mt-6">
+          <h2 className="mb-2 font-semibold">Totals by account <span className="text-sm font-normal text-gray-500">— what the period&rsquo;s vouchers charged and credited, like the register&rsquo;s column totals</span></h2>
+          <div className="card overflow-x-auto p-0">
+            <table className="w-full min-w-[720px]">
+              <thead className="border-b border-gray-200 bg-gray-50"><tr><th className="table-th">Account</th><th className="table-th text-right">Vouchers</th><th className="table-th text-right">Debit</th><th className="table-th text-right">Credit</th><th className="table-th text-right">Net</th></tr></thead>
+              <tbody className="divide-y divide-gray-100">
+                {totals.rows.map((r) => (
+                  <tr key={`${r.code}|${r.name}`} className="hover:bg-gray-50">
+                    <td className="table-td text-sm"><span className="font-mono text-xs text-gray-500">{r.code}</span> {r.name}</td>
+                    <td className="table-td text-right text-sm text-gray-600">{r.vouchers}</td>
+                    <td className={`table-td text-right ${r.debit ? "font-semibold" : "text-gray-300"}`}>{r.debit ? peso(r.debit) : "—"}</td>
+                    <td className={`table-td text-right ${r.credit ? "font-semibold text-red-700" : "text-gray-300"}`}>{r.credit ? `(${peso(r.credit)})` : "—"}</td>
+                    <td className="table-td text-right">{peso(r.net)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot className="border-t-2 border-gray-300 bg-gray-50 font-bold">
+                <tr><td className="table-td">TOTAL</td><td /><td className="table-td text-right">{peso(totals.debits)}</td><td className="table-td text-right text-red-700">({peso(totals.credits)})</td><td className="table-td text-right">{peso(totals.debits - totals.credits)}</td></tr>
+                <tr className="font-normal text-gray-600"><td className="table-td" colSpan={4}>Cheques issued on these vouchers (Accounts Payable settled)</td><td className="table-td text-right font-semibold">{peso(totals.cheques)}</td></tr>
+              </tfoot>
+            </table>
+          </div>
+          <p className="mt-2 text-xs text-gray-500">A voucher with its own items is counted as booked; a voucher paying bills is counted by what those bills booked, in proportion to the amount it covers. Debits less credits equal the cheques when every voucher in the range is fully paid.</p>
+        </div>
+      )}
     </div>
   );
 }

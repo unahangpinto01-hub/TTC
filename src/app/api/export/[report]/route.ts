@@ -17,6 +17,7 @@ import {
 import { prisma } from "@/lib/db";
 import { DV_FILTERS, dvStatusLabel } from "@/lib/dv";
 import { checkRegisterWhere } from "@/lib/check-register";
+import { voucherAccountTotals } from "@/lib/dv-account-totals";
 import { reportByExportKey } from "@/lib/report-registry";
 import { canExportReport, reportPerm } from "@/lib/report-access";
 
@@ -848,7 +849,7 @@ export async function GET(req: NextRequest, { params }: { params: { report: stri
     case "dv-register": {
       const dvs = await prisma.disbursementVoucher.findMany({
         where: { companyId: { in: scope.ids }, date: { gte: range.from, lte: range.to }, ...(sp.status && DV_FILTERS[sp.status] ? { status: { in: DV_FILTERS[sp.status].statuses } } : {}) },
-        include: { company: { select: { companyName: true } }, bills: { include: { bill: { select: { billNo: true } } } }, _count: { select: { payments: { where: { status: "Posted" } } } }, preparedBy: { select: { name: true } }, checkedBy: { select: { name: true } }, approvedBy: { select: { name: true } }, notedBy: { select: { name: true } }, postedBy: { select: { name: true } } },
+        include: { company: { select: { companyName: true, glInventory: { select: { code: true, description: true } }, glInputVat: { select: { code: true, description: true } }, glEwtPayable: { select: { code: true, description: true } }, glPayables: { select: { code: true, description: true } } } }, bills: { include: { bill: { select: { id: true, billNo: true, kind: true, total: true, inventoryTotal: true, subtotal: true, freight: true, otherCosts: true, inputVat: true, ewtAmount: true, expenseLines: { select: { amount: true, glAccount: { select: { code: true, description: true } } } } } } } }, items: { select: { amount: true, glAccountId: true, description: true, glAccount: { select: { code: true, description: true } } } }, _count: { select: { payments: { where: { status: "Posted" } } } }, preparedBy: { select: { name: true } }, checkedBy: { select: { name: true } }, approvedBy: { select: { name: true } }, notedBy: { select: { name: true } }, postedBy: { select: { name: true } } },
         orderBy: [{ date: "asc" }, { dvNo: "asc" }],
       });
       const rows: (string | number)[][] = [
@@ -859,6 +860,10 @@ export async function GET(req: NextRequest, { params }: { params: { report: stri
         [],
         ["TOTAL", "", "", ...(scope.combined ? [""] : []), "", "", "", "", dvs.filter((d) => d.status !== "Void").reduce((s, d) => s + d.amount, 0), dvs.filter((d) => d.status !== "Void").reduce((s, d) => s + d._count.payments, 0), dvs.reduce((s, d) => s + d.paidAmount, 0), dvs.filter((d) => d.status !== "Void").reduce((s, d) => s + Math.max(0, d.amount - d.paidAmount), 0), "", "", "", "", "", ""],
       ];
+      const totals = voucherAccountTotals(dvs, dvs[0]?.company ?? {});
+      rows.push([], ["TOTALS BY ACCOUNT"], ["Code", "Account", "Vouchers", "Debit", "Credit", "Net"]);
+      for (const r of totals.rows) rows.push([r.code, r.name, r.vouchers, r.debit, r.credit, r.net]);
+      rows.push(["", "TOTAL", "", totals.debits, totals.credits, Math.round((totals.debits - totals.credits) * 100) / 100], ["", "Cheques issued (Accounts Payable settled)", "", "", "", totals.cheques]);
       return sheetResponse(rows, "DV Register", `dv-register-${tag}.xlsx`);
     }
     case "sales-journal": {
