@@ -20,7 +20,7 @@ import { saveDV, advanceDV, noteDV, voidDV } from "../actions";
 const ERRORS: Record<string, string> = {
   locked: "This voucher can only be changed while it is a Draft.",
   bill: "A bill on this voucher is not this payee's, or is not open.",
-  over: "An allocation is more than the bill has available (its outstanding balance less what other vouchers already authorise).",
+  over: "Voucher allocation exceeds the available bill balance.",
   step: "That step is not next in the approval chain.",
   empty: "Allocate at least one bill before moving the voucher on.",
   samecheck: "The person who prepared a voucher cannot also check it.",
@@ -33,7 +33,7 @@ const ERRORS: Record<string, string> = {
 };
 const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
-export default async function DvDetailPage({ params, searchParams }: { params: { id: string }; searchParams: { error?: string; saved?: string; bill?: string; perror?: string; pbill?: string } }) {
+export default async function DvDetailPage({ params, searchParams }: { params: { id: string }; searchParams: { error?: string; saved?: string; bill?: string; avail?: string; perror?: string; pbill?: string } }) {
   const user = await requirePerm("dv");
   const company = await getActiveCompany(user);
   const dv = await prisma.disbursementVoucher.findUnique({
@@ -114,7 +114,7 @@ export default async function DvDetailPage({ params, searchParams }: { params: {
         <Link href={`/dv/${dv.id}/print`} className="btn-secondary">🖨 Print DV</Link>
       </PageHeader>
 
-      {searchParams.error && ERRORS[searchParams.error] && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700"><span className="font-semibold">⚠</span> {ERRORS[searchParams.error]}{searchParams.bill ? ` (${searchParams.bill})` : ""}</p>}
+      {searchParams.error && ERRORS[searchParams.error] && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700"><span className="font-semibold">⚠</span> {ERRORS[searchParams.error]}{searchParams.bill ? ` (${searchParams.bill})` : ""}{searchParams.avail ? ` Available for Voucher: ${peso(Number(searchParams.avail))}` : ""}</p>}
       {searchParams.saved === "ok" && <p className="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">✔ Saved.</p>}
       {dv.status === "Void" && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">Voided by {dv.voidedBy?.name ?? "—"} · {fmtDateTime(dv.voidedAt)}: {dv.voidReason}</p>}
       {dv.status === "Partially Paid" && <p className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">{peso(dv.paidAmount)} of {peso(dv.amount)} has been paid on {liveCheques.length} cheque(s); {peso(remaining)} remains.</p>}

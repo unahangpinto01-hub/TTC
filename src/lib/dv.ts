@@ -1,4 +1,5 @@
 import { prisma } from "./db";
+import { Prisma } from "@prisma/client";
 import { nextSeriesNo } from "./vouchers";
 import { OPEN_BILL_STATUSES, round2 } from "./bills";
 
@@ -35,16 +36,28 @@ export function dvEditBlocker(dv: { status: string }): string | null {
  * what other live vouchers already authorise. Two vouchers can never authorise the same
  * peso twice.
  */
-export async function availableForVoucher(billId: string, excludeDvId?: string): Promise<{ outstanding: number; onOtherVouchers: number; available: number }> {
-  const bill = await prisma.supplierBill.findUniqueOrThrow({ where: { id: billId }, select: { total: true, paidAmount: true, status: true } });
+export async function availableForVoucher(billId: string, excludeDvId?: string, db: Pick<typeof prisma, "supplierBill" | "dVBill"> = prisma): Promise<{ outstanding: number; onOtherVouchers: number; available: number }> {
+  const bill = await db.supplierBill.findUniqueOrThrow({ where: { id: billId }, select: { total: true, paidAmount: true, status: true } });
   const outstanding = OPEN_BILL_STATUSES.includes(bill.status) ? round2(Math.max(0, bill.total - bill.paidAmount)) : 0;
-  const others = await prisma.dVBill.findMany({
+  const others = await db.dVBill.findMany({
     where: { billId, dv: { status: { in: LIVE_DV_STATUSES }, ...(excludeDvId ? { id: { not: excludeDvId } } : {}) } },
     select: { amount: true, dv: { select: { paidAmount: true, amount: true } } },
   });
   // what another voucher still authorises = its allocation less the share of it already paid
   const onOtherVouchers = round2(others.reduce((s, o) => s + Math.max(0, o.amount - (o.dv.amount > 0 ? (o.dv.paidAmount * o.amount) / o.dv.amount : 0)), 0));
   return { outstanding, onOtherVouchers, available: round2(Math.max(0, outstanding - onOtherVouchers)) };
+}
+
+/**
+ * Lock the bills a voucher is about to claim, for the rest of the transaction. Two vouchers
+ * saved at the same moment then take turns: the second waits, re-reads the availability the
+ * first has just reduced, and is refused if the peso is gone. The reservation is enforced by
+ * the database, not only by the screen.
+ */
+export async function lockBills(tx: Prisma.TransactionClient, billIds: string[]): Promise<void> {
+  const ids = [...new Set(billIds)].sort();
+  if (!ids.length) return;
+  await tx.$queryRaw`SELECT "id" FROM "SupplierBill" WHERE "id" IN (${Prisma.join(ids)}) FOR UPDATE`;
 }
 
 /**

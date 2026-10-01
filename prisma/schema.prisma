@@ -50,6 +50,8 @@ model User {
   dvNoted          DisbursementVoucher[] @relation("DVNoted")
   dvPosted         DisbursementVoucher[] @relation("DVPosted")
   dvVoided         DisbursementVoucher[] @relation("DVVoided")
+  /// legacy: rows of the retired Expense Voucher module, kept and never read
+  expenses         Expense[]
   paymentsMade     SupplierPayment[]     @relation("PaymentCreated")
   paymentsVoided   SupplierPayment[]     @relation("PaymentVoided")
 }
@@ -646,6 +648,34 @@ model POLine {
   grnLines GRNLine[]
 }
 
+/// LEGACY — the retired Expense Voucher module. Nothing reads or writes this table any more;
+/// it is kept, with its 47 historical rows, because nothing is to be deleted.
+model Expense {
+  id        String   @id @default(cuid())
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id])
+  date      DateTime @default(now())
+  category  String
+  amount    Float
+  notes     String?
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+
+  voucherNo       String?
+  voucherDate     DateTime   @default(now())
+  receivedDate    DateTime?
+  payee           String?
+  accountingYear  Int        @default(0)
+  accountingMonth Int        @default(0)
+  priorYearEntry  Boolean    @default(false)
+  createdAt       DateTime   @default(now())
+  glAccountId     String?
+  glAccount       GLAccount? @relation(fields: [glAccountId], references: [id])
+
+  @@unique([companyId, voucherNo])
+  @@index([companyId, accountingYear, accountingMonth])
+}
+
 /// Accounting period control, one row per company/year/month that has been moved off Open.
 /// A period with no row is Open — periods are not created in advance, they are only closed.
 model AccountingPeriod {
@@ -691,6 +721,7 @@ model GLAccount {
   SupplierBillExpenseLine SupplierBillExpenseLine[]
   accountLines            DVAccountLine[]
   dvItems                 DVItem[]
+  expenses                Expense[]
 }
 
 model Employee {
@@ -911,6 +942,8 @@ model Company {
   /// where expanded withholding tax withheld from suppliers is owed to the BIR
   glEwtPayableId      String?
   glEwtPayable        GLAccount? @relation("GLEwtPayable", fields: [glEwtPayableId], references: [id])
+  /// legacy: rows of the retired Expense Voucher module, kept and never read
+  expenses            Expense[]
   createdAt           DateTime   @default(now())
   updatedAt           DateTime   @updatedAt
 

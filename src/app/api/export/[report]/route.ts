@@ -854,10 +854,10 @@ export async function GET(req: NextRequest, { params }: { params: { report: stri
       const rows: (string | number)[][] = [
         ["DISBURSEMENT VOUCHER REGISTER", tag, scope.label],
         [],
-        ["Date", "DV No.", "Pad DVN", ...(scope.combined ? ["Company"] : []), "Payee", "Bills", "Particulars", "Amount", "Cheques", "Paid", "Remaining", "Status", "Prepared", "Checked", "Approved", "Noted", "Posted"],
-        ...dvs.map((d) => [d.date.toISOString().slice(0, 10), d.dvNo, d.padRef ?? "", ...(scope.combined ? [d.company.companyName] : []), d.payee, [d.bills.map((b) => b.bill.billNo).join(", "), d.directAmount > 0 ? `own items ${d.directAmount.toFixed(2)}` : ""].filter(Boolean).join(" + "), d.particulars, d.amount, d._count.payments, d.paidAmount, d.status === "Void" ? 0 : Math.round(Math.max(0, d.amount - d.paidAmount) * 100) / 100, dvStatusLabel(d.status), d.preparedBy?.name ?? "", d.checkedBy?.name ?? "", d.approvedBy?.name ?? "", d.notedBy?.name ?? "", d.postedBy?.name ?? ""]),
+        ["Date", "DV No.", "Pad DVN", ...(scope.combined ? ["Company"] : []), "Payee", "No. of bills", "Bills", "Particulars", "Amount", "Cheques", "Paid", "Remaining", "Status", "Prepared", "Checked", "Approved", "Noted", "Posted"],
+        ...dvs.map((d) => [d.date.toISOString().slice(0, 10), d.dvNo, d.padRef ?? "", ...(scope.combined ? [d.company.companyName] : []), d.payee, d.bills.length, [d.bills.map((b) => b.bill.billNo).join(", "), d.directAmount > 0 ? `own items ${d.directAmount.toFixed(2)}` : ""].filter(Boolean).join(" + "), d.particulars, d.amount, d._count.payments, d.paidAmount, d.status === "Void" ? 0 : Math.round(Math.max(0, d.amount - d.paidAmount) * 100) / 100, dvStatusLabel(d.status), d.preparedBy?.name ?? "", d.checkedBy?.name ?? "", d.approvedBy?.name ?? "", d.notedBy?.name ?? "", d.postedBy?.name ?? ""]),
         [],
-        ["TOTAL", "", "", ...(scope.combined ? [""] : []), "", "", "", dvs.filter((d) => d.status !== "Void").reduce((s, d) => s + d.amount, 0), dvs.filter((d) => d.status !== "Void").reduce((s, d) => s + d._count.payments, 0), dvs.reduce((s, d) => s + d.paidAmount, 0), dvs.filter((d) => d.status !== "Void").reduce((s, d) => s + Math.max(0, d.amount - d.paidAmount), 0), "", "", "", "", "", ""],
+        ["TOTAL", "", "", ...(scope.combined ? [""] : []), "", "", "", "", dvs.filter((d) => d.status !== "Void").reduce((s, d) => s + d.amount, 0), dvs.filter((d) => d.status !== "Void").reduce((s, d) => s + d._count.payments, 0), dvs.reduce((s, d) => s + d.paidAmount, 0), dvs.filter((d) => d.status !== "Void").reduce((s, d) => s + Math.max(0, d.amount - d.paidAmount), 0), "", "", "", "", "", ""],
       ];
       return sheetResponse(rows, "DV Register", `dv-register-${tag}.xlsx`);
     }

@@ -9,7 +9,8 @@ import { getActiveCompany } from "@/lib/company";
 import { logAudit } from "@/lib/salespeople";
 import { OPEN_BILL_STATUSES, round2 } from "@/lib/bills";
 import { checkVoucherDate, periodOf } from "@/lib/vouchers";
-import { nextDvNo, dvEditBlocker, availableForVoucher, directPostBlockers } from "@/lib/dv";
+import { nextDvNo, dvEditBlocker, availableForVoucher, directPostBlockers, lockBills } from "@/lib/dv";
+import { defaultParticulars } from "@/lib/dv-text";
 
 const ADMINS = ["SUPER_ADMIN", "ADMIN"];
 
@@ -30,30 +31,85 @@ async function loadDv(id: string, companyId: string) {
 }
 
 /**
- * Start a voucher for one payee — a supplier, an employee, or just a name. What it pays
- * (the payee's posted bills, or its own itemised particulars) is filled in on its page.
+ * Start a voucher. The primary path: from one or more posted bills with an unvouchered
+ * balance — all of one supplier, who becomes the payee — each with the amount this voucher
+ * authorises. The allocations are reserved the moment the voucher is created, under row
+ * locks on the bills, so no second voucher can claim the same peso. The secondary path: a
+ * voucher with no bill (an employee, a government office, a name), whose own items are typed
+ * on its page.
  */
 export async function createDV(formData: FormData) {
   const user = await requirePermWrite("dv");
   const company = await getActiveCompany(user);
+  const date = formDate(formData.get("date")) ?? new Date();
+  const header = {
+    date, terms: String(formData.get("terms") || "").trim() || null,
+    padRef: String(formData.get("padRef") || "").trim() || null, memo: String(formData.get("memo") || "").trim() || null,
+  };
+
+  // bills ticked on the Search / Select Bills screen
+  const billIds = formData.getAll("billId").map(String).filter(Boolean);
+  const allocs = formData.getAll("alloc").map((v) => round2(Math.max(0, Number(v) || 0)));
+  const picks = billIds.map((billId, i) => ({ billId, amount: allocs[i] ?? 0 })).filter((p) => p.amount > 0);
+
+  if (picks.length) {
+    const bills = await prisma.supplierBill.findMany({
+      where: { id: { in: picks.map((p) => p.billId) }, companyId: company.id, status: { in: OPEN_BILL_STATUSES } },
+      select: { id: true, billNo: true, kind: true, supplierInvoiceNo: true, supplierId: true, supplier: { select: { name: true } } },
+    });
+    if (bills.length !== picks.length) redirect("/dv/new?error=bill");
+    const supplierIds = new Set(bills.map((b) => b.supplierId));
+    if (supplierIds.size !== 1) redirect("/dv/new?error=mixed");
+    const supplier = { id: bills[0].supplierId, name: bills[0].supplier.name };
+    const payee = String(formData.get("payee") || "").trim() || supplier.name;
+    const particulars = String(formData.get("particulars") || "").trim() || defaultParticulars(bills);
+    const amount = round2(picks.reduce((s, p) => s + p.amount, 0));
+    const dvNo = await nextDvNo(company.id, date);
+    const dv = await prisma.$transaction(async (tx) => {
+      await lockBills(tx, picks.map((p) => p.billId));
+      for (const p of picks) {
+        const { available } = await availableForVoucher(p.billId, undefined, tx);
+        if (p.amount > available + 0.005) {
+          const b = bills.find((x) => x.id === p.billId)!;
+          redirect(`/dv/new?error=over&bill=${encodeURIComponent(b.billNo)}&avail=${available}`);
+        }
+      }
+      return tx.disbursementVoucher.create({
+        data: {
+          companyId: company.id, dvNo, supplierId: supplier.id, employeeId: null, payee, ...header, particulars, amount,
+          status: "Draft", preparedById: user.id,
+          bills: { create: picks.map((p) => ({ billId: p.billId, amount: p.amount })) },
+        },
+      });
+    });
+    await logAudit({
+      entity: "DisbursementVoucher", entityId: dv.id, action: "CREATED",
+      detail: `${dvNo} raised for supplier ${supplier.name} from ${bills.map((b) => b.billNo).join(", ")} · ₱${amount.toFixed(2)} reserved`,
+      actorName: user.name, actorEmail: user.email, companyId: company.id,
+    });
+    for (const p of picks) {
+      const b = bills.find((x) => x.id === p.billId)!;
+      await logAudit({ entity: "SupplierBill", entityId: b.id, action: "VOUCHERED", detail: `₱${p.amount.toFixed(2)} allocated on ${dvNo}`, actorName: user.name, actorEmail: user.email, companyId: company.id });
+    }
+    redirect(`/dv/${dv.id}`);
+  }
+
+  // no bill: an employee, a government office, a name
   const supplierId = String(formData.get("supplierId") || "");
   const employeeId = String(formData.get("employeeId") || "");
   const supplier = supplierId ? await prisma.supplier.findUnique({ where: { id: supplierId }, select: { id: true, name: true } }) : null;
   const employee = !supplier && employeeId ? await prisma.employee.findUnique({ where: { id: employeeId }, select: { id: true, name: true } }) : null;
   const payee = String(formData.get("payee") || "").trim() || supplier?.name || employee?.name || "";
-  if (!payee) redirect("/dv/new?error=payee");
-  const date = formDate(formData.get("date")) ?? new Date();
+  if (!payee) redirect("/dv/new?error=payee&nobill=1");
   const dvNo = await nextDvNo(company.id, date);
   const dv = await prisma.disbursementVoucher.create({
     data: {
-      companyId: company.id, dvNo, supplierId: supplier?.id ?? null, employeeId: employee?.id ?? null, payee,
-      date, terms: String(formData.get("terms") || "").trim() || null, particulars: String(formData.get("particulars") || "").trim(),
-      padRef: String(formData.get("padRef") || "").trim() || null, memo: String(formData.get("memo") || "").trim() || null,
-      status: "Draft", preparedById: user.id,
+      companyId: company.id, dvNo, supplierId: supplier?.id ?? null, employeeId: employee?.id ?? null, payee, ...header,
+      particulars: String(formData.get("particulars") || "").trim(), status: "Draft", preparedById: user.id,
     },
   });
   const who = supplier ? `supplier ${supplier.name}` : employee ? `employee ${employee.name}` : payee;
-  await logAudit({ entity: "DisbursementVoucher", entityId: dv.id, action: "CREATED", detail: `${dvNo} raised for ${who}`, actorName: user.name, actorEmail: user.email, companyId: company.id });
+  await logAudit({ entity: "DisbursementVoucher", entityId: dv.id, action: "CREATED", detail: `${dvNo} raised for ${who} (no bill)`, actorName: user.name, actorEmail: user.email, companyId: company.id });
   redirect(`/dv/${dv.id}`);
 }
 
@@ -77,8 +133,6 @@ export async function saveDV(formData: FormData) {
     if (!dv.supplierId) redirect(`/dv/${id}?error=bill`);
     const bill = await prisma.supplierBill.findFirst({ where: { id: billIds[i], companyId: company.id, supplierId: dv.supplierId, status: { in: OPEN_BILL_STATUSES } }, select: { id: true, billNo: true } });
     if (!bill) redirect(`/dv/${id}?error=bill`);
-    const { available } = await availableForVoucher(bill.id, id);
-    if (amounts[i] > available + 0.005) redirect(`/dv/${id}?error=over&bill=${encodeURIComponent(bill.billNo)}`);
     allocations.push({ billId: bill.id, amount: amounts[i], billNo: bill.billNo });
   }
 
@@ -131,6 +185,12 @@ export async function saveDV(formData: FormData) {
   if (Math.abs(dv.amount - amount) > 0.004) changes.push(`Amount: ₱${dv.amount.toFixed(2)} → ₱${amount.toFixed(2)}`);
 
   await prisma.$transaction(async (tx) => {
+    // the bills are locked while this voucher's claim on them is re-checked and written
+    await lockBills(tx, allocations.map((a) => a.billId));
+    for (const a of allocations) {
+      const { available } = await availableForVoucher(a.billId, id, tx);
+      if (a.amount > available + 0.005) redirect(`/dv/${id}?error=over&bill=${encodeURIComponent(a.billNo)}&avail=${available}`);
+    }
     await tx.dVBill.deleteMany({ where: { dvId: id } });
     if (allocations.length) await tx.dVBill.createMany({ data: allocations.map((a) => ({ dvId: id, billId: a.billId, amount: a.amount })) });
     await tx.dVItem.deleteMany({ where: { dvId: id } });
@@ -199,11 +259,6 @@ export async function advanceDV(formData: FormData) {
     }
     if (to === "Posted") {
       if (!ADMINS.includes(user.role)) redirect("/denied");
-      // the bills must still be open and not already authorised elsewhere
-      for (const b of dv.bills) {
-        const { available } = await availableForVoucher(b.billId, id);
-        if (b.amount > available + 0.005) redirect(`/dv/${id}?error=over&bill=${encodeURIComponent(b.bill.billNo)}`);
-      }
       // the voucher's own items become an entry: accounts named, period open
       if (dv.items.length) {
         const blockers = directPostBlockers(dv);
@@ -216,7 +271,20 @@ export async function advanceDV(formData: FormData) {
       Object.assign(data, { status: to, postedById: user.id, postedAt: now });
     }
   }
-  await prisma.disbursementVoucher.update({ where: { id }, data });
+  if (to === "Posted" && dv.bills.length) {
+    // the bills must still be open and not authorised elsewhere — checked under row locks, so a
+    // voucher posted at the same moment cannot take the same peso
+    await prisma.$transaction(async (tx) => {
+      await lockBills(tx, dv.bills.map((b) => b.billId));
+      for (const b of dv.bills) {
+        const { available } = await availableForVoucher(b.billId, id, tx);
+        if (b.amount > available + 0.005) redirect(`/dv/${id}?error=over&bill=${encodeURIComponent(b.bill.billNo)}&avail=${available}`);
+      }
+      await tx.disbursementVoucher.update({ where: { id }, data });
+    });
+  } else {
+    await prisma.disbursementVoucher.update({ where: { id }, data });
+  }
   const booked = to === "Posted" && dv.items.length ? ` · booked ₱${dv.directAmount.toFixed(2)}: Dr ${dv.items.map((i) => i.description).join(", ")} / Cr Accounts Payable — ${dv.payee}` : "";
   await logAudit({ entity: "DisbursementVoucher", entityId: id, action: to === "Draft" ? "RETURNED" : to.toUpperCase(), detail: `${dv.dvNo}: ${from} → ${to}${to === "Posted" ? ` — ₱${dv.amount.toFixed(2)} authorised for payment to ${dv.payee}${booked}` : ""}`, actorName: user.name, actorEmail: user.email, companyId: company.id });
   revalidatePath(`/dv/${id}`);

@@ -9,6 +9,7 @@ import { getAuditTrail } from "@/lib/salespeople";
 import { checkVoucherDate, periodLabel, periodOf } from "@/lib/vouchers";
 import { TERMS, postBlockers, billEditBlocker, billVoidBlocker, outstandingOf } from "@/lib/bills";
 import { ExpenseEditor } from "./expense-editor";
+import { VoucherInfo } from "./voucher-info";
 import { saveExpenseBill, postBill, voidBill } from "../actions";
 
 const ERRORS: Record<string, string> = {
@@ -158,14 +159,7 @@ export async function ExpenseBillDetail({ bill, user, companyName, searchParams 
         </form>
       )}
 
-      {bill.dvBills.length > 0 && (
-        <div className="card mb-4 text-sm">
-          <p className="mb-1 font-semibold">Disbursement Vouchers</p>
-          {bill.dvBills.map((d) => (
-            <p key={d.dv.id} className="text-xs"><Link href={`/dv/${d.dv.id}`} className="font-mono font-semibold text-emerald-700 hover:underline">{d.dv.dvNo}</Link> · {fmtDate(d.dv.date)} · {d.dv.status} · authorises {peso(d.amount)} of this bill</p>
-          ))}
-        </div>
-      )}
+      <VoucherInfo bill={bill} />
 
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="card text-sm">

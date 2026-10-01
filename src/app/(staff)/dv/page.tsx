@@ -15,10 +15,10 @@ export default async function DvListPage({ searchParams }: { searchParams: { sta
   if ((DV_STATUSES as readonly string[]).includes(searchParams.status ?? "")) where.status = searchParams.status;
   else if (searchParams.status && DV_FILTERS[searchParams.status]) where.status = { in: DV_FILTERS[searchParams.status].statuses };
   const q = searchParams.q?.trim();
-  if (q) where.OR = [{ dvNo: { contains: q, mode: "insensitive" } }, { padRef: { contains: q, mode: "insensitive" } }, { payee: { contains: q, mode: "insensitive" } }, { particulars: { contains: q, mode: "insensitive" } }, { bills: { some: { bill: { billNo: { contains: q, mode: "insensitive" } } } } }];
+  if (q) where.OR = [{ dvNo: { contains: q, mode: "insensitive" } }, { padRef: { contains: q, mode: "insensitive" } }, { payee: { contains: q, mode: "insensitive" } }, { particulars: { contains: q, mode: "insensitive" } }, { bills: { some: { bill: { billNo: { contains: q, mode: "insensitive" } } } } }, { bills: { some: { bill: { supplierInvoiceNo: { contains: q, mode: "insensitive" } } } } }, { payments: { some: { checkNo: { contains: q, mode: "insensitive" } } } }];
   const dvs = await prisma.disbursementVoucher.findMany({
     where, orderBy: [{ date: "desc" }, { dvNo: "desc" }], take: 150,
-    include: { bills: { select: { bill: { select: { billNo: true } } } }, _count: { select: { payments: { where: { status: "Posted" } } } } },
+    include: { bills: { select: { bill: { select: { billNo: true } } } }, _count: { select: { payments: { where: { status: "Posted" } }, bills: true } } },
   });
   const open = dvs.filter((d) => ["Posted", "Partially Paid"].includes(d.status)).reduce((s, d) => s + d.amount - d.paidAmount, 0);
 
@@ -28,7 +28,7 @@ export default async function DvListPage({ searchParams }: { searchParams: { sta
         {canEdit && <Link href="/dv/new" className="btn-primary">+ New Voucher</Link>}
       </PageHeader>
       <form method="GET" className="mb-4 flex flex-wrap gap-2">
-        <LiveSearch placeholder="DV no., pad DVN, payee, particulars or bill no…" />
+        <LiveSearch placeholder="DV no., pad DVN, payee, particulars, bill no., supplier invoice or cheque no…" />
         <select name="status" defaultValue={searchParams.status ?? ""} className="input max-w-[220px]"><option value="">All statuses</option>{Object.entries(DV_FILTERS).map(([k, f]) => <option key={k} value={k}>{f.label}</option>)}<optgroup label="Exact status">{DV_STATUSES.map((s) => <option key={s} value={s}>{dvStatusLabel(s)}</option>)}</optgroup></select>
         <button className="btn-secondary" type="submit">Filter</button>
       </form>
@@ -43,7 +43,7 @@ export default async function DvListPage({ searchParams }: { searchParams: { sta
                 <td className="table-td"><Link href={`/dv/${d.id}`} className="font-mono text-xs font-semibold text-emerald-700 hover:underline">{d.dvNo}</Link>{d.padRef && <span className="block text-[10px] text-gray-400">pad {d.padRef}</span>}</td>
                 <td className="table-td text-sm">{fmtDate(d.date)}</td>
                 <td className="table-td text-sm">{d.payee}</td>
-                <td className="table-td font-mono text-[11px] text-gray-600">{d.bills.map((b) => b.bill.billNo).join(", ") || (d.directAmount ? <span className="font-sans text-gray-500">own items</span> : "—")}</td>
+                <td className="table-td font-mono text-[11px] text-gray-600">{d._count.bills > 0 && <span className="font-sans text-gray-500">{d._count.bills} bill(s) · </span>}{d.bills.map((b) => b.bill.billNo).join(", ") || (d.directAmount ? <span className="font-sans text-gray-500">own items</span> : "—")}</td>
                 <td className="table-td max-w-xs truncate text-xs text-gray-600">{d.particulars || "—"}</td>
                 <td className="table-td text-right font-semibold">{peso(d.amount)}</td>
                 <td className="table-td text-right text-sm text-gray-600">{d._count.payments || "—"}</td>
