@@ -30,7 +30,7 @@ export async function eligibleBills(companyId: string, f: EligibleFilters, exclu
   if (f.supplier) where.supplierId = f.supplier;
   if (f.billNo) where.billNo = { contains: f.billNo.trim(), mode: "insensitive" };
   if (f.invoice) where.supplierInvoiceNo = { contains: f.invoice.trim(), mode: "insensitive" };
-  if (f.kind === "INVENTORY" || f.kind === "EXPENSE") where.kind = f.kind;
+  if (f.kind === "INVENTORY" || f.kind === "EXPENSE" || f.kind === "OPENING") where.kind = f.kind;
   const from = day(f.from), to = day(f.to, true), dueFrom = day(f.dueFrom), dueTo = day(f.dueTo, true);
   if (from || to) where.billDate = { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) };
   if (dueFrom || dueTo) where.dueDate = { ...(dueFrom ? { gte: dueFrom } : {}), ...(dueTo ? { lte: dueTo } : {}) };
@@ -54,7 +54,7 @@ export async function eligibleBills(companyId: string, f: EligibleFilters, exclu
   for (const b of bills) {
     const a = await availableForVoucher(b.id, excludeDvId);
     if (a.available <= 0) continue;
-    const particulars = b.memo || (b.kind === "EXPENSE" ? b.expenseLines.map((l) => l.description || l.glAccount.description).filter(Boolean).join(", ") || "Non-inventory bill" : b.goodsReceipt ? `Inventory purchase · ${b.goodsReceipt.grnNumber}` : "Inventory purchase");
+    const particulars = b.kind === "OPENING" ? `Opening balance brought forward${b.memo ? ` · ${b.memo}` : ""}` : b.memo || (b.kind === "EXPENSE" ? b.expenseLines.map((l) => l.description || l.glAccount.description).filter(Boolean).join(", ") || "Non-inventory bill" : b.goodsReceipt ? `Inventory purchase · ${b.goodsReceipt.grnNumber}` : "Inventory purchase");
     out.push({
       id: b.id, billNo: b.billNo, kind: b.kind, supplierId: b.supplierId, supplierName: b.supplier.name, supplierInvoiceNo: b.supplierInvoiceNo,
       billDate: fmt(b.billDate), dueDate: fmt(b.dueDate), particulars, grossTotal: b.grossTotal || b.total, total: b.total, paid: b.paidAmount,

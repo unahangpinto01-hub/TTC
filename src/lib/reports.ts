@@ -30,6 +30,7 @@ export async function getSalesReport({ from, to }: Range, companyIds: string[], 
   const srs = await prisma.salesReceipt.findMany({
     where: {
       companyId: { in: companyIds },
+      kind: "SALE",
       status: { not: "Void" },
       invoiceDate: { gte: from, lte: to },
       ...(filters?.province ? { customer: { province: filters.province } } : {}),
@@ -65,7 +66,7 @@ export async function getSalesReport({ from, to }: Range, companyIds: string[], 
     co.count++;
     co.amount = round2(co.amount + productSales);
     byCompany.set(sr.companyId, co);
-    for (const l of sr.deliveryReceipt.lines) {
+    for (const l of (sr.deliveryReceipt?.lines ?? [])) {
       const key = l.product.parentItem?.trim() || l.product.name;
       const p = byProduct.get(key) ?? { name: key, qty: 0, ctn: 0, noConversion: false, amount: 0 };
       p.qty += l.baseQty; // aggregate in base PCS — lines may be CARTON or PCS
@@ -113,6 +114,7 @@ export async function getMonthlyProductSales(year: number, companyIds: string[],
   const srs = await prisma.salesReceipt.findMany({
     where: {
       companyId: { in: companyIds },
+      kind: "SALE",
       status: { not: "Void" },
       invoiceDate: { gte: from, lte: to },
       ...customerFilter,
@@ -123,7 +125,7 @@ export async function getMonthlyProductSales(year: number, companyIds: string[],
   const map = new Map<string, MonthlyProductRow>();
   for (const sr of srs) {
     const mi = sr.invoiceDate.getMonth();
-    for (const l of sr.deliveryReceipt.lines) {
+    for (const l of (sr.deliveryReceipt?.lines ?? [])) {
       const key = l.product.parentItem?.trim() || l.product.name;
       let row = map.get(key);
       if (!row) {
@@ -240,7 +242,7 @@ export async function getPnl(range: Range, companyIds: string[]) {
   // Pre-feature lines have no snapshot (0) and fall back to the product's current cost.
   let cogs = 0;
   for (const sr of sales.invoices) {
-    for (const l of sr.deliveryReceipt.lines) {
+    for (const l of (sr.deliveryReceipt?.lines ?? [])) {
       cogs += l.baseQty * (l.unitCostAtSale > 0 ? l.unitCostAtSale : l.product.unitCost);
     }
   }
@@ -437,7 +439,7 @@ export async function getDeliveryPerformance({ from, to }: Range, companyIds: st
 export async function getLedger({ from, to }: Range, companyIds: string[]) {
   const [srs, payments, poIns, bills, supplierPayments, directDvs] = await Promise.all([
     prisma.salesReceipt.findMany({
-      where: { companyId: { in: companyIds }, status: { not: "Void" }, invoiceDate: { gte: from, lte: to } },
+      where: { companyId: { in: companyIds }, kind: "SALE", status: { not: "Void" }, invoiceDate: { gte: from, lte: to } },
       include: {
         company: {
           select: {
@@ -492,7 +494,7 @@ export async function getLedger({ from, to }: Range, companyIds: string[]) {
   // Details. Lumping them together overstated product sales in the ledger.
   const entries = [
     ...srs.flatMap((sr) => {
-      const productSales = round2(sr.deliveryReceipt.lines.reduce((s, l) => s + l.qty * l.unitPrice, 0));
+      const productSales = round2((sr.deliveryReceipt?.lines ?? []).reduce((s, l) => s + l.qty * l.unitPrice, 0));
       const base = {
         date: sr.invoiceDate,
         company: sr.company.companyName,
@@ -555,6 +557,8 @@ export async function getLedger({ from, to }: Range, companyIds: string[]) {
     // cost already sitting in the clearing account is cleared and only the difference (freight,
     // price changes) moves inventory — or, for a bill with no receipt, the full inventory cost
     ...bills.flatMap((b) => {
+      // an opening balance is a payable carried in, not a purchase of the period
+      if (b.kind === "OPENING") return [];
       const base = { date: b.billDate, company: b.company.companyName, ref: b.billNo, credit: acctOf(b.company.glPayables, "Accounts Payable") };
       const rows = [];
       const inventory = b.inventoryTotal || round2(b.subtotal + b.freight + b.otherCosts);
@@ -648,7 +652,7 @@ export async function getCollections({ from, to }: Range, companyIds: string[], 
 /** Per-customer sales performance across the period: invoices, sales, collections, balance. */
 export async function getCustomerReport({ from, to }: Range, companyIds: string[]) {
   const srs = await prisma.salesReceipt.findMany({
-    where: { companyId: { in: companyIds }, status: { not: "Void" }, invoiceDate: { gte: from, lte: to } },
+    where: { companyId: { in: companyIds }, kind: "SALE", status: { not: "Void" }, invoiceDate: { gte: from, lte: to } },
     include: {
       company: { select: { companyName: true } }, customer: true, payments: true,
       deliveryReceipt: { select: { lines: { select: { qty: true, unitPrice: true } } } },
@@ -699,7 +703,7 @@ export async function getCustomerReport({ from, to }: Range, companyIds: string[
 /** Per-product sales performance across the period: quantity sold, revenue, COGS, margin. */
 export async function getProductReport({ from, to }: Range, companyIds: string[], filters?: { category?: string }) {
   const srs = await prisma.salesReceipt.findMany({
-    where: { companyId: { in: companyIds }, status: { not: "Void" }, invoiceDate: { gte: from, lte: to } },
+    where: { companyId: { in: companyIds }, kind: "SALE", status: { not: "Void" }, invoiceDate: { gte: from, lte: to } },
     include: {
       company: { select: { companyName: true } },
       deliveryReceipt: { include: { lines: { include: { product: true } } } },
@@ -713,7 +717,7 @@ export async function getProductReport({ from, to }: Range, companyIds: string[]
     ctn: number; noConversion: boolean;
   }>();
   for (const sr of srs) {
-    for (const l of sr.deliveryReceipt.lines) {
+    for (const l of (sr.deliveryReceipt?.lines ?? [])) {
       if (filters?.category && l.product.category !== filters.category) continue;
       const key = `${sr.companyId}:${l.productId}`;
       const row = map.get(key) ?? {
@@ -782,6 +786,7 @@ export async function getSalesJournal(
   const srs = await prisma.salesReceipt.findMany({
     where: {
       companyId: { in: companyIds },
+      kind: "SALE",
       invoiceDate: { gte: from, lte: to },
       ...(filters?.customerId ? { customerId: filters.customerId } : {}),
       ...(filters?.txStatus === "Posted" ? { status: { not: "Void" } } : {}),
@@ -810,7 +815,7 @@ export async function getSalesJournal(
 
   const rows: SalesJournalRow[] = [];
   for (const sr of srs) {
-    const so = sr.deliveryReceipt.salesOrder;
+    const so = sr.deliveryReceipt!.salesOrder; // every invoice here is a SALE, so it has its delivery
     const salesperson = so.preparedBy?.name ?? "—";
     if (filters?.salesperson && salesperson !== filters.salesperson) continue;
     const reference = [so.incomingOrder?.orderNo, so.soNumber].filter(Boolean).join(" / ");
@@ -828,7 +833,7 @@ export async function getSalesJournal(
       transactionStatus: tx,
     };
 
-    for (const l of sr.deliveryReceipt.lines) {
+    for (const l of (sr.deliveryReceipt?.lines ?? [])) {
       if (filters?.productId && l.productId !== filters.productId) continue;
       const gross = round2(l.qty * l.unitPrice);
       rows.push({
@@ -970,6 +975,7 @@ export async function getSalesVsForecast(opts: {
   const srs = await prisma.salesReceipt.findMany({
     where: {
       companyId: { in: companyIds },
+      kind: "SALE",
       status: { not: "Void" },
       invoiceDate: { gte: from, lte: to },
       ...(provinces ? { customer: { province: { in: provinces } } } : {}),
@@ -980,7 +986,7 @@ export async function getSalesVsForecast(opts: {
   // sales of products the forecast doesn't cover — shown separately, never guessed into a row
   const unmatched = new Map<string, VsPack>();
   for (const sr of srs) {
-    for (const l of sr.deliveryReceipt.lines) {
+    for (const l of (sr.deliveryReceipt?.lines ?? [])) {
       const qty = l.baseQty; // pieces, exactly as invoiced
       if (!qty) continue;
       const p = l.product;

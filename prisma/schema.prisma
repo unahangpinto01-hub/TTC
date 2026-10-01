@@ -365,27 +365,33 @@ model DRLine {
 }
 
 model SalesReceipt {
-  id                String          @id @default(cuid())
+  id                String           @id @default(cuid())
   companyId         String
-  company           Company         @relation(fields: [companyId], references: [id])
+  company           Company          @relation(fields: [companyId], references: [id])
   srNumber          String // unique per company (@@unique below)
-  deliveryReceiptId String          @unique
-  deliveryReceipt   DeliveryReceipt @relation(fields: [deliveryReceiptId], references: [id])
+  /// SALE — an invoice raised from a delivery (the normal case); OPENING — a customer's balance
+  /// brought forward from before the BMS, entered on Finance → Opening Balances: it is owed and
+  /// collected like an invoice but has no delivery behind it and is never a sale of the period
+  kind              String           @default("SALE")
+  /// what an opening balance stands for (the statement or invoices it came from)
+  memo              String?
+  deliveryReceiptId String?          @unique
+  deliveryReceipt   DeliveryReceipt? @relation(fields: [deliveryReceiptId], references: [id], onDelete: Restrict)
   customerId        String
-  customer          Customer        @relation(fields: [customerId], references: [id])
+  customer          Customer         @relation(fields: [customerId], references: [id])
   /// TOTAL INVOICE AMOUNT — product sales + freight + other charges.
   /// Never the product-sales figure: reports that measure product performance read the
   /// invoice lines, and the two components below, rather than this total.
   amount            Float
-  freightCharge     Float           @default(0) // delivery charge billed to the customer
+  freightCharge     Float            @default(0) // delivery charge billed to the customer
   /// any non-product charge billed on the invoice, kept apart from product revenue
-  otherCharges      Float           @default(0)
+  otherCharges      Float            @default(0)
   otherChargesNote  String?
   term              String
-  vatApplied        Boolean         @default(true) // false = VAT-exempt / non-VAT sale
-  invoiceDate       DateTime        @default(now())
+  vatApplied        Boolean          @default(true) // false = VAT-exempt / non-VAT sale
+  invoiceDate       DateTime         @default(now())
   dueDate           DateTime
-  status            String          @default("Open") // Open | Partial | Paid | Void
+  status            String           @default("Open") // Open | Partial | Paid | Void
   voidReason        String?
 
   payments            Payment[]

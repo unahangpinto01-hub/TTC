@@ -34,6 +34,7 @@ export function voucherAccountTotals(
   const inv = company.glInventory ?? { code: "", description: "Inventory" };
   const vat = company.glInputVat ?? { code: "", description: "Input VAT" };
   const ewt = company.glEwtPayable ?? { code: "", description: "Withholding Tax Payable" };
+  const ap = company.glPayables ?? { code: "", description: "Accounts Payable" };
   let cheques = 0;
   vouchers.forEach((dv, i) => {
     if (dv.status === "Void") return;
@@ -47,6 +48,9 @@ export function voucherAccountTotals(
       const share = b.total > 0 ? a.amount / b.total : 1;
       if (b.kind === "EXPENSE") {
         for (const l of b.expenseLines) if (l.amount) add(l.glAccount.code, l.glAccount.description, round2(l.amount * share), i);
+      } else if (b.kind === "OPENING") {
+        // a balance carried in: the voucher settles the payable itself, nothing else was booked
+        add(ap.code, ap.description, round2(a.amount), i);
       } else {
         const goods = b.inventoryTotal || round2(b.subtotal + b.freight + b.otherCosts);
         if (goods) add(inv.code, inv.description, round2(goods * share), i);

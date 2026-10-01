@@ -40,7 +40,7 @@ export function DvAllocations({ rows, canEdit }: { rows: OpenBillRow[]; canEdit:
                   <td className="table-td">
                     <input type="hidden" name="billId" value={r.billId} />
                     <a href={`/bills/${r.billId}`} className="font-mono text-xs font-semibold text-emerald-700 hover:underline">{r.billNo}</a>
-                    <span className="block text-[10px] text-gray-500">{r.kind === "EXPENSE" ? "non-inventory" : "inventory"}</span>
+                    <span className="block text-[10px] text-gray-500">{r.kind === "EXPENSE" ? "non-inventory" : r.kind === "OPENING" ? "opening balance" : "inventory"}</span>
                   </td>
                   <td className="table-td text-xs text-gray-600">{r.billDate}<span className="block">due {r.dueDate}</span></td>
                   <td className="table-td text-xs text-gray-600">{r.supplierInvoiceNo ?? "—"}</td>

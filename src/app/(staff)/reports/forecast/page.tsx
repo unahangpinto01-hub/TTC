@@ -200,7 +200,7 @@ export default async function ForecastReportPage({ searchParams }: { searchParam
     }),
     // ACTUAL SALES: invoiced, void excluded, goods only — freight sits on the invoice, not the line
     prisma.salesReceipt.findMany({
-      where: { companyId: { in: scope.ids }, status: { not: "Void" }, invoiceDate: { gte: from, lte: to } },
+      where: { companyId: { in: scope.ids }, kind: "SALE", status: { not: "Void" }, invoiceDate: { gte: from, lte: to } },
       select: {
         customerId: true,
         deliveryReceipt: { select: { lines: { select: { productId: true, baseQty: true, qty: true, unitPrice: true, product: { select: { packSize: true, parentItem: true, name: true } } } } } },
@@ -226,7 +226,7 @@ export default async function ForecastReportPage({ searchParams }: { searchParam
   const soldKey = (c: string, p: string) => `${c}:${p}`;
   const sold = new Map<string, { pcs: number; value: number }>();
   for (const sr of srs) {
-    for (const l of sr.deliveryReceipt.lines) {
+    for (const l of (sr.deliveryReceipt?.lines ?? [])) {
       let productId = l.productId;
       let pcs = l.baseQty;
       if (!forecastedProducts.has(productId)) {

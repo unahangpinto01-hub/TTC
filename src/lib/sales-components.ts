@@ -40,14 +40,15 @@ export const emptyComponents = (): SalesComponents => ({
 export type ComponentSource = {
   freightCharge: number;
   otherCharges: number;
-  deliveryReceipt: { lines: { qty: number; unitPrice: number }[] };
+  /** null only on an opening balance, which has no lines and is never a sale */
+  deliveryReceipt: { lines: { qty: number; unitPrice: number }[] } | null;
   /** posted credit memos raised against this invoice, when they were loaded */
   refundCredits?: { amount: number; status: string; type: string }[];
 };
 
 /** Product sales on one invoice: its lines, and nothing else on the document. */
 export const productSalesOf = (sr: ComponentSource): number =>
-  round2(sr.deliveryReceipt.lines.reduce((s, l) => s + l.qty * l.unitPrice, 0));
+  round2((sr.deliveryReceipt?.lines ?? []).reduce((s, l) => s + l.qty * l.unitPrice, 0));
 
 /** Credit memos posted against one invoice — the returns that reduce net product sales. */
 export const returnsOf = (sr: ComponentSource): number =>

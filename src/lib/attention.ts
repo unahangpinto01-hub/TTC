@@ -62,7 +62,7 @@ export async function getManagementAttention(companyIds: string[], now: Date = n
     discrepancies.rows.map((d) => ({ id: d.billId, href: `/bills/${d.billId}`, ref: d.billNo, who: d.supplier, when: d.billDate, amount: d.total, note: `${d.matchStatus} vs ${d.grnNumber}${d.discrepancyNote ? ` · ${d.discrepancyNote}` : ""}`, company: d.company })));
 
   push("awaiting-voucher", "Bills awaiting a voucher", "posted, unpaid bills that no voucher has picked up yet", "/finance/ap",
-    billsAwaiting.map((b) => ({ id: b.id, href: `/bills/${b.id}`, ref: b.billNo, who: b.supplier.name, when: b.dueDate, amount: round2(b.total - b.paidAmount), note: `${b.kind === "EXPENSE" ? "non-inventory" : "inventory"} · due ${fmt(b.dueDate)}${b.dueDate < now ? ` · ${Math.floor((now.getTime() - b.dueDate.getTime()) / DAY)} day(s) overdue` : ""}`, company: b.company.companyName })));
+    billsAwaiting.map((b) => ({ id: b.id, href: `/bills/${b.id}`, ref: b.billNo, who: b.supplier.name, when: b.dueDate, amount: round2(b.total - b.paidAmount), note: `${b.kind === "EXPENSE" ? "non-inventory" : b.kind === "OPENING" ? "opening balance" : "inventory"} · due ${fmt(b.dueDate)}${b.dueDate < now ? ` · ${Math.floor((now.getTime() - b.dueDate.getTime()) / DAY)} day(s) overdue` : ""}`, company: b.company.companyName })));
 
   push("awaiting-approval", "Vouchers awaiting approval", "in the chain: Draft → Prepared → Checked → Approved", "/dv?status=pending",
     dvsPending.map((d) => ({ id: d.id, href: `/dv/${d.id}`, ref: d.dvNo, who: d.payee, when: d.date, amount: d.amount, note: d.status, company: d.company.companyName })));

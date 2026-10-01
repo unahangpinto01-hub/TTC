@@ -19,7 +19,7 @@ export function fmtDateTime(d: Date | string | null | undefined): string {
 }
 
 export function termLabel(term: string): string {
-  return term === "COD" ? "COD" : `${term} days`;
+  return term === "COD" ? "COD" : term === "OPENING" ? "Opening balance" : `${term} days`;
 }
 
 export const VAT_RATE = 0.12;

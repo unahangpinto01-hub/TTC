@@ -106,6 +106,7 @@ export async function getSalesMetrics(f: ExecFilters): Promise<SalesMetrics> {
   const srs = await prisma.salesReceipt.findMany({
     where: {
       companyId: { in: f.companyIds },
+      kind: "SALE",
       status: { not: "Void" },
       invoiceDate: { gte: f.from, lte: f.to },
       ...(cw ? { customer: cw } : {}),
@@ -137,8 +138,8 @@ export async function getSalesMetrics(f: ExecFilters): Promise<SalesMetrics> {
   const customers = new Set<string>();
   for (const sr of srs) {
     const lines = f.category
-      ? sr.deliveryReceipt.lines.filter((l) => l.product.category === f.category)
-      : sr.deliveryReceipt.lines;
+      ? (sr.deliveryReceipt?.lines ?? []).filter((l) => l.product.category === f.category)
+      : (sr.deliveryReceipt?.lines ?? []);
     if (f.category && !lines.length) continue; // this invoice sold nothing in the category
     customers.add(sr.customerId);
 
@@ -165,7 +166,7 @@ export async function getSalesMetrics(f: ExecFilters): Promise<SalesMetrics> {
   }
 
   const invoices = f.category
-    ? srs.filter((sr) => sr.deliveryReceipt.lines.some((l) => l.product.category === f.category)).length
+    ? srs.filter((sr) => (sr.deliveryReceipt?.lines ?? []).some((l) => l.product.category === f.category)).length
     : srs.length;
   // net product sales: the lines, less any credit memo posted against those invoices
   const netSales = round2(goods - components.returns);
@@ -311,6 +312,7 @@ export async function getMonthlyTrend(year: number, f: ExecFilters): Promise<Mon
   const srs = await prisma.salesReceipt.findMany({
     where: {
       companyId: { in: f.companyIds },
+      kind: "SALE",
       status: { not: "Void" },
       invoiceDate: { gte: new Date(year, 0, 1), lte: new Date(year, 11, 31, 23, 59, 59, 999) },
       ...(cw ? { customer: cw } : {}),
@@ -332,8 +334,8 @@ export async function getMonthlyTrend(year: number, f: ExecFilters): Promise<Mon
   const out: MonthPoint[] = MONTHS.map((m) => ({ month: m, netSales: 0, grossProfit: 0, cogs: 0, invoices: 0 }));
   for (const sr of srs) {
     const lines = f.category
-      ? sr.deliveryReceipt.lines.filter((l) => l.product.category === f.category)
-      : sr.deliveryReceipt.lines;
+      ? (sr.deliveryReceipt?.lines ?? []).filter((l) => l.product.category === f.category)
+      : (sr.deliveryReceipt?.lines ?? []);
     if (!lines.length) continue;
     const i = sr.invoiceDate.getMonth();
     const goods = lines.reduce((s, l) => s + l.qty * l.unitPrice, 0);
@@ -426,6 +428,7 @@ export async function getForecastVsActual(f: ExecFilters, year: number, fromMont
   const srs = await prisma.salesReceipt.findMany({
     where: {
       companyId: { in: f.companyIds },
+      kind: "SALE",
       status: { not: "Void" },
       invoiceDate: { gte: from, lte: to },
       ...(cw ? { customer: cw } : {}),
@@ -449,7 +452,7 @@ export async function getForecastVsActual(f: ExecFilters, year: number, fromMont
   for (const sr of srs) {
     const owner = sr.customer.salesperson;
     const key = owner?.id ?? "none";
-    for (const l of sr.deliveryReceipt.lines) {
+    for (const l of (sr.deliveryReceipt?.lines ?? [])) {
       if (f.category && l.product.category !== f.category) continue;
       const value = round2(l.qty * l.unitPrice);
       // which forecast row does this sale belong to? the exact product, else the
@@ -573,6 +576,7 @@ async function salesLines(f: ExecFilters) {
   return prisma.salesReceipt.findMany({
     where: {
       companyId: { in: f.companyIds },
+      kind: "SALE",
       status: { not: "Void" },
       invoiceDate: { gte: f.from, lte: f.to },
       ...(cw ? { customer: cw } : {}),
@@ -613,7 +617,7 @@ export async function getSalesBreakdown(f: ExecFilters, dim: BreakdownDim): Prom
   const srs = await salesLines(f);
   const map = new Map<string, BreakdownRow>();
   for (const sr of srs) {
-    for (const l of sr.deliveryReceipt.lines) {
+    for (const l of (sr.deliveryReceipt?.lines ?? [])) {
       if (f.category && l.product.category !== f.category) continue;
       const spec: [string, string, string | undefined] =
         dim === "product" ? [l.product.id, l.product.name, l.product.sku]
@@ -703,7 +707,7 @@ export async function getCustomerPerformance(f: ExecFilters): Promise<CustomerRo
   };
 
   for (const sr of srs) {
-    const lines = f.category ? sr.deliveryReceipt.lines.filter((l) => l.product.category === f.category) : sr.deliveryReceipt.lines;
+    const lines = f.category ? (sr.deliveryReceipt?.lines ?? []).filter((l) => l.product.category === f.category) : (sr.deliveryReceipt?.lines ?? []);
     if (!lines.length) continue;
     const r = ensure(sr.customer.id, sr.customer.businessName, sr.customer.salesperson?.name ?? "— Unassigned —");
     r.invoices += 1;
@@ -737,7 +741,7 @@ export async function getProductPerformance(f: ExecFilters): Promise<ProductRow[
   const srs = await salesLines(f);
   const map = new Map<string, ProductRow>();
   for (const sr of srs) {
-    for (const l of sr.deliveryReceipt.lines) {
+    for (const l of (sr.deliveryReceipt?.lines ?? [])) {
       if (f.category && l.product.category !== f.category) continue;
       const p = l.product;
       let r = map.get(p.id);
@@ -1016,7 +1020,7 @@ export async function getRecentTransactions(f: ExecFilters, take = 8): Promise<R
   const cw = customerWhere(f);
   const [invoices, receipts] = await Promise.all([
     prisma.salesReceipt.findMany({
-      where: { companyId: { in: f.companyIds }, status: { not: "Void" }, invoiceDate: { gte: f.from, lte: f.to }, ...(cw ? { customer: cw } : {}) },
+      where: { companyId: { in: f.companyIds }, kind: "SALE", status: { not: "Void" }, invoiceDate: { gte: f.from, lte: f.to }, ...(cw ? { customer: cw } : {}) },
       orderBy: { invoiceDate: "desc" },
       take,
       select: { id: true, srNumber: true, invoiceDate: true, amount: true, customer: { select: { businessName: true } }, company: { select: { companyName: true } } },

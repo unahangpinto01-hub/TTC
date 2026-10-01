@@ -37,7 +37,7 @@ export default async function CustomerStatementPage({
         date, company: sr.company.companyName, doc, detail, charge, payment,
       });
       if (sr.invoiceDate < from) opening += sr.amount;
-      else if (sr.invoiceDate <= to) rows.push(mk(sr.invoiceDate, sr.srNumber, `Invoice · due ${fmtDate(sr.dueDate)}`, sr.amount, 0));
+      else if (sr.invoiceDate <= to) rows.push(mk(sr.invoiceDate, sr.srNumber, sr.kind === "OPENING" ? `Opening balance brought forward${sr.memo ? ` · ${sr.memo}` : ""}` : `Invoice · due ${fmtDate(sr.dueDate)}`, sr.amount, 0));
       for (const p of sr.payments) {
         const label = p.application?.receivePayment?.prNumber ?? p.refNo ?? p.method;
         if (p.date < from) opening -= p.amount;

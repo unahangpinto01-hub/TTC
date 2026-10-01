@@ -74,8 +74,11 @@ export async function voidSR(formData: FormData) {
   if (sr.companyId !== voidCo.id) redirect("/denied"); // company isolation
   if (sr.payments.length) redirect(`/invoices/${srId}?error=haspayments`);
   await prisma.salesReceipt.update({ where: { id: srId }, data: { status: "Void", voidReason: reason } });
-  await prisma.deliveryReceipt.update({ where: { id: sr.deliveryReceiptId }, data: { status: "Delivered" } });
-  await prisma.salesOrder.update({ where: { id: sr.deliveryReceipt.salesOrderId }, data: { status: "Delivered" } });
+  // an opening balance has no delivery or order to put back
+  if (sr.deliveryReceipt) {
+    await prisma.deliveryReceipt.update({ where: { id: sr.deliveryReceipt.id }, data: { status: "Delivered" } });
+    await prisma.salesOrder.update({ where: { id: sr.deliveryReceipt.salesOrderId }, data: { status: "Delivered" } });
+  }
   revalidatePath(`/invoices/${srId}`);
   redirect(`/invoices/${srId}`);
 }

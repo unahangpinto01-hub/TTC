@@ -31,7 +31,7 @@ export default async function DashboardPage() {
       where: { OR: [{ userId: user.id }, { role: user.role }], AND: [{ OR: [{ companyId: company.id }, { companyId: null }] }] },
       orderBy: { createdAt: "desc" }, take: 8,
     }),
-    canFinance ? prisma.salesReceipt.findMany({ where: { companyId: company.id, status: { not: "Void" }, invoiceDate: { gte: sixMonthsAgo } }, select: { invoiceDate: true, amount: true } }) : Promise.resolve([]),
+    canFinance ? prisma.salesReceipt.findMany({ where: { companyId: company.id, kind: "SALE", status: { not: "Void" }, invoiceDate: { gte: sixMonthsAgo } }, select: { invoiceDate: true, amount: true } }) : Promise.resolve([]),
     canFinance ? prisma.salesReceipt.findMany({ where: { companyId: company.id, status: { in: ["Open", "Partial"] } }, include: { payments: true } }) : Promise.resolve([]),
     prisma.deliveryReceipt.count({ where: { companyId: company.id, status: "Delivered", salesReceipt: null } }),
   ]);

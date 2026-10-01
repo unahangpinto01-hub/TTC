@@ -30,8 +30,9 @@ export default async function SRDetailPage({ params, searchParams }: { params: {
 
   return (
     <div className="max-w-4xl">
-      <PageHeader title={`Sales Receipt ${sr.srNumber}`}>
+      <PageHeader title={sr.kind === "OPENING" ? `Opening balance ${sr.srNumber}` : `Sales Receipt ${sr.srNumber}`}>
         <StatusBadge status={sr.status} />
+        {sr.kind === "OPENING" && <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-800">Balance brought forward</span>}
         <Link href={`/invoices/${sr.id}/print`} className="btn-secondary">🖨 Print / PDF</Link>
       </PageHeader>
 
@@ -50,13 +51,20 @@ export default async function SRDetailPage({ params, searchParams }: { params: {
         <div className="card py-3"><p className="text-xs text-gray-500">Balance</p><p className={`text-sm font-bold ${balance > 0 ? "text-red-600" : "text-emerald-700"}`}>{peso(balance)}</p></div>
       </div>
 
+      {sr.kind === "OPENING" ? (
+        <div className="card mb-4 text-sm">
+          <p className="font-semibold">Balance brought forward as of {fmtDate(sr.invoiceDate)}</p>
+          <p className="mt-1 text-gray-600">What this customer owed before the BMS started, entered on Finance → Opening Balances. It has no products or delivery behind it: it is collected through Receive Payments like any invoice and is never counted as a sale.</p>
+          {sr.memo && <p className="mt-1 text-xs text-gray-500">Reference: {sr.memo}</p>}
+        </div>
+      ) : (
       <div className="card mb-4 overflow-x-auto p-0">
         <table className="w-full min-w-[560px]">
           <thead className="border-b border-gray-200 bg-gray-50">
             <tr><th className="table-th">Product</th><th className="table-th text-right">Qty</th><th className="table-th text-right">Unit Price</th><th className="table-th text-right">Amount</th></tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {sr.deliveryReceipt.lines.map((l) => (
+            {(sr.deliveryReceipt?.lines ?? []).map((l) => (
               <tr key={l.id}>
                 <td className="table-td font-medium">{l.product.name}</td>
                 <td className="table-td text-right">
@@ -90,6 +98,7 @@ export default async function SRDetailPage({ params, searchParams }: { params: {
           </tfoot>
         </table>
       </div>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-2">
         <div>
@@ -134,11 +143,15 @@ export default async function SRDetailPage({ params, searchParams }: { params: {
       </div>
 
       <div className="mt-4 flex items-center justify-between">
-        <p className="text-xs text-gray-500">
-          From <Link href={`/deliveries/${sr.deliveryReceiptId}`} className="font-mono text-emerald-700 hover:underline">{sr.deliveryReceipt.drNumber}</Link>{" "}
-          / <Link href={`/sales-orders/${sr.deliveryReceipt.salesOrderId}`} className="font-mono text-emerald-700 hover:underline">{sr.deliveryReceipt.salesOrder.soNumber}</Link>
-        </p>
-        {user.role === "SUPER_ADMIN" && sr.status !== "Void" && !sr.payments.length && (
+        {sr.deliveryReceipt ? (
+          <p className="text-xs text-gray-500">
+            From <Link href={`/deliveries/${sr.deliveryReceiptId}`} className="font-mono text-emerald-700 hover:underline">{sr.deliveryReceipt.drNumber}</Link>{" "}
+            / <Link href={`/sales-orders/${sr.deliveryReceipt.salesOrderId}`} className="font-mono text-emerald-700 hover:underline">{sr.deliveryReceipt.salesOrder.soNumber}</Link>
+          </p>
+        ) : (
+          <p className="text-xs text-gray-500">Entered on <Link href="/finance/opening-balances" className="text-emerald-700 hover:underline">Opening Balances</Link>, where it can be withdrawn while nothing has been applied to it.</p>
+        )}
+        {user.role === "SUPER_ADMIN" && sr.status !== "Void" && !sr.payments.length && sr.kind !== "OPENING" && (
           <form action={voidSR} className="flex gap-2">
             <input type="hidden" name="srId" value={sr.id} />
             <input name="reason" placeholder="Void reason (required)" className="input w-52" />

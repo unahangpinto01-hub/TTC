@@ -140,6 +140,7 @@ export default async function InvoicesPage({
                   <td className="table-td text-sm">{fmtDate(sr.invoiceDate)}</td>
                   <td className="table-td">
                     <Link href={`/invoices/${sr.id}`} className="font-mono text-sm font-medium text-emerald-700 hover:underline">{sr.srNumber}</Link>
+                    {sr.kind === "OPENING" && <span className="ml-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800">opening balance</span>}
                   </td>
                   <td className="table-td">{sr.customer.businessName}</td>
                   <td className="table-td text-sm">{termLabel(sr.term)}</td>

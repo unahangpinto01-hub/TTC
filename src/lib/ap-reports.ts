@@ -177,7 +177,7 @@ export async function getSupplierStatement(supplierId: string, companyIds: strin
     ...bills.filter((b) => b.billDate >= range.from).map((b) => ({
       date: b.billDate, billId: b.id, billNo: b.billNo, company: b.company.companyName,
       ref: [b.supplierInvoiceNo ? `Inv ${b.supplierInvoiceNo}` : "", b.purchaseOrder?.poNumber, b.goodsReceipt?.grnNumber].filter(Boolean).join(" · "),
-      description: b.memo ?? (b.kind === "EXPENSE" ? "Non-inventory bill" : "Inventory purchase"),
+      description: b.kind === "OPENING" ? `Opening balance brought forward${b.memo ? ` · ${b.memo}` : ""}` : b.memo ?? (b.kind === "EXPENSE" ? "Non-inventory bill" : "Inventory purchase"),
       charges: b.total, payments: 0, status: b.status, dueDate: b.dueDate,
     })),
     ...dvs.filter((d) => d.date >= range.from).map((d) => ({
@@ -368,7 +368,7 @@ export async function getPayablesMetrics(companyIds: string[], range: Range): Pr
   const [aging, billed, unbilled, discrepancies] = await Promise.all([
     getApAging(companyIds),
     prisma.supplierBill.aggregate({
-      where: { companyId: { in: companyIds }, status: { in: LIVE_BILL_STATUSES }, billDate: { gte: range.from, lte: range.to } },
+      where: { companyId: { in: companyIds }, kind: { not: "OPENING" }, status: { in: LIVE_BILL_STATUSES }, billDate: { gte: range.from, lte: range.to } },
       _sum: { total: true },
     }),
     prisma.goodsReceipt.count({ where: { companyId: { in: companyIds }, status: "Posted", invoiceStatus: { not: "Billed" } } })

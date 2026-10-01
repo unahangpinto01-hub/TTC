@@ -53,7 +53,7 @@ export function BillPicker({ rows, today, canCreate }: { rows: EligibleBill[]; t
               return (
                 <tr key={r.id} className={on ? "bg-emerald-50/50" : blocked ? "opacity-40" : "hover:bg-gray-50"} title={blocked ? `A voucher pays one payee — this bill is ${r.supplierName}'s` : undefined}>
                   <td className="table-td"><input type="checkbox" checked={on} disabled={blocked || !canCreate} onChange={() => toggle(r)} className="h-4 w-4" aria-label={`Select ${r.billNo}`} /></td>
-                  <td className="table-td text-xs">{r.kind === "EXPENSE" ? "Non-inventory" : "Inventory"}</td>
+                  <td className="table-td text-xs">{r.kind === "EXPENSE" ? "Non-inventory" : r.kind === "OPENING" ? "Opening balance" : "Inventory"}</td>
                   <td className="table-td"><a href={`/bills/${r.id}`} target="_blank" rel="noreferrer" className="font-mono text-xs font-semibold text-emerald-700 hover:underline">{r.billNo}</a>{r.poNumber && <span className="block font-mono text-[10px] text-gray-400">{r.poNumber}{r.grnNumber ? ` · ${r.grnNumber}` : ""}</span>}</td>
                   <td className="table-td text-xs text-gray-600">{r.supplierInvoiceNo ?? "—"}</td>
                   <td className="table-td whitespace-nowrap text-xs">{r.billDate}</td>

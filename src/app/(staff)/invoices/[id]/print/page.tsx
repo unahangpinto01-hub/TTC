@@ -20,20 +20,20 @@ export default async function SRPrintPage({ params }: { params: { id: string } }
   return (
     <PrintDoc
       docType="SR"
-      title="Sales Receipt / Charge Invoice"
+      title={sr.kind === "OPENING" ? "Statement of Balance Brought Forward" : "Sales Receipt / Charge Invoice"}
       docNumber={sr.srNumber}
       date={sr.invoiceDate}
       meta={[
         ["Customer", sr.customer.businessName],
         ["TIN / Address", sr.customer.address ?? sr.customer.province],
-        ["Delivery Receipt", sr.deliveryReceipt.drNumber],
-        ["Sales Order", sr.deliveryReceipt.salesOrder.soNumber],
+        ["Delivery Receipt", sr.deliveryReceipt?.drNumber ?? "—"],
+        ["Sales Order", sr.deliveryReceipt?.salesOrder.soNumber ?? "—"],
         ["Payment Term", termLabel(sr.term)],
         ["Due Date", fmtDate(sr.dueDate)],
         ["VAT Treatment", sr.vatApplied ? "VAT 12% (inclusive)" : "VAT-exempt / Non-VAT"],
       ]}
-      lines={sr.deliveryReceipt.lines.map((l) => ({ name: l.product.name, qty: l.qty, unitPrice: l.unitPrice, unit: l.unit, baseQty: l.baseQty }))}
-      extraCharges={[{ label: "Freight Charge", amount: sr.freightCharge }]}
+      lines={(sr.deliveryReceipt?.lines ?? []).map((l) => ({ name: l.product.name, qty: l.qty, unitPrice: l.unitPrice, unit: l.unit, baseQty: l.baseQty }))}
+      extraCharges={sr.kind === "OPENING" ? [{ label: `Balance brought forward as of ${fmtDate(sr.invoiceDate)}${sr.memo ? ` (${sr.memo})` : ""}`, amount: sr.amount }] : [{ label: "Freight Charge", amount: sr.freightCharge }]}
       vatApplied={sr.vatApplied}
       signatures={[
         { label: "Prepared by (Accounting)" },

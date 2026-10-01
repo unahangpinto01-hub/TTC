@@ -15,6 +15,7 @@ import { BillEditor, type EditorLine } from "./bill-editor";
 import { VoucherInfo } from "./voucher-info";
 import { saveBill, postBill, voidBill } from "../actions";
 import { ExpenseBillDetail, loadExpenseBill } from "./expense-detail";
+import { OpeningBillDetail, loadOpeningBill } from "./opening-detail";
 
 const ERRORS: Record<string, string> = {
   locked: "This bill is no longer editable — only a Draft can be changed.",
@@ -46,6 +47,13 @@ export default async function BillDetailPage({
     const eBill = await loadExpenseBill(params.id);
     if (!eBill || eBill.companyId !== eCompany.id) notFound();
     return <ExpenseBillDetail bill={eBill} user={eUser} companyName={eCompany.companyName} searchParams={searchParams} />;
+  }
+  if (kindRow?.kind === "OPENING") {
+    const oUser = await requirePerm("ap");
+    const oCompany = await getActiveCompany(oUser);
+    const oBill = await loadOpeningBill(params.id);
+    if (!oBill || oBill.companyId !== oCompany.id) notFound();
+    return <OpeningBillDetail bill={oBill} user={oUser} companyName={oCompany.companyName} />;
   }
   const user = await requirePerm("bills");
   const company = await getActiveCompany(user);

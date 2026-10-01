@@ -52,7 +52,7 @@ export default async function NewDvPage({ searchParams }: { searchParams: Eligib
           <div className="sm:col-span-2"><label className="label">Supplier / Payee</label><SearchSelect entity="suppliers" name="supplier" defaultValue={supplierPicked ? { id: supplierPicked.id, label: supplierPicked.name } : undefined} placeholder="Any supplier…" /></div>
           <div><label className="label">Bill No.</label><input name="billNo" defaultValue={searchParams.billNo ?? ""} className="input" /></div>
           <div><label className="label">Supplier Invoice No.</label><input name="invoice" defaultValue={searchParams.invoice ?? ""} className="input" /></div>
-          <div><label className="label">Bill Type</label><select name="kind" defaultValue={searchParams.kind ?? ""} className="input"><option value="">All</option><option value="INVENTORY">Inventory</option><option value="EXPENSE">Non-inventory</option></select></div>
+          <div><label className="label">Bill Type</label><select name="kind" defaultValue={searchParams.kind ?? ""} className="input"><option value="">All</option><option value="INVENTORY">Inventory</option><option value="EXPENSE">Non-inventory</option><option value="OPENING">Opening balance</option></select></div>
           <div><label className="label">Purchase Order</label><input name="po" defaultValue={searchParams.po ?? ""} className="input" placeholder="PO no." /></div>
           <div><label className="label">Bill Date from</label><input name="from" type="date" defaultValue={searchParams.from ?? ""} className="input" /></div>
           <div><label className="label">to</label><input name="to" type="date" defaultValue={searchParams.to ?? ""} className="input" /></div>
