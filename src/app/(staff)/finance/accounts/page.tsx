@@ -28,10 +28,12 @@ export default async function CashAccountsPage({ searchParams }: { searchParams:
                 <tr>
                   <th className="table-th">Account</th>
                   <th className="table-th">Type</th>
-                  <th className="table-th text-right">Opening Balance</th>
-                  <th className="table-th text-right">Customer Payments In</th>
-                  <th className="table-th text-right">Other Receipts In</th>
-                  <th className="table-th text-right">Refunds Out (Posted)</th>
+                  <th className="table-th text-right">Opening</th>
+                  <th className="table-th text-right">Customer In</th>
+                  <th className="table-th text-right">Other In</th>
+                  <th className="table-th text-right">Transfers ±</th>
+                  <th className="table-th text-right">Refunds Out</th>
+                  <th className="table-th text-right">Cheques Out</th>
                   <th className="table-th text-right">Balance</th>
                 </tr>
               </thead>
@@ -44,22 +46,39 @@ export default async function CashAccountsPage({ searchParams }: { searchParams:
                     </td>
                     <td className="table-td text-sm text-gray-500">{a.type}</td>
                     <td className="table-td text-right">{peso(a.openingBalance)}</td>
-                    <td className="table-td text-right">{peso(a.customerIn)}</td>
+                    <td className="table-td text-right">{a.customerIn ? peso(a.customerIn) : "—"}</td>
                     <td className="table-td text-right">{a.otherIn ? peso(a.otherIn) : "—"}</td>
-                    <td className="table-td text-right text-red-600">{a.outflows ? `(${peso(a.outflows)})` : "—"}</td>
-                    <td className="table-td text-right font-bold text-emerald-800">{peso(a.balance)}</td>
+                    <td className="table-td text-right">
+                      {a.transfersIn || a.transfersOut ? (
+                        <span className={a.transfersIn - a.transfersOut >= 0 ? "" : "text-red-600"}>
+                          {peso(a.transfersIn - a.transfersOut)}
+                        </span>
+                      ) : "—"}
+                    </td>
+                    <td className="table-td text-right text-red-600">{a.refundsOut ? `(${peso(a.refundsOut)})` : "—"}</td>
+                    <td className="table-td text-right text-red-600">{a.chequesOut ? `(${peso(a.chequesOut)})` : "—"}</td>
+                    <td className={`table-td text-right font-bold ${a.balance < 0 ? "text-red-600" : "text-emerald-800"}`}>{peso(a.balance)}</td>
                   </tr>
                 ))}
                 {!accounts.length && (
-                  <tr><td colSpan={7} className="p-8 text-center text-sm text-gray-500">No accounts yet — add Cash on Hand and your bank accounts.</td></tr>
+                  <tr><td colSpan={9} className="p-8 text-center text-sm text-gray-500">No accounts yet — add Cash on Hand and your bank accounts.</td></tr>
                 )}
               </tbody>
             </table>
           </div>
           <p className="mt-2 text-xs text-gray-500">
-            Balance = opening balance + Posted customer payments and other receipts in − Posted customer refunds out. Voiding a
-            document removes its effect again. Outgoing money (cheques and payments on vouchers) is not tracked here.
+            Balance = opening + Posted customer payments, other receipts and transfers in − Posted customer refunds,
+            supplier cheques/payments and transfers out. Every posted money document is counted; voiding one removes
+            its effect again.
           </p>
+          {accounts.some((a) => a.balance < 0) && (
+            <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              <span className="font-semibold">A negative balance</span> usually means money OUT was encoded before the
+              money IN that funded it: customer collections not yet entered as Receive Payments / Other Receipts, or an
+              opening balance dated after cheques that are also encoded. Fix by encoding the missing inflows, or by
+              setting the opening balance as of a date before the encoded cheques.
+            </p>
+          )}
         </div>
         {canAdmin && (
           <form action={createCashAccount} className="card h-fit space-y-3">

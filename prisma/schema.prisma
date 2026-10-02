@@ -41,6 +41,7 @@ model User {
   receivedPayments ReceivePayment[]
   rcCreated        RefundCredit[]        @relation("RCCreated")
   rcApproved       RefundCredit[]        @relation("RCApproved")
+  transfersCreated AccountTransfer[]     @relation("TransferCreated")
   appSettings      AppSetting[]
   periodChanges    AccountingPeriod[]
   billsCreated     SupplierBill[]        @relation("BillCreated")
@@ -444,6 +445,34 @@ model CashAccount {
   refundCredits    RefundCredit[]
   supplierPayments SupplierPayment[]
   otherReceipts    OtherReceipt[]
+  transfersOut     AccountTransfer[] @relation("TransferFrom")
+  transfersIn      AccountTransfer[] @relation("TransferTo")
+}
+
+/// Money moved between two of the company's own cash/bank accounts — depositing cash
+/// on hand to the bank, drawing petty cash, or an inter-bank move. No income, no
+/// expense: one account down, the other up, both only when Posted.
+model AccountTransfer {
+  id            String      @id @default(cuid())
+  companyId     String
+  company       Company     @relation(fields: [companyId], references: [id])
+  trNumber      String // TR-2026-00001, per company
+  date          DateTime    @default(now())
+  amount        Float
+  fromAccountId String
+  fromAccount   CashAccount @relation("TransferFrom", fields: [fromAccountId], references: [id])
+  toAccountId   String
+  toAccount     CashAccount @relation("TransferTo", fields: [toAccountId], references: [id])
+  refNo         String? // deposit slip / withdrawal slip / bank reference
+  remarks       String
+  status        String      @default("Draft") // Draft | Pending Approval | Posted | Cancelled | Void
+  voidReason    String?
+  createdById   String?
+  createdBy     User?       @relation("TransferCreated", fields: [createdById], references: [id])
+  postedAt      DateTime?
+  createdAt     DateTime    @default(now())
+
+  @@unique([companyId, trNumber])
 }
 
 /// A provisional receipt: one customer payment, applied to one or more of that
@@ -1034,6 +1063,7 @@ model Company {
   vouchers          DisbursementVoucher[]
   supplierPayments  SupplierPayment[]
   otherReceipts     OtherReceipt[]
+  accountTransfers  AccountTransfer[]
   notifications     Notification[]
 
   @@map("CompanySetting")

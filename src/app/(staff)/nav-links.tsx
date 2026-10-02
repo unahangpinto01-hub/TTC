@@ -44,6 +44,7 @@ const NAV: { section: string; items: Item[] }[] = [
       { href: "/other-receipts", label: "Other Receipts", fn: "otherReceipts" },
       { href: "/refunds", label: "Refunds & Credits", fn: "refundsCredits" },
       { href: "/finance/accounts", label: "Cash / Bank Accounts", fn: "receivePayments" },
+      { href: "/finance/transfers", label: "Account Transfers", fn: "receivePayments" },
       { href: "/finance/ar", label: "AR / Aging", fn: "ar" },
       { href: "/finance/ap", label: "AP / Aging", fn: "ap" },
       { href: "/finance/opening-balances", label: "Opening Balances", fn: "ar" },

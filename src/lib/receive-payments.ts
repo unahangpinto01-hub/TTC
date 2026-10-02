@@ -159,6 +159,9 @@ export async function postReceivePayment(id: string, actor: { name: string; emai
     },
   });
   if (rp.status !== "Draft" && rp.status !== "Pending Approval") throw new Error(`Cannot post a ${rp.status} payment.`);
+  // same rule as Other Receipts: posted money must land in a real account, or no
+  // bank balance would ever carry it and the cash would be untraceable
+  if (!rp.cashAccountId) throw new Error("Assign a cash/bank account before posting — the money must land somewhere.");
   const appliedTotal = round2(rp.applications.reduce((s, a) => s + a.amount, 0));
   if (appliedTotal > rp.amount + 0.005) throw new Error("Applied more than the payment amount.");
   const settings = ppdSettingsOf(rp.company);
@@ -365,7 +368,9 @@ export async function settlementHistory(salesReceiptId: string): Promise<{ rows:
   return { rows, amount: sr.amount, balance: remaining };
 }
 
-/** A cash/bank account's running balance: opening + posted customer payments and other receipts in − posted refunds out. */
+/** A cash/bank account's running balance — EVERY posted money document, in and out:
+    opening + customer payments + other receipts + transfers in
+            − customer refunds − supplier cheques/payments − transfers out. */
 export async function cashAccountBalances(companyId: string) {
   const accounts = await prisma.cashAccount.findMany({
     where: { companyId },
@@ -373,15 +378,23 @@ export async function cashAccountBalances(companyId: string) {
       payments: { where: { status: "Posted" }, select: { amount: true } },
       otherReceipts: { where: { status: "Posted" }, select: { amount: true } },
       refundCredits: { where: { status: "Posted", type: "Refund" }, select: { amount: true } },
+      supplierPayments: { where: { status: "Posted" }, select: { amount: true } },
+      transfersIn: { where: { status: "Posted" }, select: { amount: true } },
+      transfersOut: { where: { status: "Posted" }, select: { amount: true } },
       glAccount: { select: { code: true, description: true } },
     },
     orderBy: { name: "asc" },
   });
   return accounts.map((a) => {
-    const customerIn = round2(a.payments.reduce((s, p) => s + p.amount, 0));
-    const otherIn = round2(a.otherReceipts.reduce((s, r) => s + r.amount, 0));
-    const inflows = round2(customerIn + otherIn);
-    const outflows = round2(a.refundCredits.reduce((s, r) => s + r.amount, 0));
+    const sum = (xs: { amount: number }[]) => round2(xs.reduce((s, x) => s + x.amount, 0));
+    const customerIn = sum(a.payments);
+    const otherIn = sum(a.otherReceipts);
+    const transfersIn = sum(a.transfersIn);
+    const refundsOut = sum(a.refundCredits);
+    const chequesOut = sum(a.supplierPayments);
+    const transfersOut = sum(a.transfersOut);
+    const inflows = round2(customerIn + otherIn + transfersIn);
+    const outflows = round2(refundsOut + chequesOut + transfersOut);
     return {
       id: a.id,
       name: a.name,
@@ -391,6 +404,10 @@ export async function cashAccountBalances(companyId: string) {
       openingBalance: a.openingBalance,
       customerIn,
       otherIn,
+      transfersIn,
+      refundsOut,
+      chequesOut,
+      transfersOut,
       inflows,
       outflows,
       balance: round2(a.openingBalance + inflows - outflows),
