@@ -21,6 +21,8 @@ export const FUNCTIONS = [
   ["payBills", "Cheques / Payments"],
   ["ar", "AR / Aging & Payments"],
   ["receivePayments", "Receive Payments"],
+  ["paymentDiscounts", "Payment Discounts (PPD / Other Discount)"],
+  ["ppdOverride", "PPD Override (outside the window)"],
   ["refundsCredits", "Refunds & Credits"],
   ["coa", "Chart of Accounts"],
   ["expenses", "Expenses"],
@@ -47,7 +49,7 @@ export const ROLE_DEFAULTS: Record<string, Record<FnKey, PermLevel>> = {
   CLERK: {
     dashboard: RW, notifications: RW, orders: RW, salesOrders: RW, schedule: RW,
     deliveries: RW, invoicing: NO, invoices: RO, forecast: RO, customers: RW,
-    inventory: RO, purchaseOrders: RO, suppliers: RO, bills: NO, ap: NO, dv: NO, payBills: NO, ar: NO, receivePayments: NO, refundsCredits: NO, coa: NO, expenses: NO,
+    inventory: RO, purchaseOrders: RO, suppliers: RO, bills: NO, ap: NO, dv: NO, payBills: NO, ar: NO, receivePayments: NO, paymentDiscounts: NO, ppdOverride: NO, refundsCredits: NO, coa: NO, expenses: NO,
     ledger: NO, reports: NO, priorPeriod: NO, hr: NO, users: NO, company: NO,
   },
 };

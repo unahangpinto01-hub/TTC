@@ -9,6 +9,7 @@ import { getPerm } from "@/lib/permissions";
 import { PageHeader, StatusBadge } from "@/components/ui";
 import { voidSR } from "../../invoicing/actions";
 import { getActiveCompany } from "@/lib/company";
+import { settlementHistory } from "@/lib/receive-payments";
 
 export default async function SRDetailPage({ params, searchParams }: { params: { id: string }; searchParams: { error?: string } }) {
   const user = await requirePerm("invoices");
@@ -26,6 +27,7 @@ export default async function SRDetailPage({ params, searchParams }: { params: {
   const balance = sr.amount - paid;
   const { net, vat } = vatBreakdown(sr.amount);
   const canFinance = getPerm(user, "ar") === "READ_WRITE";
+  const history = await settlementHistory(sr.id);
   const today = new Date().toISOString().slice(0, 10);
 
   return (
@@ -102,22 +104,28 @@ export default async function SRDetailPage({ params, searchParams }: { params: {
 
       <div className="grid gap-4 lg:grid-cols-2">
         <div>
-          <h2 className="mb-2 font-semibold">Payments</h2>
+          <h2 className="mb-2 font-semibold">Payment / Settlement History</h2>
           <div className="card overflow-x-auto p-0">
-            <table className="w-full">
+            <table className="w-full min-w-[640px] text-sm">
               <thead className="border-b border-gray-200 bg-gray-50">
-                <tr><th className="table-th">Date</th><th className="table-th">Method</th><th className="table-th">Ref</th><th className="table-th text-right">Amount</th></tr>
+                <tr><th className="table-th">Date</th><th className="table-th">Receipt</th><th className="table-th text-right">Payment</th><th className="table-th text-right">PPD</th><th className="table-th text-right">Other Discount</th><th className="table-th text-right">Total Applied</th><th className="table-th text-right">Remaining</th></tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {sr.payments.map((p) => (
-                  <tr key={p.id}>
-                    <td className="table-td text-sm">{fmtDate(p.date)}</td>
-                    <td className="table-td text-sm">{p.method}</td>
-                    <td className="table-td text-xs text-gray-500">{p.refNo ?? "—"}</td>
-                    <td className="table-td text-right">{peso(p.amount)}</td>
+                {history.rows.map((r, i) => (
+                  <tr key={i}>
+                    <td className="table-td whitespace-nowrap text-sm">{fmtDate(r.date)}</td>
+                    <td className="table-td text-xs">
+                      {r.href ? <Link href={r.href} className="font-mono font-semibold text-emerald-700 hover:underline">{r.ref}</Link> : <span className="font-mono">{r.ref || "—"}</span>}
+                      <span className="block text-gray-500">{r.source === "credit" ? "credit memo" : r.method}</span>
+                    </td>
+                    <td className="table-td text-right">{r.payment ? peso(r.payment) : "—"}</td>
+                    <td className="table-td text-right text-red-700">{r.ppd ? peso(r.ppd) : <span className="text-gray-400">—</span>}</td>
+                    <td className="table-td text-right text-red-700">{r.other ? <>{peso(r.other)}{r.otherReason && <span className="block text-[10px] text-gray-500">{r.otherReason}</span>}</> : <span className="text-gray-400">—</span>}</td>
+                    <td className="table-td text-right font-semibold">{peso(r.total)}</td>
+                    <td className="table-td text-right">{peso(r.remaining)}</td>
                   </tr>
                 ))}
-                {!sr.payments.length && <tr><td colSpan={4} className="p-6 text-center text-sm text-gray-500">No payments recorded yet.</td></tr>}
+                {!history.rows.length && <tr><td colSpan={7} className="p-6 text-center text-sm text-gray-500">Nothing settled yet.</td></tr>}
               </tbody>
             </table>
           </div>

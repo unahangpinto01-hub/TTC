@@ -247,6 +247,7 @@ export async function getCollectionMetrics(f: ExecFilters, invoiced: number): Pr
   const rows = await prisma.payment.findMany({
     where: {
       date: { gte: f.from, lte: f.to },
+      kind: "PAYMENT", // cash only — discounts granted on receipts are not collections
       salesReceipt: {
         companyId: { in: f.companyIds },
         status: { not: "Void" },

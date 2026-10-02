@@ -4,7 +4,8 @@ import { requirePermWrite } from "@/lib/auth";
 import { getActiveCompany } from "@/lib/company";
 import { PageHeader } from "@/components/ui";
 import { SearchSelect } from "@/components/search-select";
-import { getOutstandingInvoices, PAYMENT_METHODS } from "@/lib/receive-payments";
+import { getOutstandingInvoices, PAYMENT_METHODS, ppdDeadline, ppdSettingsOf } from "@/lib/receive-payments";
+import { getPerm } from "@/lib/permissions";
 import { combinedCustomerCredit } from "@/lib/refunds-credits";
 import { fmtDate, peso } from "@/lib/format";
 import { createReceivePayment } from "../actions";
@@ -42,6 +43,14 @@ export default async function NewPaymentPage({
     : [[], 0, await prisma.cashAccount.findMany({ where: { companyId: company.id, status: "Active" }, orderBy: { name: "asc" } })];
 
   const today = new Date().toISOString().slice(0, 10);
+  const [policy, reasons] = await Promise.all([
+    prisma.company.findUniqueOrThrow({ where: { id: company.id }, select: { ppdRate: true, ppdDays: true, ppdMaxRate: true } }),
+    prisma.otherDiscountReason.findMany({ where: { status: "Active" }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }], select: { id: true, name: true, requiresRemarks: true } }),
+  ]);
+  const canDiscount = getPerm(user, "paymentDiscounts") === "READ_WRITE";
+  const canOverride = getPerm(user, "ppdOverride") === "READ_WRITE";
+  const settings = ppdSettingsOf(policy);
+  const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
   return (
     <div className="max-w-5xl">
@@ -115,23 +124,23 @@ export default async function NewPaymentPage({
           </div>
 
           <EntryTable
-            invoices={invoices.map((i) => ({
-              id: i.id,
-              srNumber: i.srNumber,
-              invoiceDate: fmtDate(i.invoiceDate),
-              dueDate: fmtDate(i.dueDate),
-              amount: i.amount,
-              previousPayments: i.previousPayments,
-              creditApplied: i.creditApplied,
-              outstanding: i.outstanding,
-            }))}
+            invoices={invoices.map((i) => {
+              const dl = ppdDeadline(i, settings);
+              return { id: i.id, srNumber: i.srNumber, kind: i.kind, invoiceDate: fmtDate(i.invoiceDate), dueDate: fmtDate(i.dueDate), amount: i.amount, outstanding: i.outstanding, ppdDeadline: dl ? ymd(dl) : null };
+            })}
+            canDiscount={canDiscount}
+            canOverride={canOverride}
+            reasons={reasons}
+            ppdDefaultRatePct={Math.round(policy.ppdRate * 10000) / 100}
+            ppdMaxRatePct={Math.round(policy.ppdMaxRate * 10000) / 100}
+            ppdHasWindow={policy.ppdDays > 0}
           />
 
           <div className="flex items-center gap-3">
             <button className="btn-primary" type="submit">Save as Draft</button>
             <p className="text-xs text-gray-500">
-              A draft is submitted for approval from its page; only a Posted payment updates AR.
-              Anything not applied to an invoice becomes the customer&rsquo;s credit.
+              A draft is submitted for approval from its page; only a Posted payment updates AR, grants the discounts and books them.
+              Anything received but not applied to an invoice becomes the customer&rsquo;s credit.
             </p>
           </div>
         </form>

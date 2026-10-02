@@ -41,7 +41,7 @@ export default async function CustomerStatementPage({
       for (const p of sr.payments) {
         const label = p.application?.receivePayment?.prNumber ?? p.refNo ?? p.method;
         if (p.date < from) opening -= p.amount;
-        else if (p.date <= to) rows.push(mk(p.date, label, `Payment on ${sr.srNumber} (${p.method})`, 0, p.amount));
+        else if (p.date <= to) rows.push(mk(p.date, label, p.kind === "PPD" ? `Prompt payment discount on ${sr.srNumber}` : p.kind === "DISCOUNT" ? `Other discount on ${sr.srNumber}` : `Payment on ${sr.srNumber} (${p.method})`, 0, p.amount));
       }
     }
     rows.sort((a, b) => a.date.getTime() - b.date.getTime());
@@ -131,8 +131,9 @@ export default async function CustomerStatementPage({
             </table>
           </div>
           <p className="mt-2 text-xs text-gray-500">
-            Charges are non-void invoices; payments include both direct invoice payments and posted Receive
-            Payment applications (shown by their PR number). Unapplied customer credit is not deducted here until
+            Charges are non-void invoices; payments include direct invoice payments and posted Receive Payment
+            applications (shown by their PR number), with any prompt payment discount or other discount granted on
+            them listed as their own lines — never as cash. Unapplied customer credit is not deducted here until
             it is applied to an invoice.
           </p>
         </>

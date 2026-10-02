@@ -44,7 +44,7 @@ export async function updateCompany(formData: FormData) {
   }
   // which account each billing component credits — an unknown or inactive account is
   // rejected rather than silently stored, and blank simply means "not set"
-  for (const field of ["glSalesId", "glFreightId", "glOtherId", "glInventoryId", "glPayablesId", "glInputVatId", "glEwtPayableId"]) {
+  for (const field of ["glSalesId", "glFreightId", "glOtherId", "glInventoryId", "glPayablesId", "glInputVatId", "glEwtPayableId", "glPpdId", "glOtherDiscountId"]) {
     const raw = String(formData.get(field) || "");
     if (!raw) { update[field] = null; continue; }
     const acct = await prisma.gLAccount.findFirst({ where: { id: raw, status: "Active" }, select: { id: true } });
@@ -59,9 +59,16 @@ export async function updateCompany(formData: FormData) {
     update.logoDataUrl = logo;
   }
 
+  // the PPD policy: percentages typed as 2 are stored as 0.02; anything unreadable leaves the field untouched
+  const ratePct = Number(formData.get("ppdRatePct")), maxPct = Number(formData.get("ppdMaxRatePct")), days = Number(formData.get("ppdDays"));
+  const policy: { ppdRate?: number; ppdMaxRate?: number; ppdDays?: number } = {};
+  if (formData.has("ppdRatePct") && Number.isFinite(ratePct) && ratePct >= 0 && ratePct < 100) policy.ppdRate = Math.round(ratePct * 10000) / 1000000;
+  if (formData.has("ppdMaxRatePct") && Number.isFinite(maxPct) && maxPct >= 0 && maxPct < 100) policy.ppdMaxRate = Math.round(maxPct * 10000) / 1000000;
+  if (formData.has("ppdDays") && Number.isInteger(days) && days >= 0 && days <= 365) policy.ppdDays = days;
+
   await prisma.company.update({
     where: { id: active.id },
-    data: update,
+    data: { ...update, ...policy },
   });
   revalidatePath("/company");
   redirect("/company?saved=1");

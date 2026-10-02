@@ -453,7 +453,13 @@ export async function getLedger({ from, to }: Range, companyIds: string[]) {
         deliveryReceipt: { select: { lines: { select: { qty: true, unitPrice: true } } } },
       },
     }),
-    prisma.payment.findMany({ where: { date: { gte: from, lte: to }, salesReceipt: { companyId: { in: companyIds } } }, include: { salesReceipt: { include: { company: { select: { companyName: true } }, customer: true } } } }),
+    prisma.payment.findMany({
+      where: { date: { gte: from, lte: to }, salesReceipt: { companyId: { in: companyIds } } },
+      include: {
+        salesReceipt: { include: { company: { select: { companyName: true, glPpd: { select: { code: true, description: true } }, glOtherDiscount: { select: { code: true, description: true } } } }, customer: true } },
+        discountApplication: { select: { otherDiscountReason: { select: { name: true, glAccount: { select: { code: true, description: true } } } } } },
+      },
+    }),
     // receipts at their RECEIVING cost — the product's current cost has since been re-costed by bills
     prisma.gRNLine.findMany({
       where: { acceptedQty: { gt: 0 }, goodsReceipt: { companyId: { in: companyIds }, status: "Posted", receivedDate: { gte: from, lte: to } } },
@@ -512,12 +518,23 @@ export async function getLedger({ from, to }: Range, companyIds: string[]) {
         rows.push({ ...base, description: `Other charges — ${sr.customer.businessName}`, credit: acct(sr.company.glOther, "Other Income (account not set)"), amount: round2(sr.otherCharges) });
       return rows;
     }),
+    // a receipt settles an invoice three ways, each its own entry against Accounts Receivable:
+    // the cash received, the prompt payment discount, and any other discount (booked to its
+    // reason's account, or the company's Other Discount account)
     ...payments.map((p) => ({
       date: p.date,
       company: p.salesReceipt.company.companyName,
       ref: p.refNo || p.salesReceipt.srNumber,
-      description: `Collection — ${p.salesReceipt.customer.businessName} (${p.method})`,
-      debit: "Cash",
+      description: p.kind === "PPD"
+        ? `Prompt payment discount — ${p.salesReceipt.customer.businessName} (${p.salesReceipt.srNumber})`
+        : p.kind === "DISCOUNT"
+          ? `Other discount — ${p.salesReceipt.customer.businessName} (${p.discountApplication?.otherDiscountReason?.name ?? "discount"}, ${p.salesReceipt.srNumber})`
+          : `Collection — ${p.salesReceipt.customer.businessName} (${p.method})`,
+      debit: p.kind === "PPD"
+        ? acctOf(p.salesReceipt.company.glPpd, "Sales Discount — Prompt Payment (account not set)")
+        : p.kind === "DISCOUNT"
+          ? acctOf(p.discountApplication?.otherDiscountReason?.glAccount ?? p.salesReceipt.company.glOtherDiscount, "Sales Discount — Other (account not set)")
+          : "Cash",
       credit: "Accounts Receivable",
       amount: p.amount,
     })),
@@ -606,6 +623,7 @@ export async function getCollections({ from, to }: Range, companyIds: string[], 
   const payments = await prisma.payment.findMany({
     where: {
       date: { gte: from, lte: to },
+      kind: "PAYMENT", // money received — a discount is never a collection
       ...(filters?.method ? { method: filters.method } : {}),
       salesReceipt: {
         companyId: { in: companyIds },
@@ -681,7 +699,9 @@ export async function getCustomerReport({ from, to }: Range, companyIds: string[
     row.otherCharges = round2(row.otherCharges + c.otherCharges);
     row.totalBilling = round2(row.totalBilling + c.totalBilling);
     const paid = sr.payments.reduce((s, p) => s + p.amount, 0);
-    row.collected = round2(row.collected + paid);
+    // collected is the money received; discounts settle the balance but are not collections
+    const cash = sr.payments.filter((p) => p.kind === "PAYMENT").reduce((s, p) => s + p.amount, 0);
+    row.collected = round2(row.collected + cash);
     row.balance = round2(row.balance + (sr.amount - paid));
     map.set(key, row);
   }

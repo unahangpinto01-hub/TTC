@@ -18,6 +18,7 @@ import { prisma } from "@/lib/db";
 import { DV_FILTERS, dvStatusLabel } from "@/lib/dv";
 import { checkRegisterWhere } from "@/lib/check-register";
 import { voucherAccountTotals } from "@/lib/dv-account-totals";
+import { getPpdReport, getOtherDiscountReport, getCustomerDiscounts } from "@/lib/discount-reports";
 import { reportByExportKey } from "@/lib/report-registry";
 import { canExportReport, reportPerm } from "@/lib/report-access";
 
@@ -479,6 +480,43 @@ export async function GET(req: NextRequest, { params }: { params: { report: stri
         colWidths: scope.combined ? [5, 22, 46, 18, 14] : [5, 46, 18, 14],
         numFmts: [{ col: scope.combined ? 4 : 3, fmt: PESO_FMT, fromRow: HEADER_ROW + 1 }],
       });
+    }
+    case "ppd": {
+      const r = await getPpdReport(range, scope.ids, { customerId: sp.customer || undefined, salespersonId: sp.salesperson || undefined, region: sp.region || undefined, q: sp.q || undefined });
+      const rows: (string | number)[][] = [
+        ["PROMPT PAYMENT DISCOUNT REPORT", tag, scope.label],
+        [],
+        ["Payment Date", ...(scope.combined ? ["Company"] : []), "Customer", "Salesperson", "Area", "Invoice No.", "Invoice Amount", "Payment Amount", "PPD Rate %", "PPD Amount", "Receive Payment No.", "Override Reason"],
+        ...r.rows.map((x) => [x.date.toISOString().slice(0, 10), ...(scope.combined ? [x.company] : []), x.customer, x.salesperson, x.region, x.srNumber, x.invoiceAmount, x.payment, Math.round(x.ppdRate * 10000) / 100, x.ppdAmount, x.prNumber, x.overrideReason ?? ""]),
+        [],
+        ["TOTAL", ...(scope.combined ? [""] : []), "", "", "", "", r.totals.invoiceAmount, r.totals.payments, "", r.totals.ppd, "", ""],
+      ];
+      return sheetResponse(rows, "PPD", `ppd-${tag}.xlsx`);
+    }
+    case "other-discounts": {
+      const r = await getOtherDiscountReport(range, scope.ids, { customerId: sp.customer || undefined, reasonId: sp.reason || undefined, approver: sp.approver || undefined, q: sp.q || undefined });
+      const rows: (string | number)[][] = [
+        ["OTHER DISCOUNT REPORT", tag, scope.label],
+        [],
+        ["BY REASON"], ["Reason", "Count", "Amount"], ...r.byReason.map((x) => [x.reason, x.count, x.amount]), [],
+        ["Date", ...(scope.combined ? ["Company"] : []), "Customer", "Invoice No.", "Receive Payment No.", "Payment Amount", "Other Discount", "Reason", "Remarks", "Approved By"],
+        ...r.rows.map((x) => [x.date.toISOString().slice(0, 10), ...(scope.combined ? [x.company] : []), x.customer, x.srNumber, x.prNumber, x.payment, x.otherDiscount, x.reason, x.remarks ?? "", x.approvedBy]),
+        [],
+        ["TOTAL", ...(scope.combined ? [""] : []), "", "", "", r.totals.payments, r.totals.otherDiscount, "", "", ""],
+      ];
+      return sheetResponse(rows, "Other Discounts", `other-discounts-${tag}.xlsx`);
+    }
+    case "customer-discounts": {
+      const r = await getCustomerDiscounts(range, scope.ids);
+      const rows: (string | number)[][] = [
+        ["CUSTOMER DISCOUNTS", tag, scope.label],
+        [],
+        ["Customer", ...(scope.combined ? ["Company"] : []), "Area", "Sales", "PPD", "Other Discount", "Total Discounts", "% of Sales"],
+        ...r.rows.map((x) => [x.customer, ...(scope.combined ? [x.company] : []), x.region, x.sales, x.ppd, x.otherDiscount, x.totalDiscounts, x.rate ?? ""]),
+        [],
+        ["TOTAL", ...(scope.combined ? [""] : []), "", r.totals.sales, r.totals.ppd, r.totals.otherDiscount, r.totals.totalDiscounts, r.rate ?? ""],
+      ];
+      return sheetResponse(rows, "Customer Discounts", `customer-discounts-${tag}.xlsx`);
     }
     case "collections": {
       const r = await getCollections(range, scope.ids, sp.method ? { method: sp.method } : undefined);

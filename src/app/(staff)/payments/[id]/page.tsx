@@ -6,7 +6,7 @@ import { getActiveCompany } from "@/lib/company";
 import { peso, fmtDate, fmtDateTime } from "@/lib/format";
 import { PageHeader, StatusBadge } from "@/components/ui";
 import { SearchSelect } from "@/components/search-select";
-import { canApprovePayments, unappliedOf, getOutstandingInvoices } from "@/lib/receive-payments";
+import { canApprovePayments, unappliedOf, getOutstandingInvoices, settledOf } from "@/lib/receive-payments";
 import { getAuditTrail } from "@/lib/salespeople";
 import {
   submitForApproval, approveAndPost, cancelReceivePayment, voidPayment, applyCreditAction, unapplyAction,
@@ -27,13 +27,16 @@ export default async function PaymentDetailPage({
       customer: { select: { id: true, businessName: true, province: true } },
       cashAccount: { select: { name: true, type: true } },
       receivedBy: { select: { name: true } },
-      applications: { include: { salesReceipt: { select: { id: true, srNumber: true, amount: true, status: true } } }, orderBy: { createdAt: "asc" } },
+      applications: { include: { salesReceipt: { select: { id: true, srNumber: true, amount: true, status: true } }, otherDiscountReason: { select: { name: true } }, ppdOverrideBy: { select: { name: true } } }, orderBy: { createdAt: "asc" } },
       refunds: { where: { status: "Posted" }, select: { rcNumber: true, amount: true, status: true } },
     },
   });
   if (!rp || rp.companyId !== company.id) notFound();
 
   const applied = rp.applications.reduce((s, a) => s + a.amount, 0);
+  const ppdTotal = rp.applications.reduce((s, a) => s + a.ppdAmount, 0);
+  const otherTotal = rp.applications.reduce((s, a) => s + a.otherDiscount, 0);
+  const settled = rp.applications.reduce((s, a) => s + settledOf(a), 0);
   const unapplied = unappliedOf(rp);
   const canEdit = user.perm === "READ_WRITE";
   const isApprover = canEdit && canApprovePayments(user);
@@ -68,9 +71,12 @@ export default async function PaymentDetailPage({
         <div><p className="text-xs text-gray-500">Cash/Bank Account</p><p className="font-semibold">{rp.cashAccount ? `${rp.cashAccount.name} (${rp.cashAccount.type})` : "—"}</p></div>
         <div><p className="text-xs text-gray-500">Reference #</p><p className="font-semibold">{rp.refNo ?? "—"}</p></div>
         <div><p className="text-xs text-gray-500">Received By</p><p className="font-semibold">{rp.receivedBy?.name ?? "—"}</p></div>
-        <div><p className="text-xs text-gray-500">Payment Amount</p><p className="text-lg font-bold text-emerald-800">{peso(rp.amount)}</p></div>
-        <div><p className="text-xs text-gray-500">Applied</p><p className="text-lg font-bold">{peso(applied)}</p></div>
+        <div><p className="text-xs text-gray-500">Amount Received (cash / bank)</p><p className="text-lg font-bold text-emerald-800">{peso(rp.amount)}</p></div>
+        <div><p className="text-xs text-gray-500">Payment Applied</p><p className="text-lg font-bold">{peso(applied)}</p></div>
         <div><p className="text-xs text-gray-500">Unapplied (credit)</p><p className={`text-lg font-bold ${unapplied > 0.005 ? "text-amber-700" : ""}`}>{peso(unapplied)}</p></div>
+        <div><p className="text-xs text-gray-500">Prompt Payment Discount</p><p className={`text-lg font-bold ${ppdTotal ? "text-red-700" : "text-gray-400"}`}>{peso(ppdTotal)}</p></div>
+        <div><p className="text-xs text-gray-500">Other Discount</p><p className={`text-lg font-bold ${otherTotal ? "text-red-700" : "text-gray-400"}`}>{peso(otherTotal)}</p></div>
+        <div><p className="text-xs text-gray-500">Total AR Settled</p><p className="text-lg font-bold">{peso(settled)}</p></div>
         {rp.remarks && <div className="col-span-2 md:col-span-3"><p className="text-xs text-gray-500">Remarks</p><p>{rp.remarks}</p></div>}
         {rp.voidReason && <div className="col-span-2 md:col-span-3"><p className="text-xs text-gray-500">Void Reason</p><p className="text-red-600">{rp.voidReason}</p></div>}
       </div>
@@ -82,7 +88,10 @@ export default async function PaymentDetailPage({
             <tr>
               <th className="table-th">Invoice</th>
               <th className="table-th text-right">Invoice Amount</th>
-              <th className="table-th text-right">Amount Applied</th>
+              <th className="table-th text-right">Payment</th>
+              <th className="table-th text-right">PPD</th>
+              <th className="table-th text-right">Other Discount</th>
+              <th className="table-th text-right">Total Applied</th>
               <th className="table-th">Invoice Status</th>
               <th className="table-th">Applied On</th>
               {isApprover && rp.status === "Posted" && <th className="table-th" />}
@@ -98,6 +107,15 @@ export default async function PaymentDetailPage({
                 </td>
                 <td className="table-td text-right">{peso(a.salesReceipt.amount)}</td>
                 <td className="table-td text-right font-semibold">{peso(a.amount)}</td>
+                <td className="table-td text-right">
+                  {a.ppdAmount ? <span className="text-red-700">{peso(a.ppdAmount)}</span> : <span className="text-gray-400">—</span>}
+                  {a.ppdAmount > 0 && <span className="block text-[10px] text-gray-500">{a.ppdRate ? `${(a.ppdRate * 100).toFixed(2)}%` : "manual"}{a.ppdOverrideReason ? ` · override by ${a.ppdOverrideBy?.name ?? "?"}: ${a.ppdOverrideReason}` : a.ppdEligible ? "" : " · outside window"}</span>}
+                </td>
+                <td className="table-td text-right">
+                  {a.otherDiscount ? <span className="text-red-700">{peso(a.otherDiscount)}</span> : <span className="text-gray-400">—</span>}
+                  {a.otherDiscount > 0 && <span className="block text-[10px] text-gray-500">{a.otherDiscountReason?.name ?? "—"}{a.otherDiscountRemarks ? ` · ${a.otherDiscountRemarks}` : ""}</span>}
+                </td>
+                <td className="table-td text-right font-semibold">{peso(settledOf(a))}</td>
                 <td className="table-td"><StatusBadge status={a.salesReceipt.status} /></td>
                 <td className="table-td text-xs text-gray-500">{fmtDateTime(a.createdAt)}</td>
                 {isApprover && rp.status === "Posted" && (
@@ -111,8 +129,18 @@ export default async function PaymentDetailPage({
                 )}
               </tr>
             ))}
+            {rp.applications.length > 0 && (
+              <tr className="bg-gray-50 font-semibold">
+                <td className="table-td" colSpan={2}>TOTAL</td>
+                <td className="table-td text-right">{peso(applied)}</td>
+                <td className="table-td text-right text-red-700">{ppdTotal ? peso(ppdTotal) : "—"}</td>
+                <td className="table-td text-right text-red-700">{otherTotal ? peso(otherTotal) : "—"}</td>
+                <td className="table-td text-right">{peso(settled)}</td>
+                <td colSpan={isApprover && rp.status === "Posted" ? 3 : 2} />
+              </tr>
+            )}
             {!rp.applications.length && (
-              <tr><td colSpan={6} className="p-6 text-center text-sm text-gray-500">Nothing applied — the full amount is customer credit.</td></tr>
+              <tr><td colSpan={9} className="p-6 text-center text-sm text-gray-500">Nothing applied — the full amount is customer credit.</td></tr>
             )}
           </tbody>
         </table>

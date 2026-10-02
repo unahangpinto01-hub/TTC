@@ -34,6 +34,7 @@ model User {
   recoveryCodes    RecoveryCode[]
   trustedDevices   TrustedDevice[]
   securityEvents   SecurityEvent[]
+  ppdOverrides     PaymentApplication[]  @relation("PpdOverride")
   grnCreated       GoodsReceipt[]        @relation("GRNCreated")
   grnPosted        GoodsReceipt[]        @relation("GRNPosted")
   receivedPayments ReceivePayment[]
@@ -411,10 +412,17 @@ model Payment {
   method         String // Cash | Check | Bank Transfer | GCash
   refNo          String?
 
+  /// PAYMENT — money received (or a credit memo applied); PPD — a prompt payment discount granted on
+  /// posting; DISCOUNT — another approved discount. Every kind reduces the invoice balance; only
+  /// PAYMENT is cash collected. Reports that measure collections read PAYMENT rows alone.
+  kind String @default("PAYMENT")
+
   // set when this row was produced by posting a Receive Payment application or a
   // credit memo application; legacy rows recorded straight on the invoice stay null
-  application       PaymentApplication?
-  creditApplication CreditApplication?
+  application         PaymentApplication? @relation("AppPayment")
+  ppdApplication      PaymentApplication? @relation("AppPpd")
+  discountApplication PaymentApplication? @relation("AppDiscount")
+  creditApplication   CreditApplication?
 }
 
 /// A cash or bank account per company — a simple register with a running balance,
@@ -549,7 +557,41 @@ model PaymentApplication {
   amount           Float
   createdAt        DateTime       @default(now())
   paymentId        String?        @unique
-  payment          Payment?       @relation(fields: [paymentId], references: [id])
+  payment          Payment?       @relation("AppPayment", fields: [paymentId], references: [id])
+
+  /// prompt payment discount granted with this application: the rate used (0.02 = 2%), the amount,
+  /// whether the invoice was inside the company PPD window on the payment date, and — when it was
+  /// not — who overrode that and why
+  ppdRate               Float                @default(0)
+  ppdAmount             Float                @default(0)
+  ppdEligible           Boolean              @default(true)
+  ppdOverrideReason     String?
+  ppdOverrideById       String?
+  ppdOverrideBy         User?                @relation("PpdOverride", fields: [ppdOverrideById], references: [id])
+  ppdOverrideAt         DateTime?
+  ppdPaymentId          String?              @unique
+  ppdPayment            Payment?             @relation("AppPpd", fields: [ppdPaymentId], references: [id])
+  /// any other approved discount, with its reason from the configurable list
+  otherDiscount         Float                @default(0)
+  otherDiscountReasonId String?
+  otherDiscountReason   OtherDiscountReason? @relation(fields: [otherDiscountReasonId], references: [id])
+  otherDiscountRemarks  String?
+  discountPaymentId     String?              @unique
+  discountPayment       Payment?             @relation("AppDiscount", fields: [discountPaymentId], references: [id])
+}
+
+/// The reasons an Other Discount may be granted for, each booked to its own account (or the
+/// company default when none is set). Data, not program: the office adds and retires them.
+model OtherDiscountReason {
+  id              String     @id @default(cuid())
+  name            String     @unique
+  glAccountId     String?
+  glAccount       GLAccount? @relation("DiscountReasonAccount", fields: [glAccountId], references: [id])
+  requiresRemarks Boolean    @default(false)
+  status          String     @default("Active")
+  sortOrder       Int        @default(0)
+
+  applications PaymentApplication[]
 }
 
 model PurchaseOrder {
@@ -724,6 +766,9 @@ model GLAccount {
   payablesFor             Company[]                 @relation("GLPayables")
   inputVatFor             Company[]                 @relation("GLInputVat")
   ewtPayableFor           Company[]                 @relation("GLEwtPayable")
+  ppdFor                  Company[]                 @relation("GLPpd")
+  otherDiscountFor        Company[]                 @relation("GLOtherDiscount")
+  discountReasons         OtherDiscountReason[]     @relation("DiscountReasonAccount")
   SupplierBillExpenseLine SupplierBillExpenseLine[]
   accountLines            DVAccountLine[]
   dvItems                 DVItem[]
@@ -948,6 +993,16 @@ model Company {
   /// where expanded withholding tax withheld from suppliers is owed to the BIR
   glEwtPayableId      String?
   glEwtPayable        GLAccount? @relation("GLEwtPayable", fields: [glEwtPayableId], references: [id])
+  // collections: where a prompt payment discount and an other discount are booked, and the
+  // PPD policy — default rate (0.02 = 2%), the window in days from the invoice date (0 = no
+  // window, every PPD is entered by hand) and the highest rate allowed (0 = no ceiling)
+  glPpdId             String?
+  glPpd               GLAccount? @relation("GLPpd", fields: [glPpdId], references: [id])
+  glOtherDiscountId   String?
+  glOtherDiscount     GLAccount? @relation("GLOtherDiscount", fields: [glOtherDiscountId], references: [id])
+  ppdRate             Float      @default(0)
+  ppdDays             Int        @default(0)
+  ppdMaxRate          Float      @default(0)
   /// legacy: rows of the retired Expense Voucher module, kept and never read
   expenses            Expense[]
   createdAt           DateTime   @default(now())

@@ -53,6 +53,7 @@ const NAV: { section: string; items: Item[] }[] = [
       { href: "/finance/ledger", label: "Ledger", fn: "ledger" },
       { href: "/finance/coa", label: "Chart of Accounts", fn: "coa" },
       { href: "/finance/withholding-tax", label: "Withholding Tax Rates", fn: "coa" },
+      { href: "/finance/discount-reasons", label: "Other Discount Reasons", fn: "coa" },
       { href: "/reports", label: "Reports", fn: "reports" },
     ],
   },
