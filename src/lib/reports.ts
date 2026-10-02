@@ -437,7 +437,7 @@ export async function getDeliveryPerformance({ from, to }: Range, companyIds: st
 
 /** Journal-style ledger entries derived from sales, purchases, bills, vouchers, payments and collections. */
 export async function getLedger({ from, to }: Range, companyIds: string[]) {
-  const [srs, payments, poIns, bills, supplierPayments, directDvs] = await Promise.all([
+  const [srs, payments, poIns, bills, supplierPayments, directDvs, receipts, otherReceipts] = await Promise.all([
     prisma.salesReceipt.findMany({
       where: { companyId: { in: companyIds }, kind: "SALE", status: { not: "Void" }, invoiceDate: { gte: from, lte: to } },
       include: {
@@ -456,8 +456,9 @@ export async function getLedger({ from, to }: Range, companyIds: string[]) {
     prisma.payment.findMany({
       where: { date: { gte: from, lte: to }, salesReceipt: { companyId: { in: companyIds } } },
       include: {
-        salesReceipt: { include: { company: { select: { companyName: true, glPpd: { select: { code: true, description: true } }, glOtherDiscount: { select: { code: true, description: true } } } }, customer: true } },
+        salesReceipt: { include: { company: { select: { companyName: true, glPpd: { select: { code: true, description: true } }, glOtherDiscount: { select: { code: true, description: true } }, glCustomerAdvances: { select: { code: true, description: true } } } }, customer: true } },
         discountApplication: { select: { otherDiscountReason: { select: { name: true, glAccount: { select: { code: true, description: true } } } } } },
+        application: { select: { fromCredit: true, receivePayment: { select: { cashAccount: { select: { name: true, glAccount: { select: { code: true, description: true } } } } } } } },
       },
     }),
     // receipts at their RECEIVING cost — the product's current cost has since been re-costed by bills
@@ -493,8 +494,28 @@ export async function getLedger({ from, to }: Range, companyIds: string[]) {
       where: { companyId: { in: companyIds }, status: { in: BOOKED_DV_STATUSES }, directAmount: { gt: 0 }, date: { gte: from, lte: to } },
       include: { items: { orderBy: { sortOrder: "asc" }, include: { glAccount: { select: { code: true, description: true } } } }, company: { select: { companyName: true, glPayables: { select: { code: true, description: true } } } } },
     }),
+    // customer money received but not applied to an invoice on posting: it sits in Advances from Customers until it is
+    prisma.receivePayment.findMany({
+      where: { companyId: { in: companyIds }, status: "Posted", date: { gte: from, lte: to } },
+      select: {
+        prNumber: true, date: true, amount: true, method: true,
+        customer: { select: { businessName: true } }, applications: { select: { amount: true, fromCredit: true } },
+        company: { select: { companyName: true, glCustomerAdvances: { select: { code: true, description: true } } } },
+        cashAccount: { select: { name: true, glAccount: { select: { code: true, description: true } } } },
+      },
+    }),
+    // money in that is not a customer collection: each line credits the account it settles or earns
+    prisma.otherReceipt.findMany({
+      where: { companyId: { in: companyIds }, status: "Posted", date: { gte: from, lte: to } },
+      select: {
+        crNumber: true, date: true, payor: true, method: true,
+        company: { select: { companyName: true } }, cashAccount: { select: { name: true, glAccount: { select: { code: true, description: true } } } },
+        lines: { select: { description: true, amount: true, glAccount: { select: { code: true, description: true } } }, orderBy: { sortOrder: "asc" } },
+      },
+    }),
   ]);
   const acctOf = (a: { code: string; description: string } | null, fallback: string) => (a ? `${a.code} ${a.description}` : fallback);
+  const cashOf = (c: { name: string; glAccount: { code: string; description: string } | null } | null | undefined) => (c ? acctOf(c.glAccount, c.name) : "Cash");
   // An invoice is not one credit to "Sales": the products, the freight and any other
   // charge are different revenue and are credited to the accounts chosen on Company
   // Details. Lumping them together overstated product sales in the ledger.
@@ -527,6 +548,8 @@ export async function getLedger({ from, to }: Range, companyIds: string[]) {
       ref: p.refNo || p.salesReceipt.srNumber,
       description: p.kind === "PPD"
         ? `Prompt payment discount — ${p.salesReceipt.customer.businessName} (${p.salesReceipt.srNumber})`
+        : p.application?.fromCredit
+          ? `Customer advance applied — ${p.salesReceipt.customer.businessName} (${p.salesReceipt.srNumber})`
         : p.kind === "DISCOUNT"
           ? `Other discount — ${p.salesReceipt.customer.businessName} (${p.discountApplication?.otherDiscountReason?.name ?? "discount"}, ${p.salesReceipt.srNumber})`
           : `Collection — ${p.salesReceipt.customer.businessName} (${p.method})`,
@@ -534,7 +557,12 @@ export async function getLedger({ from, to }: Range, companyIds: string[]) {
         ? acctOf(p.salesReceipt.company.glPpd, "Sales Discount — Prompt Payment (account not set)")
         : p.kind === "DISCOUNT"
           ? acctOf(p.discountApplication?.otherDiscountReason?.glAccount ?? p.salesReceipt.company.glOtherDiscount, "Sales Discount — Other (account not set)")
-          : "Cash",
+          : p.application?.fromCredit
+            // applied later from the receipt's credit: the money was booked to Advances from Customers when it arrived
+            ? acctOf(p.salesReceipt.company.glCustomerAdvances, "Advances from Customers (account not set)")
+            : p.method === "Credit Memo"
+              ? "Customer Credit (credit memo)"
+              : cashOf(p.application?.receivePayment.cashAccount),
       credit: "Accounts Receivable",
       amount: p.amount,
     })),
@@ -603,6 +631,21 @@ export async function getLedger({ from, to }: Range, companyIds: string[]) {
         rows.push({ ...base, description: `Input VAT — ${b.supplier.name}`, debit: acctOf(b.company.glInputVat, "Input VAT (account not set)"), amount: round2(b.inputVat) });
       return [...rows, ...ewtRow];
     }),
+    ...receipts.flatMap((r) => {
+      const applied = round2(r.applications.filter((a) => !a.fromCredit).reduce((s, a) => s + a.amount, 0));
+      const advance = round2(r.amount - applied);
+      if (advance <= 0.005) return [];
+      return [{
+        date: r.date, company: r.company.companyName, ref: r.prNumber,
+        description: `Customer advance received — ${r.customer.businessName} (${r.method}), not yet applied to an invoice`,
+        debit: cashOf(r.cashAccount), credit: acctOf(r.company.glCustomerAdvances, "Advances from Customers (account not set)"), amount: advance,
+      }];
+    }),
+    ...otherReceipts.flatMap((r) => r.lines.map((l) => ({
+      date: r.date, company: r.company.companyName, ref: r.crNumber,
+      description: `${l.description || l.glAccount.description} — ${r.payor} (${r.method})`,
+      debit: cashOf(r.cashAccount), credit: `${l.glAccount.code} ${l.glAccount.description}`, amount: round2(l.amount),
+    }))),
   ];
   return entries.sort((a, b) => b.date.getTime() - a.date.getTime());
 }

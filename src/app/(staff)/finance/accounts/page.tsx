@@ -29,7 +29,8 @@ export default async function CashAccountsPage({ searchParams }: { searchParams:
                   <th className="table-th">Account</th>
                   <th className="table-th">Type</th>
                   <th className="table-th text-right">Opening Balance</th>
-                  <th className="table-th text-right">Payments In (Posted)</th>
+                  <th className="table-th text-right">Customer Payments In</th>
+                  <th className="table-th text-right">Other Receipts In</th>
                   <th className="table-th text-right">Refunds Out (Posted)</th>
                   <th className="table-th text-right">Balance</th>
                 </tr>
@@ -43,20 +44,21 @@ export default async function CashAccountsPage({ searchParams }: { searchParams:
                     </td>
                     <td className="table-td text-sm text-gray-500">{a.type}</td>
                     <td className="table-td text-right">{peso(a.openingBalance)}</td>
-                    <td className="table-td text-right">{peso(a.inflows)}</td>
+                    <td className="table-td text-right">{peso(a.customerIn)}</td>
+                    <td className="table-td text-right">{a.otherIn ? peso(a.otherIn) : "—"}</td>
                     <td className="table-td text-right text-red-600">{a.outflows ? `(${peso(a.outflows)})` : "—"}</td>
                     <td className="table-td text-right font-bold text-emerald-800">{peso(a.balance)}</td>
                   </tr>
                 ))}
                 {!accounts.length && (
-                  <tr><td colSpan={6} className="p-8 text-center text-sm text-gray-500">No accounts yet — add Cash on Hand and your bank accounts.</td></tr>
+                  <tr><td colSpan={7} className="p-8 text-center text-sm text-gray-500">No accounts yet — add Cash on Hand and your bank accounts.</td></tr>
                 )}
               </tbody>
             </table>
           </div>
           <p className="mt-2 text-xs text-gray-500">
-            Balance = opening balance + Posted customer payments in − Posted customer refunds out. Voiding a
-            document removes its effect again. Other outgoing money (expenses, purchases) is not tracked here.
+            Balance = opening balance + Posted customer payments and other receipts in − Posted customer refunds out. Voiding a
+            document removes its effect again. Outgoing money (cheques and payments on vouchers) is not tracked here.
           </p>
         </div>
         {canAdmin && (

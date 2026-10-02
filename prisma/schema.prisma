@@ -35,6 +35,7 @@ model User {
   trustedDevices   TrustedDevice[]
   securityEvents   SecurityEvent[]
   ppdOverrides     PaymentApplication[]  @relation("PpdOverride")
+  otherReceipts    OtherReceipt[]
   grnCreated       GoodsReceipt[]        @relation("GRNCreated")
   grnPosted        GoodsReceipt[]        @relation("GRNPosted")
   receivedPayments ReceivePayment[]
@@ -442,6 +443,7 @@ model CashAccount {
   payments         ReceivePayment[]
   refundCredits    RefundCredit[]
   supplierPayments SupplierPayment[]
+  otherReceipts    OtherReceipt[]
 }
 
 /// A provisional receipt: one customer payment, applied to one or more of that
@@ -578,6 +580,8 @@ model PaymentApplication {
   otherDiscountRemarks  String?
   discountPaymentId     String?              @unique
   discountPayment       Payment?             @relation("AppDiscount", fields: [discountPaymentId], references: [id])
+  /// true when this application was made later, from the receipt's unapplied credit, rather than at posting
+  fromCredit            Boolean              @default(false)
 }
 
 /// The reasons an Other Discount may be granted for, each booked to its own account (or the
@@ -769,6 +773,8 @@ model GLAccount {
   ppdFor                  Company[]                 @relation("GLPpd")
   otherDiscountFor        Company[]                 @relation("GLOtherDiscount")
   discountReasons         OtherDiscountReason[]     @relation("DiscountReasonAccount")
+  customerAdvancesFor     Company[]                 @relation("GLCustomerAdvances")
+  otherReceiptLines       OtherReceiptLine[]
   SupplierBillExpenseLine SupplierBillExpenseLine[]
   accountLines            DVAccountLine[]
   dvItems                 DVItem[]
@@ -809,6 +815,7 @@ model Employee {
   customers      Customer[]
   forecastLines  ForecastLine[]
   vouchers       DisbursementVoucher[]
+  otherReceipts  OtherReceipt[]
 
   drPrepared        DeliveryReceipt[] @relation("DRPrepared")
   drChecked         DeliveryReceipt[] @relation("DRChecked")
@@ -950,63 +957,66 @@ model AuditLog {
 /// Company master (one row per company). Mapped onto the original CompanySetting table so the
 /// existing Teamagro row (details, logo, print matrix) is preserved unchanged. Never hard-code names.
 model Company {
-  id                  String     @id @default(cuid())
-  companyName         String     @default("")
+  id                   String     @id @default(cuid())
+  companyName          String     @default("")
   /// Short code used inside document numbers (EV-TTC-2026-000001). Set on Company Details;
   /// falls back to the first letters of the name only when it has never been filled in.
-  code                String     @default("")
-  address             String     @default("Philippines")
-  mobileNo            String     @default("")
-  telephoneNo         String     @default("")
-  email               String     @default("")
-  tin                 String     @default("000-000-000-000")
-  sssNo               String     @default("")
-  phicNo              String     @default("")
-  hdmfNo              String     @default("")
-  logoDataUrl         String? // 160x160 image stored inline (no persistent disk on the host)
-  printVisibilityJson String? // {docType: {field: bool}} — which details print on which document
-  status              String     @default("Active") // Active | Inactive
-  isPrimary           Boolean    @default(false) // primary company owns employees/HR/payroll and the dealer portal
+  code                 String     @default("")
+  address              String     @default("Philippines")
+  mobileNo             String     @default("")
+  telephoneNo          String     @default("")
+  email                String     @default("")
+  tin                  String     @default("000-000-000-000")
+  sssNo                String     @default("")
+  phicNo               String     @default("")
+  hdmfNo               String     @default("")
+  logoDataUrl          String? // 160x160 image stored inline (no persistent disk on the host)
+  printVisibilityJson  String? // {docType: {field: bool}} — which details print on which document
+  status               String     @default("Active") // Active | Inactive
+  isPrimary            Boolean    @default(false) // primary company owns employees/HR/payroll and the dealer portal
   // who signs this company's delivery receipts by default — employee links, never names,
   // so a rename in HR flows through and no signatory is hard-coded in a template
-  drPreparedById      String?
-  drPreparedBy        Employee?  @relation("DRDefaultPrepared", fields: [drPreparedById], references: [id])
-  drCheckedById       String?
-  drCheckedBy         Employee?  @relation("DRDefaultChecked", fields: [drCheckedById], references: [id])
-  drApprovedById      String?
-  drApprovedBy        Employee?  @relation("DRDefaultApproved", fields: [drApprovedById], references: [id])
+  drPreparedById       String?
+  drPreparedBy         Employee?  @relation("DRDefaultPrepared", fields: [drPreparedById], references: [id])
+  drCheckedById        String?
+  drCheckedBy          Employee?  @relation("DRDefaultChecked", fields: [drCheckedById], references: [id])
+  drApprovedById       String?
+  drApprovedBy         Employee?  @relation("DRDefaultApproved", fields: [drApprovedById], references: [id])
   // which Chart of Accounts entry each billing component credits — picked, never hard-coded,
   // so freight income stops being lumped into product sales in the ledger
-  glSalesId           String?
-  glSales             GLAccount? @relation("GLSales", fields: [glSalesId], references: [id])
-  glFreightId         String?
-  glFreight           GLAccount? @relation("GLFreight", fields: [glFreightId], references: [id])
-  glOtherId           String?
-  glOther             GLAccount? @relation("GLOther", fields: [glOtherId], references: [id])
+  glSalesId            String?
+  glSales              GLAccount? @relation("GLSales", fields: [glSalesId], references: [id])
+  glFreightId          String?
+  glFreight            GLAccount? @relation("GLFreight", fields: [glFreightId], references: [id])
+  glOtherId            String?
+  glOther              GLAccount? @relation("GLOther", fields: [glOtherId], references: [id])
   // and which entries a posted supplier bill moves — inventory in, the payable, input VAT
-  glInventoryId       String?
-  glInventory         GLAccount? @relation("GLInventory", fields: [glInventoryId], references: [id])
-  glPayablesId        String?
-  glPayables          GLAccount? @relation("GLPayables", fields: [glPayablesId], references: [id])
-  glInputVatId        String?
-  glInputVat          GLAccount? @relation("GLInputVat", fields: [glInputVatId], references: [id])
+  glInventoryId        String?
+  glInventory          GLAccount? @relation("GLInventory", fields: [glInventoryId], references: [id])
+  glPayablesId         String?
+  glPayables           GLAccount? @relation("GLPayables", fields: [glPayablesId], references: [id])
+  glInputVatId         String?
+  glInputVat           GLAccount? @relation("GLInputVat", fields: [glInputVatId], references: [id])
   /// where expanded withholding tax withheld from suppliers is owed to the BIR
-  glEwtPayableId      String?
-  glEwtPayable        GLAccount? @relation("GLEwtPayable", fields: [glEwtPayableId], references: [id])
+  glEwtPayableId       String?
+  glEwtPayable         GLAccount? @relation("GLEwtPayable", fields: [glEwtPayableId], references: [id])
   // collections: where a prompt payment discount and an other discount are booked, and the
   // PPD policy — default rate (0.02 = 2%), the window in days from the invoice date (0 = no
   // window, every PPD is entered by hand) and the highest rate allowed (0 = no ceiling)
-  glPpdId             String?
-  glPpd               GLAccount? @relation("GLPpd", fields: [glPpdId], references: [id])
-  glOtherDiscountId   String?
-  glOtherDiscount     GLAccount? @relation("GLOtherDiscount", fields: [glOtherDiscountId], references: [id])
-  ppdRate             Float      @default(0)
-  ppdDays             Int        @default(0)
-  ppdMaxRate          Float      @default(0)
+  glPpdId              String?
+  glPpd                GLAccount? @relation("GLPpd", fields: [glPpdId], references: [id])
+  glOtherDiscountId    String?
+  glOtherDiscount      GLAccount? @relation("GLOtherDiscount", fields: [glOtherDiscountId], references: [id])
+  /// where money received from a customer sits until it is applied to an invoice (Advances from Customers)
+  glCustomerAdvancesId String?
+  glCustomerAdvances   GLAccount? @relation("GLCustomerAdvances", fields: [glCustomerAdvancesId], references: [id])
+  ppdRate              Float      @default(0)
+  ppdDays              Int        @default(0)
+  ppdMaxRate           Float      @default(0)
   /// legacy: rows of the retired Expense Voucher module, kept and never read
-  expenses            Expense[]
-  createdAt           DateTime   @default(now())
-  updatedAt           DateTime   @updatedAt
+  expenses             Expense[]
+  createdAt            DateTime   @default(now())
+  updatedAt            DateTime   @updatedAt
 
   products          Product[]
   accountingPeriods AccountingPeriod[]
@@ -1023,6 +1033,7 @@ model Company {
   bills             SupplierBill[]
   vouchers          DisbursementVoucher[]
   supplierPayments  SupplierPayment[]
+  otherReceipts     OtherReceipt[]
   notifications     Notification[]
 
   @@map("CompanySetting")
@@ -1381,4 +1392,51 @@ model DVAccountLine {
   sortOrder   Int                 @default(0)
 
   @@index([dvId])
+}
+
+/// Money received that is not a customer collection — an employee repaying an advance or a
+/// salary loan, a director returning a loan, an affiliate settling advances, bank interest,
+/// a refund from a supplier. The mirror of the any-payee voucher: the payor is an employee
+/// or a typed name, and each line credits the account the money settles or earns. Posting
+/// books Dr cash/bank account / Cr each line; only a Posted receipt touches the bank balance
+/// and the ledger.
+model OtherReceipt {
+  id            String       @id @default(cuid())
+  companyId     String
+  company       Company      @relation(fields: [companyId], references: [id])
+  crNumber      String // CR-2026-00001, per company
+  date          DateTime     @default(now())
+  payor         String
+  employeeId    String?
+  employee      Employee?    @relation(fields: [employeeId], references: [id])
+  amount        Float // the lines added up — the money actually received
+  method        String // Cash | Check | Bank Transfer | GCash
+  cashAccountId String?
+  cashAccount   CashAccount? @relation(fields: [cashAccountId], references: [id])
+  refNo         String?
+  checkNo       String?
+  checkDate     DateTime?
+  remarks       String?
+  receivedById  String?
+  receivedBy    User?        @relation(fields: [receivedById], references: [id])
+  status        String       @default("Draft") // Draft | Pending Approval | Posted | Cancelled | Void
+  voidReason    String?
+  postedAt      DateTime?
+  createdAt     DateTime     @default(now())
+
+  lines OtherReceiptLine[]
+
+  @@unique([companyId, crNumber])
+  @@index([companyId, status, date])
+}
+
+model OtherReceiptLine {
+  id          String       @id @default(cuid())
+  receiptId   String
+  receipt     OtherReceipt @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+  glAccountId String
+  glAccount   GLAccount    @relation(fields: [glAccountId], references: [id])
+  description String
+  amount      Float
+  sortOrder   Int          @default(0)
 }

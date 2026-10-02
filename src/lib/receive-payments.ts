@@ -276,7 +276,7 @@ export async function applyCredit(
       data: { salesReceiptId, amount, date: new Date(), method: rp.method, refNo: rp.prNumber, kind: PAYMENT_KINDS.payment },
     });
     await tx.paymentApplication.create({
-      data: { receivePaymentId, salesReceiptId, amount, paymentId: pay.id },
+      data: { receivePaymentId, salesReceiptId, amount, paymentId: pay.id, fromCredit: true },
     });
   });
   await refreshInvoiceStatus(salesReceiptId);
@@ -365,19 +365,22 @@ export async function settlementHistory(salesReceiptId: string): Promise<{ rows:
   return { rows, amount: sr.amount, balance: remaining };
 }
 
-/** A cash/bank account's running balance: opening + posted payments in − posted refunds out. */
+/** A cash/bank account's running balance: opening + posted customer payments and other receipts in − posted refunds out. */
 export async function cashAccountBalances(companyId: string) {
   const accounts = await prisma.cashAccount.findMany({
     where: { companyId },
     include: {
       payments: { where: { status: "Posted" }, select: { amount: true } },
+      otherReceipts: { where: { status: "Posted" }, select: { amount: true } },
       refundCredits: { where: { status: "Posted", type: "Refund" }, select: { amount: true } },
       glAccount: { select: { code: true, description: true } },
     },
     orderBy: { name: "asc" },
   });
   return accounts.map((a) => {
-    const inflows = round2(a.payments.reduce((s, p) => s + p.amount, 0));
+    const customerIn = round2(a.payments.reduce((s, p) => s + p.amount, 0));
+    const otherIn = round2(a.otherReceipts.reduce((s, r) => s + r.amount, 0));
+    const inflows = round2(customerIn + otherIn);
     const outflows = round2(a.refundCredits.reduce((s, r) => s + r.amount, 0));
     return {
       id: a.id,
@@ -386,6 +389,8 @@ export async function cashAccountBalances(companyId: string) {
       status: a.status,
       glCode: a.glAccount ? `${a.glAccount.code} ${a.glAccount.description}` : null,
       openingBalance: a.openingBalance,
+      customerIn,
+      otherIn,
       inflows,
       outflows,
       balance: round2(a.openingBalance + inflows - outflows),

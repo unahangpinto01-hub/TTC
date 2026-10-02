@@ -19,6 +19,7 @@ import { DV_FILTERS, dvStatusLabel } from "@/lib/dv";
 import { checkRegisterWhere } from "@/lib/check-register";
 import { voucherAccountTotals } from "@/lib/dv-account-totals";
 import { getPpdReport, getOtherDiscountReport, getCustomerDiscounts } from "@/lib/discount-reports";
+import { getCashReceiptsJournal } from "@/lib/cash-receipts";
 import { reportByExportKey } from "@/lib/report-registry";
 import { canExportReport, reportPerm } from "@/lib/report-access";
 
@@ -480,6 +481,22 @@ export async function GET(req: NextRequest, { params }: { params: { report: stri
         colWidths: scope.combined ? [5, 22, 46, 18, 14] : [5, 46, 18, 14],
         numFmts: [{ col: scope.combined ? 4 : 3, fmt: PESO_FMT, fromRow: HEADER_ROW + 1 }],
       });
+    }
+    case "cash-receipts": {
+      const j = await getCashReceiptsJournal(range, scope.ids, { cashAccountId: sp.account || undefined, q: sp.q || undefined });
+      const rows: (string | number)[][] = [
+        ["CASH RECEIPTS JOURNAL", tag, scope.label],
+        [],
+        ["Date", "No.", "Type", ...(scope.combined ? ["Company"] : []), "Payor", "Reference", "Method", "Bank / Cash (Dr)", "Amount", "Credited to (code)", "Credited to (account)", "Credit amount"],
+        ...j.rows.flatMap((r) => r.credits.map((c, i) => [i === 0 ? r.date.toISOString().slice(0, 10) : "", i === 0 ? r.docNo : "", i === 0 ? r.kind : "", ...(scope.combined ? [i === 0 ? r.company : ""] : []), i === 0 ? r.payor : "", i === 0 ? r.reference : "", i === 0 ? r.method : "", i === 0 ? r.cashAccount : "", i === 0 ? r.amount : "", c.code, c.name, c.amount])),
+        [],
+        ["TOTAL CASH IN", "", "", ...(scope.combined ? [""] : []), "", "", "", "", j.total, "", "", j.total],
+        [],
+        ["CREDITS BY ACCOUNT"], ["Code", "Account", "Receipts", "Amount"], ...j.byAccount.map((a) => [a.code, a.name, a.count, a.amount]),
+        [],
+        ["DEBITS BY BANK / CASH ACCOUNT"], ["Account", "Receipts", "Amount"], ...j.byCash.map((a) => [a.name, a.count, a.amount]),
+      ];
+      return sheetResponse(rows, "Cash Receipts", `cash-receipts-${tag}.xlsx`);
     }
     case "ppd": {
       const r = await getPpdReport(range, scope.ids, { customerId: sp.customer || undefined, salespersonId: sp.salesperson || undefined, region: sp.region || undefined, q: sp.q || undefined });

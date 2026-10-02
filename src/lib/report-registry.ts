@@ -60,6 +60,8 @@ export const REPORTS: ReportDef[] = [
     href: "/finance/ar", desc: "Receivables by days past due" },
   { key: "collections", title: "Collections", module: "Finance", fn: "ar", exportKey: "collections",
     href: "/reports/collections", desc: "Payments received by method, customer and company" },
+  { key: "cash-receipts", title: "Cash Receipts Journal", module: "Finance", fn: "ar", exportKey: "cash-receipts",
+    href: "/reports/cash-receipts", desc: "Every peso in, by date — customer collections and other receipts, with the account each part was credited to" },
   { key: "ppd", title: "Prompt Payment Discount Report", module: "Finance", fn: "ar", exportKey: "ppd",
     href: "/reports/ppd", desc: "Every prompt payment discount granted on a posted receive payment — invoice, payment, rate, amount, overrides" },
   { key: "other-discounts", title: "Other Discount Report", module: "Finance", fn: "ar", exportKey: "other-discounts",

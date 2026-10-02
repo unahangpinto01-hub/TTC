@@ -10,7 +10,7 @@ export default async function CompanyPage({ searchParams }: { searchParams: { sa
   const user = await requirePerm("company");
   const company = await getActiveCompany(user);
   const readOnly = user.perm !== "READ_WRITE";
-  const policy = await prisma.company.findUniqueOrThrow({ where: { id: company.id }, select: { glPpdId: true, glOtherDiscountId: true, ppdRate: true, ppdDays: true, ppdMaxRate: true } });
+  const policy = await prisma.company.findUniqueOrThrow({ where: { id: company.id }, select: { glPpdId: true, glOtherDiscountId: true, glCustomerAdvancesId: true, ppdRate: true, ppdDays: true, ppdMaxRate: true } });
   const pct = (r: number) => (Math.round(r * 10000) / 100).toString();
   // signatory pickers list the active employee master — never a hard-coded name
   // income accounts to map the billing components to — the Chart of Accounts is the source
@@ -168,15 +168,27 @@ export default async function CompanyPage({ searchParams }: { searchParams: { sa
         </div>
 
         <div>
-          <p className="mb-1 font-semibold">Collections — Discounts and PPD Policy</p>
+          <p className="mb-1 font-semibold">Collections — Discounts, Customer Advances and PPD Policy</p>
           <p className="mb-3 text-xs text-gray-500">
             Where a prompt payment discount and an other discount granted on a receive payment are booked (an other-discount reason with
             its own account overrides the default), and the PPD policy: the default rate offered, the window in days from the invoice date
             inside which PPD is granted by rule (0 = no window, every PPD is entered by hand), and the highest rate allowed (0 = no ceiling).
+            Money received from a customer and not yet applied to an invoice is booked to the customer advances account until it is applied.
             PPD is computed on the gross invoice amount, pro-rated to what the payment settles. Outside the window only a user with PPD
             Override may grant it, with a reason.
           </p>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div>
+              <label className="label">Customer advances (unapplied receipts)</label>
+              {readOnly ? (
+                <p className="text-sm font-semibold">{(() => { const a = bsAccounts.find((x) => x.id === policy.glCustomerAdvancesId); return a ? `${a.code} ${a.description}` : "— not set —"; })()}</p>
+              ) : (
+                <select name="glCustomerAdvancesId" defaultValue={policy.glCustomerAdvancesId ?? ""} className="input">
+                  <option value="">— not set —</option>
+                  {bsAccounts.map((a) => <option key={a.id} value={a.id}>{a.code} · {a.description}</option>)}
+                </select>
+              )}
+            </div>
             {([
               ["glPpdId", "Prompt Payment Discount account", policy.glPpdId],
               ["glOtherDiscountId", "Other Discount account (default)", policy.glOtherDiscountId],
