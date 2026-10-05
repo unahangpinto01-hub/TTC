@@ -10,6 +10,7 @@ import { PageHeader, StatusBadge } from "@/components/ui";
 import { voidSR } from "../../invoicing/actions";
 import { getActiveCompany } from "@/lib/company";
 import { settlementHistory } from "@/lib/receive-payments";
+import { setCustomerRef } from "../actions";
 
 export default async function SRDetailPage({ params, searchParams }: { params: { id: string }; searchParams: { error?: string } }) {
   const user = await requirePerm("invoices");
@@ -46,6 +47,7 @@ export default async function SRDetailPage({ params, searchParams }: { params: {
       <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-5">
         <div className="card py-3"><p className="text-xs text-gray-500">Customer</p>
           <Link href={`/customers/${sr.customerId}`} className="text-sm font-semibold text-emerald-700 hover:underline">{sr.customer.businessName}</Link>
+          {sr.customerRef && <p className="text-xs text-gray-500">Ref {sr.customerRef}</p>}
         </div>
         <div className="card py-3"><p className="text-xs text-gray-500">Invoice Date</p><p className="text-sm font-semibold">{fmtDate(sr.invoiceDate)}</p></div>
         <div className="card py-3"><p className="text-xs text-gray-500">Term / Due</p><p className="text-sm font-semibold">{termLabel(sr.term)}</p><p className="text-xs text-gray-500">{fmtDate(sr.dueDate)}</p></div>
@@ -158,6 +160,13 @@ export default async function SRDetailPage({ params, searchParams }: { params: {
           </p>
         ) : (
           <p className="text-xs text-gray-500">Entered on <Link href="/finance/opening-balances" className="text-emerald-700 hover:underline">Opening Balances</Link>, where it can be withdrawn while nothing has been applied to it.</p>
+        )}
+        {canFinance && sr.status !== "Void" && (
+          <form action={setCustomerRef} className="flex items-center gap-2">
+            <input type="hidden" name="srId" value={sr.id} />
+            <input name="customerRef" defaultValue={sr.customerRef ?? ""} placeholder="customer's reference (e.g. TRA 6554)" className="input w-56 py-1 text-sm" />
+            <button className="btn-secondary py-1" type="submit">Save reference</button>
+          </form>
         )}
         {user.role === "SUPER_ADMIN" && sr.status !== "Void" && !sr.payments.length && sr.kind !== "OPENING" && (
           <form action={voidSR} className="flex gap-2">

@@ -53,14 +53,21 @@ export function ppdEligible(invoice: { kind: string; invoiceDate: Date }, paymen
 }
 
 /**
- * The PPD a payment earns at a rate: the discount is a share of the GROSS invoice amount,
- * pro-rated to what the payment settles. A payment P settles P / (1 − r) of the invoice, of
- * which r is the discount — so a full prompt payment of 98,000 on a 100,000 invoice at 2%
- * earns 2,000, and 49,000 earns 1,000.
+ * The PPD a payment earns at a rate: the discount is a share of the PRODUCT amount of the
+ * invoice — freight and other charges are never discounted — pro-rated to what the payment
+ * settles. An invoice of goods G and charges F is settled in full by G(1 − r) + F of cash;
+ * a payment P settles the share P / (G(1 − r) + F) of it and earns that share of G·r. So on
+ * a 100,000 invoice of goods alone at 2%, 98,000 earns 2,000 and 49,000 earns 1,000; on
+ * 65,040 of goods plus 500 freight at 6%, the full 61,637.60 earns 3,902.40 — 6% of the goods.
  */
-export function ppdFor(payment: number, rate: number): number {
+export function ppdFor(payment: number, rate: number, goods?: number, total?: number): number {
   if (payment <= 0 || rate <= 0 || rate >= 1) return 0;
-  return round2((payment * rate) / (1 - rate));
+  const g = goods ?? payment / (1 - rate), t = total ?? g;
+  const f = Math.max(0, t - g);
+  if (goods === undefined || g <= 0) return round2((payment * rate) / (1 - rate));
+  const settleable = g * (1 - rate) + f;
+  const share = settleable > 0 ? Math.min(1, payment / settleable) : 0;
+  return round2(share * g * rate);
 }
 
 /* ------------------------------------------------------------------ outstanding */
@@ -72,6 +79,10 @@ export type OutstandingInvoice = {
   invoiceDate: Date;
   dueDate: Date;
   amount: number;
+  /** the product amount — what PPD is computed on; freight and other charges are not discounted */
+  discountable: number;
+  /** the customer's own reference (TRA number) or, on an opening balance, its memo */
+  reference: string | null;
   /** payments recorded directly on the invoice (the pre-module rows) */
   previousPayments: number;
   /** everything that arrived through posted applications: cash, PPD and other discounts */
@@ -98,6 +109,8 @@ export async function getOutstandingInvoices(customerId: string, companyId: stri
         invoiceDate: sr.invoiceDate,
         dueDate: sr.dueDate,
         amount: sr.amount,
+        discountable: sr.kind === "OPENING" ? sr.amount : round2(Math.max(0, sr.amount - sr.freightCharge - sr.otherCharges)),
+        reference: sr.customerRef ?? sr.memo ?? null,
         previousPayments: round2(previous),
         creditApplied: round2(applied),
         outstanding: round2(sr.amount - previous - applied),

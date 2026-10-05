@@ -94,7 +94,7 @@ export default async function EditPaymentPage({
         <EntryTable
           invoices={invoices.map((i) => {
             const dl = ppdDeadline(i, settings);
-            return { id: i.id, srNumber: i.srNumber, kind: i.kind, invoiceDate: fmtDate(i.invoiceDate), dueDate: fmtDate(i.dueDate), amount: i.amount, outstanding: i.outstanding, ppdDeadline: dl ? ymd(dl) : null };
+            return { id: i.id, srNumber: i.srNumber, kind: i.kind, invoiceDate: fmtDate(i.invoiceDate), dueDate: fmtDate(i.dueDate), amount: i.amount, discountable: i.discountable, reference: i.reference, outstanding: i.outstanding, ppdDeadline: dl ? ymd(dl) : null };
           })}
           initial={initial}
           initialPayment={rp.amount}

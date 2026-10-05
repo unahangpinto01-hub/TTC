@@ -4,8 +4,14 @@ import { useEffect, useRef, useState } from "react";
 
 const peso = (n: number) => "₱" + n.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const round2 = (n: number) => Math.round(n * 100) / 100;
-/** the PPD a payment earns at a rate — the same rule as the server (see lib/receive-payments ppdFor) */
-const ppdFor = (payment: number, rate: number) => (payment <= 0 || rate <= 0 || rate >= 1 ? 0 : round2((payment * rate) / (1 - rate)));
+/** the PPD a payment earns at a rate — the same rule as the server (see lib/receive-payments ppdFor):
+    a share of the PRODUCT amount only, pro-rated to what the payment settles; freight is never discounted */
+const ppdFor = (payment: number, rate: number, goods: number, total: number) => {
+  if (payment <= 0 || rate <= 0 || rate >= 1 || goods <= 0) return 0;
+  const settleable = goods * (1 - rate) + Math.max(0, total - goods);
+  const share = settleable > 0 ? Math.min(1, payment / settleable) : 0;
+  return round2(share * goods * rate);
+};
 
 export type OutstandingRow = {
   id: string;
@@ -14,6 +20,10 @@ export type OutstandingRow = {
   invoiceDate: string; // pre-formatted
   dueDate: string;
   amount: number;
+  /** the product amount PPD is computed on (the invoice less freight and other charges) */
+  discountable: number;
+  /** the customer's own reference (TRA number), or an opening balance's memo */
+  reference: string | null;
   outstanding: number;
   /** yyyy-mm-dd of the last day PPD may be granted by rule; null = no window (manual PPD) */
   ppdDeadline: string | null;
@@ -79,13 +89,15 @@ export function EntryTable({
 
   const row = (id: string) => rows[id] ?? blank();
   const set = (id: string, patch: Partial<RowState>) => setRows((prev) => ({ ...prev, [id]: { ...(prev[id] ?? blank()), ...patch } }));
+  const basis = (id: string) => { const i = invoices.find((x) => x.id === id); return { goods: i?.discountable ?? 0, total: i?.amount ?? 0 }; };
   const setAmount = (id: string, amount: string) => {
     const r = row(id);
+    const { goods, total } = basis(id);
     const patch: Partial<RowState> = { amount };
-    if (!r.ppdManual && num(r.rate) > 0) patch.ppd = ppdFor(num(amount), num(r.rate) / 100).toFixed(2);
+    if (!r.ppdManual && num(r.rate) > 0) patch.ppd = ppdFor(num(amount), num(r.rate) / 100, goods, total).toFixed(2);
     set(id, patch);
   };
-  const setRate = (id: string, rate: string) => set(id, { rate, ppdManual: false, ppd: num(rate) > 0 ? ppdFor(num(row(id).amount), num(rate) / 100).toFixed(2) : "" });
+  const setRate = (id: string, rate: string) => { const { goods, total } = basis(id); set(id, { rate, ppdManual: false, ppd: num(rate) > 0 ? ppdFor(num(row(id).amount), num(rate) / 100, goods, total).toFixed(2) : "" }); };
   const setPpd = (id: string, ppd: string) => set(id, { ppd, ppdManual: true });
 
   const eligible = (i: OutstandingRow) => i.kind !== "OPENING" && (!i.ppdDeadline || !paymentDate || paymentDate <= i.ppdDeadline);
@@ -139,7 +151,7 @@ export function EntryTable({
         <button type="button" onClick={fillFrom} disabled={payment <= 0} className="btn-secondary">Auto-apply oldest first</button>
         {canDiscount && (
           <p className="pb-2 text-xs text-gray-500">
-            PPD {ppdDefaultRatePct > 0 ? `defaults to ${ppdDefaultRatePct}%` : "rate is typed per invoice"}{ppdHasWindow ? " and is granted by rule only inside the window shown under each invoice" : "; the company has set no window, so every PPD is entered by hand"}{ppdMaxRatePct > 0 ? `, ceiling ${ppdMaxRatePct}%` : ""}. PPD is computed on the gross invoice amount, pro-rated to what the payment settles.
+            PPD {ppdDefaultRatePct > 0 ? `defaults to ${ppdDefaultRatePct}%` : "rate is typed per invoice"}{ppdHasWindow ? " and is granted by rule only inside the window shown under each invoice" : "; the company has set no window, so every PPD is entered by hand"}{ppdMaxRatePct > 0 ? `, ceiling ${ppdMaxRatePct}%` : ""}. PPD is computed on the product amount of the invoice — freight and other charges are never discounted — pro-rated to what the payment settles.
           </p>
         )}
       </div>
@@ -171,6 +183,8 @@ export function EntryTable({
                   <td className="table-td align-top">
                     <span className="font-mono text-xs font-semibold">{i.srNumber}</span>
                     {i.kind === "OPENING" && <span className="ml-1 rounded bg-amber-100 px-1 text-[10px] font-semibold text-amber-800">opening</span>}
+                    {i.reference && <span className="block text-[11px] text-gray-600">{i.reference}</span>}
+                    {i.discountable < i.amount && i.kind !== "OPENING" && <span className="block text-[10px] text-gray-400">goods {peso(i.discountable)} · PPD base</span>}
                     {c.problems.map((p, k) => <p key={k} className="mt-1 max-w-[220px] text-[11px] font-semibold text-red-600">{p}</p>)}
                   </td>
                   <td className="table-td align-top text-xs">{i.invoiceDate}</td>

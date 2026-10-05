@@ -378,6 +378,8 @@ model SalesReceipt {
   kind              String           @default("SALE")
   /// what an opening balance stands for (the statement or invoices it came from)
   memo              String?
+  /// the customer's own reference for this invoice (e.g. the TRA number DCS quotes on its remittances)
+  customerRef       String?
   deliveryReceiptId String?          @unique
   deliveryReceipt   DeliveryReceipt? @relation(fields: [deliveryReceiptId], references: [id], onDelete: Restrict)
   customerId        String

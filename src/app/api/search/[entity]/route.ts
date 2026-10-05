@@ -135,13 +135,13 @@ export async function GET(req: NextRequest, { params }: { params: { entity: stri
           // open=1 → invoices still carrying a balance; customer narrows to one account
           ...(sp.get("open") === "1" ? { status: { in: ["Open", "Partial"] } } : {}),
           ...(sp.get("customer") ? { customerId: sp.get("customer")! } : {}),
-          ...(q ? { srNumber: starts(q) } : {}),
+          ...(q ? { OR: [{ srNumber: starts(q) }, { customerRef: { contains: q, mode: "insensitive" } }] } : {}),
         },
-        select: { id: true, srNumber: true, status: true, customer: { select: { businessName: true } } },
+        select: { id: true, srNumber: true, status: true, customerRef: true, customer: { select: { businessName: true } } },
         orderBy: { srNumber: "desc" },
         take: limit,
       });
-      hits = rows.map((r) => ({ id: r.id, label: r.srNumber, sub: `${r.customer.businessName} · ${r.status}` }));
+      hits = rows.map((r) => ({ id: r.id, label: r.srNumber, sub: `${r.customer.businessName}${r.customerRef ? ` · ${r.customerRef}` : ""} · ${r.status}` }));
       break;
     }
     case "purchase-orders": {

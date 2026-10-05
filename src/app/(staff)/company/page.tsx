@@ -174,7 +174,7 @@ export default async function CompanyPage({ searchParams }: { searchParams: { sa
             its own account overrides the default), and the PPD policy: the default rate offered, the window in days from the invoice date
             inside which PPD is granted by rule (0 = no window, every PPD is entered by hand), and the highest rate allowed (0 = no ceiling).
             Money received from a customer and not yet applied to an invoice is booked to the customer advances account until it is applied.
-            PPD is computed on the gross invoice amount, pro-rated to what the payment settles. Outside the window only a user with PPD
+            PPD is computed on the product amount of the invoice (freight and other charges are never discounted), pro-rated to what the payment settles. Outside the window only a user with PPD
             Override may grant it, with a reason.
           </p>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
