@@ -333,12 +333,16 @@ export async function createCashAccount(formData: FormData) {
   if (glAccountId && !(await prisma.gLAccount.findFirst({ where: { id: glAccountId, status: "Active" } }))) {
     redirect("/finance/accounts?error=name");
   }
+  const openingRaw = String(formData.get("openingDate") || "");
   await prisma.cashAccount.create({
     data: {
       companyId: company.id,
       name,
       type: ["Cash", "Bank", "E-Wallet"].includes(String(formData.get("type"))) ? String(formData.get("type")) : "Cash",
+      bankName: String(formData.get("bankName") || "").trim().slice(0, 80) || null,
+      accountNo: String(formData.get("accountNo") || "").trim().slice(0, 40) || null,
       openingBalance: round2(Number(formData.get("openingBalance")) || 0),
+      openingDate: /^\d{4}-\d{2}-\d{2}$/.test(openingRaw) ? new Date(openingRaw) : null,
       glAccountId,
     },
   });

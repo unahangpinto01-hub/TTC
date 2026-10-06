@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { requirePerm } from "@/lib/auth";
 import { getActiveCompany } from "@/lib/company";
 import { peso } from "@/lib/format";
@@ -41,7 +42,8 @@ export default async function CashAccountsPage({ searchParams }: { searchParams:
                 {accounts.map((a) => (
                   <tr key={a.id} className={a.status !== "Active" ? "opacity-50" : ""}>
                     <td className="table-td font-medium">
-                      {a.name}
+                      <Link href={`/finance/accounts/${a.id}`} className="text-emerald-700 hover:underline">{a.name}</Link>
+                      {a.accountNo && <span className="block text-[10px] text-gray-500">{a.bankName ? `${a.bankName} · ` : ""}{a.accountNo}</span>}
                       {a.glCode && <span className="block font-mono text-[10px] text-gray-400">{a.glCode}</span>}
                     </td>
                     <td className="table-td text-sm text-gray-500">{a.type}</td>
@@ -88,7 +90,10 @@ export default async function CashAccountsPage({ searchParams }: { searchParams:
               <label className="label">Type</label>
               <select name="type" className="input"><option>Cash</option><option>Bank</option><option>E-Wallet</option></select>
             </div>
+            <div><label className="label">Bank</label><input name="bankName" className="input" placeholder="e.g. BDO, Metrobank" /></div>
+            <div><label className="label">Account number</label><input name="accountNo" className="input font-mono" placeholder="as the bank knows it" /></div>
             <div><label className="label">Opening Balance (₱)</label><input name="openingBalance" type="number" step="0.01" defaultValue="0" className="input" /></div>
+            <div><label className="label">Opening balance as of</label><input name="openingDate" type="date" className="input" /></div>
             <div>
               <label className="label">GL Account (Chart of Accounts)</label>
               <SearchSelect entity="gl-accounts" name="glAccountId" params={{ statement: "BS" }} placeholder="e.g. 110007 Petty Cash Fund" />

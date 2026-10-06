@@ -413,6 +413,8 @@ export async function cashAccountBalances(companyId: string) {
       name: a.name,
       type: a.type,
       status: a.status,
+      bankName: a.bankName,
+      accountNo: a.accountNo,
       glCode: a.glAccount ? `${a.glAccount.code} ${a.glAccount.description}` : null,
       openingBalance: a.openingBalance,
       customerIn,

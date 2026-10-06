@@ -437,7 +437,14 @@ model CashAccount {
   company        Company    @relation(fields: [companyId], references: [id])
   name           String // e.g. Cash on Hand, BDO Checking #1234
   type           String     @default("Cash") // Cash | Bank | E-Wallet
+  /// the bank and the account number as the bank knows them (e.g. BDO, 7660022498) — so a transfer
+  /// or a cheque can be tied to the real account, not just a nickname
+  bankName       String?
+  accountNo      String?
   openingBalance Float      @default(0)
+  /// the day the opening balance was taken as of; movements before it are not expected
+  openingDate    DateTime?
+  notes          String?
   status         String     @default("Active")
   // which Chart of Accounts entry this physical account books to
   glAccountId    String?
