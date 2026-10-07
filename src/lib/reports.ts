@@ -498,9 +498,9 @@ export async function getLedger({ from, to }: Range, companyIds: string[]) {
     prisma.receivePayment.findMany({
       where: { companyId: { in: companyIds }, status: "Posted", date: { gte: from, lte: to } },
       select: {
-        prNumber: true, date: true, amount: true, method: true,
+        prNumber: true, date: true, amount: true, method: true, affiliateAmount: true,
         customer: { select: { businessName: true } }, applications: { select: { amount: true, fromCredit: true } },
-        company: { select: { companyName: true, glCustomerAdvances: { select: { code: true, description: true } } } },
+        company: { select: { companyName: true, glCustomerAdvances: { select: { code: true, description: true } }, glAffiliateAdvances: { select: { code: true, description: true } }, affiliateCompany: { select: { companyName: true } } } },
         cashAccount: { select: { name: true, glAccount: { select: { code: true, description: true } } } },
       },
     }),
@@ -633,13 +633,20 @@ export async function getLedger({ from, to }: Range, companyIds: string[]) {
     }),
     ...receipts.flatMap((r) => {
       const applied = round2(r.applications.filter((a) => !a.fromCredit).reduce((s, a) => s + a.amount, 0));
-      const advance = round2(r.amount - applied);
-      if (advance <= 0.005) return [];
-      return [{
+      const advance = round2(r.amount - applied - r.affiliateAmount);
+      const rows = [];
+      // the affiliate's share of the deposit: cash in, owed to the affiliate until remitted
+      if (r.affiliateAmount > 0.005) rows.push({
+        date: r.date, company: r.company.companyName, ref: r.prNumber,
+        description: `Collected for ${r.company.affiliateCompany?.companyName ?? "affiliate"} — ${r.customer.businessName} (${r.method}), owed to the affiliate`,
+        debit: cashOf(r.cashAccount), credit: acctOf(r.company.glAffiliateAdvances, "Advances from Affiliate (account not set)"), amount: r.affiliateAmount,
+      });
+      if (advance > 0.005) rows.push({
         date: r.date, company: r.company.companyName, ref: r.prNumber,
         description: `Customer advance received — ${r.customer.businessName} (${r.method}), not yet applied to an invoice`,
         debit: cashOf(r.cashAccount), credit: acctOf(r.company.glCustomerAdvances, "Advances from Customers (account not set)"), amount: advance,
-      }];
+      });
+      return rows;
     }),
     ...otherReceipts.flatMap((r) => r.lines.map((l) => ({
       date: r.date, company: r.company.companyName, ref: r.crNumber,

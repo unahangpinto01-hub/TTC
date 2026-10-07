@@ -10,8 +10,13 @@ export default async function CompanyPage({ searchParams }: { searchParams: { sa
   const user = await requirePerm("company");
   const company = await getActiveCompany(user);
   const readOnly = user.perm !== "READ_WRITE";
-  const policy = await prisma.company.findUniqueOrThrow({ where: { id: company.id }, select: { glPpdId: true, glOtherDiscountId: true, glCustomerAdvancesId: true, ppdRate: true, ppdDays: true, ppdMaxRate: true } });
+  const policy = await prisma.company.findUniqueOrThrow({ where: { id: company.id }, select: { glPpdId: true, glOtherDiscountId: true, glCustomerAdvancesId: true, ppdRate: true, ppdDays: true, ppdMaxRate: true, affiliateCompanyId: true, glAffiliateAdvancesId: true, affiliateHeldCashAccountId: true } });
   const pct = (r: number) => (Math.round(r * 10000) / 100).toString();
+  // intercompany collections: the other active companies and this company's own cash accounts
+  const [otherCompanies, ownCashAccounts] = await Promise.all([
+    prisma.company.findMany({ where: { status: "Active", NOT: { id: company.id } }, select: { id: true, companyName: true }, orderBy: { companyName: "asc" } }),
+    prisma.cashAccount.findMany({ where: { companyId: company.id, status: "Active" }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
+  ]);
   // signatory pickers list the active employee master — never a hard-coded name
   // income accounts to map the billing components to — the Chart of Accounts is the source
   const incomeAccounts = await prisma.gLAccount.findMany({
@@ -57,6 +62,7 @@ export default async function CompanyPage({ searchParams }: { searchParams: { sa
       {searchParams.error === "name" && <p className="mb-4 rounded-xl bg-red-50 p-3 text-sm text-red-700">Company name is required.</p>}
       {searchParams.error === "logo" && <p className="mb-4 rounded-xl bg-red-50 p-3 text-sm text-red-700">The logo must be a PNG or JPG image.</p>}
       {searchParams.error === "logosize" && <p className="mb-4 rounded-xl bg-red-50 p-3 text-sm text-red-700">That logo file is too large even after resizing — try a simpler image.</p>}
+      {searchParams.error === "affiliate" && <p className="mb-4 rounded-xl bg-red-50 p-3 text-sm text-red-700">The affiliate settings point at a company, account or cash account that does not exist or is inactive.</p>}
 
       <form action={updateCompany} className="card space-y-4">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -215,6 +221,52 @@ export default async function CompanyPage({ searchParams }: { searchParams: { sa
             <div><label className="label">PPD default rate %</label><input name="ppdRatePct" type="number" step="0.01" min={0} max={99} defaultValue={pct(policy.ppdRate)} disabled={readOnly} className="input" /></div>
             <div><label className="label">PPD window (days from invoice)</label><input name="ppdDays" type="number" step="1" min={0} defaultValue={policy.ppdDays} disabled={readOnly} className="input" /></div>
             <div><label className="label">PPD ceiling rate %</label><input name="ppdMaxRatePct" type="number" step="0.01" min={0} max={99} defaultValue={pct(policy.ppdMaxRate)} disabled={readOnly} className="input" /></div>
+          </div>
+        </div>
+
+        <div>
+          <p className="mb-1 font-semibold">Intercompany Collections</p>
+          <p className="mb-3 text-xs text-gray-500">
+            A customer of both companies may pay one lump sum into this company&rsquo;s bank. On a Receive Payment the part that settles the
+            affiliate&rsquo;s invoices is entered as &ldquo;collected for the affiliate&rdquo;: it is booked to the Advances from Affiliate account
+            (owed to them) and a mirrored receipt is drafted in the affiliate&rsquo;s books on the cash account the affiliate names here as
+            &ldquo;held by&rdquo; — the account that stands for money the other company holds for it.
+          </p>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div>
+              <label className="label">Affiliate company</label>
+              {readOnly ? (
+                <p className="text-sm font-semibold">{otherCompanies.find((c) => c.id === policy.affiliateCompanyId)?.companyName ?? "— not set —"}</p>
+              ) : (
+                <select name="affiliateCompanyId" defaultValue={policy.affiliateCompanyId ?? ""} className="input">
+                  <option value="">— not set —</option>
+                  {otherCompanies.map((c) => <option key={c.id} value={c.id}>{c.companyName}</option>)}
+                </select>
+              )}
+            </div>
+            <div>
+              <label className="label">Advances from Affiliate account (owed to them)</label>
+              {readOnly ? (
+                <p className="text-sm font-semibold">{(() => { const a = bsAccounts.find((x) => x.id === policy.glAffiliateAdvancesId); return a ? `${a.code} ${a.description}` : "— not set —"; })()}</p>
+              ) : (
+                <select name="glAffiliateAdvancesId" defaultValue={policy.glAffiliateAdvancesId ?? ""} className="input">
+                  <option value="">— not set —</option>
+                  {bsAccounts.map((a) => <option key={a.id} value={a.id}>{a.code} · {a.description}</option>)}
+                </select>
+              )}
+            </div>
+            <div>
+              <label className="label">Our &ldquo;held by affiliate&rdquo; cash account</label>
+              {readOnly ? (
+                <p className="text-sm font-semibold">{ownCashAccounts.find((c) => c.id === policy.affiliateHeldCashAccountId)?.name ?? "— not set —"}</p>
+              ) : (
+                <select name="affiliateHeldCashAccountId" defaultValue={policy.affiliateHeldCashAccountId ?? ""} className="input">
+                  <option value="">— not set —</option>
+                  {ownCashAccounts.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              )}
+              <p className="mt-1 text-[11px] text-gray-500">Where the affiliate&rsquo;s collections for us land (e.g. &ldquo;Held by Teamagro&rdquo;, mapped to Advances to Affiliate).</p>
+            </div>
           </div>
         </div>
 

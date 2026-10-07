@@ -31,6 +31,8 @@ export type OutstandingRow = {
 
 export type InitialApp = { amount: number; ppdRatePct: number; ppd: number; other: number; reasonId: string; remarks: string; override: string };
 export type ReasonOption = { id: string; name: string; requiresRemarks: boolean };
+/** the company this one may collect for: a lump-sum deposit can carry the affiliate's share */
+export type AffiliateOption = { name: string; initialAmount?: number; initialRemarks?: string };
 
 type RowState = { amount: string; rate: string; ppd: string; ppdManual: boolean; other: string; reasonId: string; remarks: string; override: string };
 
@@ -52,6 +54,7 @@ export function EntryTable({
   ppdDefaultRatePct,
   ppdMaxRatePct,
   ppdHasWindow,
+  affiliate,
 }: {
   invoices: OutstandingRow[];
   /** prefill when editing a draft: invoice id -> what was applied */
@@ -63,6 +66,8 @@ export function EntryTable({
   ppdDefaultRatePct: number;
   ppdMaxRatePct: number;
   ppdHasWindow: boolean;
+  /** set when the company has an affiliate it may collect for; absent = no such section */
+  affiliate?: AffiliateOption | null;
 }) {
   const [rows, setRows] = useState<Record<string, RowState>>(() =>
     Object.fromEntries(
@@ -73,6 +78,7 @@ export function EntryTable({
     )
   );
   const [paymentAmount, setPaymentAmount] = useState(initialPayment ? initialPayment.toFixed(2) : "");
+  const [affiliateAmount, setAffiliateAmount] = useState(affiliate?.initialAmount ? affiliate.initialAmount.toFixed(2) : "");
   const [paymentDate, setPaymentDate] = useState("");
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -125,12 +131,13 @@ export function EntryTable({
     t.problems += c.problems.length;
     return t;
   }, { outstandingSelected: 0, payment: 0, ppd: 0, other: 0, total: 0, problems: 0 });
-  const unapplied = round2(payment - totals.payment);
+  const forAffiliate = affiliate ? num(affiliateAmount) : 0;
+  const unapplied = round2(payment - totals.payment - forAffiliate);
   const remainingAr = round2(totals.outstandingSelected - totals.total);
 
   const fillFrom = () => {
     // spread the money over the oldest invoices first; discounts are the user's call
-    let left = payment;
+    let left = round2(payment - forAffiliate);
     const next: Record<string, RowState> = {};
     for (const i of invoices) {
       const take = Math.min(left, i.outstanding);
@@ -252,6 +259,26 @@ export function EntryTable({
         </table>
       </div>
 
+      {affiliate && (
+        <div className="card max-w-2xl text-sm">
+          <p className="mb-1 font-semibold">Collected for {affiliate.name}</p>
+          <p className="mb-2 text-xs text-gray-500">
+            When the customer&rsquo;s deposit also pays {affiliate.name}&rsquo;s invoices, enter that part here. It is never applied to our invoices:
+            it is booked as owed to {affiliate.name}, and on posting a mirrored receipt is drafted in {affiliate.name}&rsquo;s books for its staff to apply.
+          </p>
+          <div className="flex flex-wrap items-end gap-3">
+            <div>
+              <label className="label">Amount for {affiliate.name} (₱)</label>
+              <input name="affiliateAmount" type="number" min={0} step="0.01" value={affiliateAmount} placeholder="0.00" onChange={(e) => setAffiliateAmount(e.target.value)} className="input w-40 text-right" />
+            </div>
+            <div className="min-w-[280px] flex-1">
+              <label className="label">Which of their invoices / note</label>
+              <input name="affiliateRemarks" defaultValue={affiliate.initialRemarks ?? ""} placeholder="e.g. their TRA 6823" className="input" />
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="card max-w-md text-sm">
         <p className="mb-2 font-semibold">Payment Summary</p>
         <dl className="space-y-1">
@@ -262,9 +289,10 @@ export function EntryTable({
           <Line k="Total Discounts" v={round2(totals.ppd + totals.other)} />
           <Line k="Total AR Settled" v={totals.total} bold />
           <Line k="Remaining AR (on the invoices selected)" v={remainingAr} />
+          {affiliate && forAffiliate > 0 && <Line k={`Collected for ${affiliate.name} (owed to them)`} v={forAffiliate} />}
           <Line k="Unapplied (customer credit)" v={Math.max(0, unapplied)} warn={unapplied > 0.005} />
         </dl>
-        {unapplied < -0.005 && <p className="mt-2 font-semibold text-red-600">Applied more than the amount received — reduce a payment application.</p>}
+        {unapplied < -0.005 && <p className="mt-2 font-semibold text-red-600">Applied more than the amount received{forAffiliate > 0 ? " (the affiliate's part counts against it)" : ""} — reduce a payment application.</p>}
         {totals.problems > 0 && <p className="mt-2 font-semibold text-red-600">Fix the invoices marked in red before saving.</p>}
       </div>
     </div>

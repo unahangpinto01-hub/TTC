@@ -66,6 +66,9 @@ function readEntry(formData: FormData) {
     checkNo: String(formData.get("checkNo") || "").trim() || null,
     checkDate: formData.get("checkDate") ? new Date(String(formData.get("checkDate"))) : null,
     remarks: String(formData.get("remarks") || "").trim() || null,
+    // the part of the money that is the affiliate company's collection, not ours
+    affiliateAmount: round2(Math.max(0, Number(formData.get("affiliateAmount")) || 0)),
+    affiliateRemarks: String(formData.get("affiliateRemarks") || "").trim().slice(0, 300) || null,
     applications,
   };
 }
@@ -83,8 +86,9 @@ async function checkApplications(
   fail: (message: string) => never
 ) {
   const appliedTotal = round2(e.applications.reduce((s, a) => s + a.amount, 0));
-  if (appliedTotal > e.amount + 0.005) fail("Applied amounts exceed the amount received. Discounts are not money received — only the payment column counts against it.");
-  const company = await prisma.company.findUniqueOrThrow({ where: { id: companyId }, select: { ppdRate: true, ppdDays: true, ppdMaxRate: true } });
+  if (appliedTotal + e.affiliateAmount > e.amount + 0.005) fail(e.affiliateAmount > 0 ? "Applied amounts plus the part collected for the affiliate exceed the amount received." : "Applied amounts exceed the amount received. Discounts are not money received — only the payment column counts against it.");
+  const company = await prisma.company.findUniqueOrThrow({ where: { id: companyId }, select: { ppdRate: true, ppdDays: true, ppdMaxRate: true, affiliateCompanyId: true, glAffiliateAdvancesId: true } });
+  if (e.affiliateAmount > 0 && (!company.affiliateCompanyId || !company.glAffiliateAdvancesId)) fail("Collecting for an affiliate needs the affiliate company and the Advances from Affiliate account set on Company Details.");
   const settings = ppdSettingsOf(company);
   const canDiscount = getPerm(user, "paymentDiscounts") === "READ_WRITE";
   const canOverride = getPerm(user, "ppdOverride") === "READ_WRITE";
@@ -163,6 +167,8 @@ export async function createReceivePayment(formData: FormData) {
       checkNo: e.method === "Check" ? e.checkNo : null,
       checkDate: e.method === "Check" ? e.checkDate : null,
       remarks: e.remarks,
+      affiliateAmount: e.affiliateAmount,
+      affiliateRemarks: e.affiliateAmount > 0 ? e.affiliateRemarks : null,
       receivedById: user.id,
       status: "Draft",
       applications: { create: applications },
@@ -170,7 +176,7 @@ export async function createReceivePayment(formData: FormData) {
   });
   await logAudit({
     entity: "ReceivePayment", entityId: rp.id, action: "CREATED",
-    detail: `${prNumber} drafted: ₱${e.amount.toFixed(2)} received, ${applications.length} invoice(s) selected${discountNote(applications)}`,
+    detail: `${prNumber} drafted: ₱${e.amount.toFixed(2)} received, ${applications.length} invoice(s) selected${discountNote(applications)}${e.affiliateAmount > 0 ? `, collected for affiliate ₱${e.affiliateAmount.toFixed(2)}` : ""}`,
     actorName: user.name, actorEmail: user.email,
   });
   revalidatePath("/payments");
@@ -187,24 +193,28 @@ export async function updateReceivePayment(formData: FormData) {
   if (rp.status !== "Draft") err(id, "Only a Draft can be edited.");
   const e = readEntry(formData);
   if (e.amount <= 0) err(id, "Amount received must be more than zero.");
+  // a mirrored receipt stands for money the affiliate holds: its amount, date and account are fixed by the originating receipt
+  if (rp.mirrorOfId && (Math.abs(e.amount - rp.amount) > 0.005 || e.affiliateAmount > 0)) err(id, "This receipt mirrors a collection made by the affiliate — its amount is fixed there; only the invoices it is applied to can change.");
   const applications = await checkApplications(e, company.id, rp.customerId, user, (m) => err(id, m));
   await prisma.$transaction([
     prisma.paymentApplication.deleteMany({ where: { receivePaymentId: id } }),
     prisma.receivePayment.update({
       where: { id },
       data: {
-        date: e.date, amount: e.amount, method: e.method, cashAccountId: e.cashAccountId,
+        date: rp.mirrorOfId ? rp.date : e.date, amount: e.amount, method: e.method, cashAccountId: rp.mirrorOfId ? rp.cashAccountId : e.cashAccountId,
         refNo: e.refNo,
         checkNo: e.method === "Check" ? e.checkNo : null,
         checkDate: e.method === "Check" ? e.checkDate : null,
         remarks: e.remarks,
+        affiliateAmount: e.affiliateAmount,
+        affiliateRemarks: e.affiliateAmount > 0 ? e.affiliateRemarks : null,
         applications: { create: applications },
       },
     }),
   ]);
   await logAudit({
     entity: "ReceivePayment", entityId: id, action: "EDITED",
-    detail: `${rp.prNumber} draft edited: ₱${e.amount.toFixed(2)} received, ${applications.length} invoice(s)${discountNote(applications)}`,
+    detail: `${rp.prNumber} draft edited: ₱${e.amount.toFixed(2)} received, ${applications.length} invoice(s)${discountNote(applications)}${e.affiliateAmount > 0 ? `, collected for affiliate ₱${e.affiliateAmount.toFixed(2)}` : ""}`,
     actorName: user.name, actorEmail: user.email,
   });
   revalidatePath(`/payments/${id}`);

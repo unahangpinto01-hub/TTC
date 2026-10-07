@@ -27,6 +27,9 @@ export default async function PaymentDetailPage({
       customer: { select: { id: true, businessName: true, province: true } },
       cashAccount: { select: { name: true, type: true } },
       receivedBy: { select: { name: true } },
+      company: { select: { affiliateCompany: { select: { companyName: true } } } },
+      mirror: { select: { prNumber: true, status: true, company: { select: { companyName: true } } } },
+      mirrorOf: { select: { prNumber: true, amount: true, cashAccount: { select: { name: true } }, company: { select: { companyName: true } } } },
       applications: { include: { salesReceipt: { select: { id: true, srNumber: true, amount: true, status: true } }, otherDiscountReason: { select: { name: true } }, ppdOverrideBy: { select: { name: true } } }, orderBy: { createdAt: "asc" } },
       refunds: { where: { status: "Posted" }, select: { rcNumber: true, amount: true, status: true } },
     },
@@ -77,6 +80,20 @@ export default async function PaymentDetailPage({
         <div><p className="text-xs text-gray-500">Prompt Payment Discount</p><p className={`text-lg font-bold ${ppdTotal ? "text-red-700" : "text-gray-400"}`}>{peso(ppdTotal)}</p></div>
         <div><p className="text-xs text-gray-500">Other Discount</p><p className={`text-lg font-bold ${otherTotal ? "text-red-700" : "text-gray-400"}`}>{peso(otherTotal)}</p></div>
         <div><p className="text-xs text-gray-500">Total AR Settled</p><p className="text-lg font-bold">{peso(settled)}</p></div>
+        {rp.affiliateAmount > 0 && (
+          <div className="col-span-2 md:col-span-3 rounded-lg bg-sky-50 px-3 py-2">
+            <p className="text-xs text-sky-700">Collected for {rp.company.affiliateCompany?.companyName ?? "affiliate"} — owed to them, not applied to our invoices</p>
+            <p className="text-lg font-bold text-sky-900">{peso(rp.affiliateAmount)}{rp.affiliateRemarks ? <span className="ml-2 text-sm font-normal text-sky-800">{rp.affiliateRemarks}</span> : null}</p>
+            {rp.mirror && <p className="text-xs text-sky-800">Their receipt: {rp.mirror.prNumber} ({rp.mirror.company.companyName}) — <StatusBadge status={rp.mirror.status} /></p>}
+            {!rp.mirror && rp.status !== "Posted" && <p className="text-xs text-sky-800">A mirrored receipt is drafted in {rp.company.affiliateCompany?.companyName ?? "the affiliate"}&rsquo;s books when this one is posted.</p>}
+          </div>
+        )}
+        {rp.mirrorOf && (
+          <div className="col-span-2 md:col-span-3 rounded-lg bg-sky-50 px-3 py-2">
+            <p className="text-xs text-sky-700">Collected by {rp.mirrorOf.company.companyName} on our behalf</p>
+            <p className="text-sm text-sky-900">Their receipt {rp.mirrorOf.prNumber} carries this {peso(rp.amount)}; the money sits with them, which is why this receipt lands on &ldquo;{rp.cashAccount?.name ?? "the held-by account"}&rdquo;.</p>
+          </div>
+        )}
         {rp.remarks && <div className="col-span-2 md:col-span-3"><p className="text-xs text-gray-500">Remarks</p><p>{rp.remarks}</p></div>}
         {rp.voidReason && <div className="col-span-2 md:col-span-3"><p className="text-xs text-gray-500">Void Reason</p><p className="text-red-600">{rp.voidReason}</p></div>}
       </div>

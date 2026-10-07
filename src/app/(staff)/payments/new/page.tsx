@@ -44,7 +44,7 @@ export default async function NewPaymentPage({
 
   const today = new Date().toISOString().slice(0, 10);
   const [policy, reasons] = await Promise.all([
-    prisma.company.findUniqueOrThrow({ where: { id: company.id }, select: { ppdRate: true, ppdDays: true, ppdMaxRate: true } }),
+    prisma.company.findUniqueOrThrow({ where: { id: company.id }, select: { ppdRate: true, ppdDays: true, ppdMaxRate: true, glAffiliateAdvancesId: true, affiliateCompany: { select: { companyName: true } } } }),
     prisma.otherDiscountReason.findMany({ where: { status: "Active" }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }], select: { id: true, name: true, requiresRemarks: true } }),
   ]);
   const canDiscount = getPerm(user, "paymentDiscounts") === "READ_WRITE";
@@ -134,6 +134,7 @@ export default async function NewPaymentPage({
             ppdDefaultRatePct={Math.round(policy.ppdRate * 10000) / 100}
             ppdMaxRatePct={Math.round(policy.ppdMaxRate * 10000) / 100}
             ppdHasWindow={policy.ppdDays > 0}
+            affiliate={policy.affiliateCompany && policy.glAffiliateAdvancesId ? { name: policy.affiliateCompany.companyName } : null}
           />
 
           <div className="flex items-center gap-3">

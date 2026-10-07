@@ -1,5 +1,6 @@
 import { prisma } from "./db";
 import { logAudit } from "./salespeople";
+import { nextDocNumber } from "./numbering";
 
 /** Receive Payment core: the one place that posts, voids, applies and unapplies.
  *
@@ -137,9 +138,11 @@ export function unappliedOf(p: {
   amount: number;
   applications: { amount: number }[];
   refunds?: { amount: number; status: string }[];
+  /** the part owed to the affiliate company — never this customer's credit here */
+  affiliateAmount?: number;
 }): number {
   const drawn = (p.refunds ?? []).filter((r) => r.status === "Posted").reduce((s, r) => s + r.amount, 0);
-  return round2(p.amount - p.applications.reduce((s, a) => s + a.amount, 0) - drawn);
+  return round2(p.amount - p.applications.reduce((s, a) => s + a.amount, 0) - drawn - (p.affiliateAmount ?? 0));
 }
 
 /** Payment + PPD + Other Discount — what one application settles on its invoice. */
@@ -163,11 +166,12 @@ export async function customerCredit(customerId: string, companyId: string): Pro
 /** Post: validate every application against the invoice's live balance, then create the
     Payment rows (cash, PPD, other discount) and refresh each invoice. Throws with a readable
     message on any problem. */
-export async function postReceivePayment(id: string, actor: { name: string; email: string }) {
+export async function postReceivePayment(id: string, actor: { id?: string; name: string; email: string }) {
   const rp = await prisma.receivePayment.findUniqueOrThrow({
     where: { id },
     include: {
-      company: { select: { ppdRate: true, ppdDays: true, ppdMaxRate: true } },
+      company: { select: { companyName: true, code: true, ppdRate: true, ppdDays: true, ppdMaxRate: true, glAffiliateAdvancesId: true, affiliateCompany: { select: { id: true, companyName: true, affiliateHeldCashAccountId: true } } } },
+      customer: { select: { businessName: true } },
       applications: { include: { salesReceipt: { include: { payments: true } }, otherDiscountReason: { select: { name: true, status: true } } } },
     },
   });
@@ -176,7 +180,15 @@ export async function postReceivePayment(id: string, actor: { name: string; emai
   // bank balance would ever carry it and the cash would be untraceable
   if (!rp.cashAccountId) throw new Error("Assign a cash/bank account before posting — the money must land somewhere.");
   const appliedTotal = round2(rp.applications.reduce((s, a) => s + a.amount, 0));
-  if (appliedTotal > rp.amount + 0.005) throw new Error("Applied more than the payment amount.");
+  if (appliedTotal + rp.affiliateAmount > rp.amount + 0.005) throw new Error("Applied more than the payment amount (the part collected for the affiliate counts against it too).");
+  // money collected for the affiliate: this company must know who the affiliate is, where the
+  // liability is booked, and the affiliate must name the account its mirrored receipt lands on
+  const affiliate = rp.company.affiliateCompany;
+  if (rp.affiliateAmount > 0) {
+    if (!affiliate) throw new Error("This company has no affiliate company set (Company Details) — nothing can be collected for one.");
+    if (!rp.company.glAffiliateAdvancesId) throw new Error("Set the Advances from Affiliate account on Company Details before posting a collection for the affiliate.");
+    if (!affiliate.affiliateHeldCashAccountId) throw new Error(`${affiliate.companyName} has no "held by" cash account set on its Company Details — the mirrored receipt has nowhere to land.`);
+  }
   const settings = ppdSettingsOf(rp.company);
 
   for (const a of rp.applications) {
@@ -213,6 +225,20 @@ export async function postReceivePayment(id: string, actor: { name: string; emai
       await tx.paymentApplication.update({ where: { id: a.id }, data });
     }
     await tx.receivePayment.update({ where: { id }, data: { status: "Posted" } });
+    // the affiliate's share becomes a draft receipt in ITS books, on the account that stands for
+    // "cash held by us": its staff apply it to its own invoices and post it there
+    if (rp.affiliateAmount > 0 && affiliate && affiliate.affiliateHeldCashAccountId && !rp.mirrorOfId) {
+      const mirrorNo = await nextDocNumber("PR", affiliate.id, rp.date);
+      const m = await tx.receivePayment.create({
+        data: {
+          companyId: affiliate.id, prNumber: mirrorNo, customerId: rp.customerId, date: rp.date, amount: rp.affiliateAmount, method: rp.method,
+          cashAccountId: affiliate.affiliateHeldCashAccountId, refNo: `${rp.company.code || rp.company.companyName} ${rp.prNumber}`, checkNo: rp.checkNo, checkDate: rp.checkDate,
+          remarks: `Collected by ${rp.company.companyName} on our behalf (${rp.prNumber}${rp.affiliateRemarks ? `: ${rp.affiliateRemarks}` : ""}) — apply to our invoices and post.`.slice(0, 500),
+          receivedById: actor.id ?? rp.receivedById, status: "Draft", mirrorOfId: rp.id,
+        },
+      });
+      await tx.auditLog.create({ data: { entity: "ReceivePayment", entityId: m.id, action: "CREATED", detail: `${mirrorNo} drafted automatically: ₱${rp.affiliateAmount.toFixed(2)} from ${rp.customer.businessName} collected by ${rp.company.companyName} (${rp.prNumber}), held there — apply to our invoices`, actorName: actor.name, actorEmail: actor.email, companyId: affiliate.id } });
+    }
   });
   for (const a of rp.applications) await refreshInvoiceStatus(a.salesReceiptId);
 
@@ -228,7 +254,9 @@ export async function postReceivePayment(id: string, actor: { name: string; emai
     entity: "ReceivePayment", entityId: id, action: "POSTED",
     detail: `${rp.prNumber} posted: ₱${rp.amount.toFixed(2)} received, applied ₱${appliedTotal.toFixed(2)} to ${rp.applications.length} invoice(s)` +
       (ppdTotal ? `, PPD ₱${ppdTotal.toFixed(2)}` : "") + (otherTotal ? `, other discounts ₱${otherTotal.toFixed(2)}` : "") +
-      `, AR settled ₱${round2(appliedTotal + ppdTotal + otherTotal).toFixed(2)}, unapplied ₱${(rp.amount - appliedTotal).toFixed(2)}` +
+      `, AR settled ₱${round2(appliedTotal + ppdTotal + otherTotal).toFixed(2)}` +
+      (rp.affiliateAmount > 0 ? `, collected for ${affiliate?.companyName ?? "affiliate"} ₱${rp.affiliateAmount.toFixed(2)} (mirrored receipt drafted there)` : "") +
+      `, unapplied ₱${round2(rp.amount - appliedTotal - rp.affiliateAmount).toFixed(2)}` +
       (parts.length ? ` · ${parts.join(" · ")}` : ""),
     actorName: actor.name, actorEmail: actor.email,
   });
@@ -238,12 +266,19 @@ export async function postReceivePayment(id: string, actor: { name: string; emai
 export async function voidReceivePayment(id: string, reason: string, actor: { name: string; email: string }) {
   const rp = await prisma.receivePayment.findUniqueOrThrow({
     where: { id },
-    include: { applications: true },
+    include: { applications: true, mirror: { select: { id: true, prNumber: true, status: true, company: { select: { companyName: true } } } } },
   });
   if (rp.status !== "Posted") throw new Error(`Only a Posted payment can be voided (this one is ${rp.status}).`);
+  // the affiliate's mirrored receipt follows: a draft is cancelled with this one, a posted one
+  // has already settled the affiliate's invoices and must be voided there first
+  if (rp.mirror && rp.mirror.status === "Posted") throw new Error(`${rp.mirror.prNumber} in ${rp.mirror.company.companyName} was posted from this receipt — void it there first.`);
   await prisma.$transaction(async (tx) => {
     for (const a of rp.applications) await detachPayments(tx, a);
     await tx.receivePayment.update({ where: { id }, data: { status: "Void", voidReason: reason || "voided" } });
+    if (rp.mirror && (rp.mirror.status === "Draft" || rp.mirror.status === "Pending Approval")) {
+      await tx.receivePayment.update({ where: { id: rp.mirror.id }, data: { status: "Cancelled" } });
+      await tx.auditLog.create({ data: { entity: "ReceivePayment", entityId: rp.mirror.id, action: "CANCELLED", detail: `${rp.mirror.prNumber} cancelled: the originating receipt ${rp.prNumber} was voided (${reason || "no reason given"})`, actorName: actor.name, actorEmail: actor.email } });
+    }
   });
   for (const a of rp.applications) await refreshInvoiceStatus(a.salesReceiptId);
   const ppdTotal = round2(rp.applications.reduce((s, a) => s + a.ppdAmount, 0));

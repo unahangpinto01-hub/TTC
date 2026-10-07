@@ -35,7 +35,7 @@ export default async function EditPaymentPage({
     reasonId: a.otherDiscountReasonId ?? "", remarks: a.otherDiscountRemarks ?? "", override: a.ppdOverrideReason ?? "",
   }]));
   const [policy, reasons] = await Promise.all([
-    prisma.company.findUniqueOrThrow({ where: { id: company.id }, select: { ppdRate: true, ppdDays: true, ppdMaxRate: true } }),
+    prisma.company.findUniqueOrThrow({ where: { id: company.id }, select: { ppdRate: true, ppdDays: true, ppdMaxRate: true, glAffiliateAdvancesId: true, affiliateCompany: { select: { companyName: true } } } }),
     prisma.otherDiscountReason.findMany({ where: { status: "Active" }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }], select: { id: true, name: true, requiresRemarks: true } }),
   ]);
   const canDiscount = getPerm(user, "paymentDiscounts") === "READ_WRITE";
@@ -49,6 +49,11 @@ export default async function EditPaymentPage({
         ← Back to {rp.prNumber}
       </Link>
       <PageHeader title={`Edit Draft ${rp.prNumber} — ${rp.customer.businessName}`} />
+      {rp.mirrorOfId && (
+        <p className="mb-3 rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-800">
+          This receipt mirrors a collection the affiliate made for us: the amount, date and account are fixed by the originating receipt. Apply it to our invoices and save.
+        </p>
+      )}
       {searchParams.error && (
         <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700"><span className="font-semibold">⚠ Not saved.</span> {searchParams.error}</p>
       )}
@@ -104,6 +109,7 @@ export default async function EditPaymentPage({
           ppdDefaultRatePct={Math.round(policy.ppdRate * 10000) / 100}
           ppdMaxRatePct={Math.round(policy.ppdMaxRate * 10000) / 100}
           ppdHasWindow={policy.ppdDays > 0}
+          affiliate={!rp.mirrorOfId && policy.affiliateCompany && policy.glAffiliateAdvancesId ? { name: policy.affiliateCompany.companyName, initialAmount: rp.affiliateAmount, initialRemarks: rp.affiliateRemarks ?? "" } : null}
         />
 
         <button className="btn-primary" type="submit">Save Changes</button>

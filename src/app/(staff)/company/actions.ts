@@ -51,6 +51,19 @@ export async function updateCompany(formData: FormData) {
     if (!acct) redirect("/company?error=glaccount");
     update[field] = acct.id;
   }
+  // intercompany collections: the affiliate (another active company), the liability account the
+  // affiliate's share is booked to, and this company's cash account that stands for money the
+  // affiliate holds for it — each checked to exist, blank clears
+  for (const [field, check] of [
+    ["affiliateCompanyId", async (id: string) => !!(await prisma.company.findFirst({ where: { id, status: "Active", NOT: { id: active.id } }, select: { id: true } }))],
+    ["glAffiliateAdvancesId", async (id: string) => !!(await prisma.gLAccount.findFirst({ where: { id, status: "Active" }, select: { id: true } }))],
+    ["affiliateHeldCashAccountId", async (id: string) => !!(await prisma.cashAccount.findFirst({ where: { id, companyId: active.id, status: "Active" }, select: { id: true } }))],
+  ] as const) {
+    const raw = String(formData.get(field) || "");
+    if (!raw) { update[field] = null; continue; }
+    if (!(await check(raw))) redirect("/company?error=affiliate");
+    update[field] = raw;
+  }
   if (removeLogo) {
     update.logoDataUrl = null;
   } else if (logo) {

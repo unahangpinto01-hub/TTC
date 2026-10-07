@@ -35,8 +35,8 @@ export async function getCashReceiptsJournal(range: Range, companyIds: string[],
     prisma.receivePayment.findMany({
       where: { companyId: { in: companyIds }, status: "Posted", date: { gte: range.from, lte: range.to }, ...(f.cashAccountId ? { cashAccountId: f.cashAccountId } : {}) },
       select: {
-        id: true, prNumber: true, date: true, amount: true, method: true, refNo: true, checkNo: true,
-        customer: { select: { businessName: true } }, company: { select: { companyName: true, glCustomerAdvances: { select: { code: true, description: true } } } },
+        id: true, prNumber: true, date: true, amount: true, method: true, refNo: true, checkNo: true, affiliateAmount: true,
+        customer: { select: { businessName: true } }, company: { select: { companyName: true, glCustomerAdvances: { select: { code: true, description: true } }, glAffiliateAdvances: { select: { code: true, description: true } } } },
         cashAccount: { select: { name: true } }, applications: { select: { amount: true, fromCredit: true } },
       },
       orderBy: [{ date: "asc" }, { prNumber: "asc" }],
@@ -54,9 +54,10 @@ export async function getCashReceiptsJournal(range: Range, companyIds: string[],
   const rows: JournalRow[] = [
     ...receipts.map((r) => {
       const applied = round2(r.applications.filter((a) => !a.fromCredit).reduce((s, a) => s + a.amount, 0));
-      const advance = round2(r.amount - applied);
+      const advance = round2(r.amount - applied - r.affiliateAmount);
       const credits: JournalCredit[] = [];
       if (applied > 0) credits.push({ code: "", name: "Accounts Receivable", amount: applied });
+      if (r.affiliateAmount > 0.005) credits.push({ ...acct(r.company.glAffiliateAdvances, "Advances from Affiliate (account not set)"), amount: r.affiliateAmount });
       if (advance > 0.005) credits.push({ ...acct(r.company.glCustomerAdvances, "Advances from Customers (account not set)"), amount: advance });
       return {
         id: r.id, date: r.date, company: r.company.companyName, docNo: r.prNumber, href: `/payments/${r.id}`, kind: "Customer collection" as const,
