@@ -3,7 +3,8 @@ import { requireReport } from "@/lib/report-access";
 import { resolveReportScope } from "@/lib/report-scope";
 import { CompanyFilter, CompanyTag } from "@/components/company-filter";
 import { peso, fmtDate } from "@/lib/format";
-import { getMerchandiseInventory } from "@/lib/reports";
+import { getMerchandiseInventory, getStockConditionTotals } from "@/lib/reports";
+import { CONDITIONS, isCondition } from "@/lib/stock-conditions";
 import { PrintButton, BackButton } from "@/components/print-button";
 import { getCategoryNames } from "@/lib/categories";
 import { ctnValue } from "@/lib/units";
@@ -13,7 +14,7 @@ import { LiveSearch } from "@/components/live-search";
 export default async function MerchandiseInventoryPage({
   searchParams,
 }: {
-  searchParams: { asOf?: string; category?: string; q?: string; zero?: string; class?: string; company?: string };
+  searchParams: { asOf?: string; category?: string; q?: string; zero?: string; class?: string; company?: string; condition?: string };
 }) {
   const user = await requireReport("merchandise-inventory");
   const scope = await resolveReportScope(user, searchParams.company);
@@ -24,15 +25,20 @@ export default async function MerchandiseInventoryPage({
   const q = searchParams.q?.trim() || "";
   const showZero = searchParams.zero === "1";
   const itemClass = searchParams.class === "NON_INVENTORY" ? "NON_INVENTORY" : "INVENTORY";
+  const condition = searchParams.condition && isCondition(searchParams.condition) ? searchParams.condition : "GOOD";
 
-  const report = await getMerchandiseInventory({
-    companyIds: scope.ids,
-    asOf: new Date(asOfStr),
-    category,
-    q,
-    showZero,
-    itemClass,
-  });
+  const [report, conditionTotals] = await Promise.all([
+    getMerchandiseInventory({
+      companyIds: scope.ids,
+      asOf: new Date(asOfStr),
+      category,
+      q,
+      showZero,
+      itemClass,
+      condition,
+    }),
+    getStockConditionTotals(scope.ids, new Date(asOfStr)),
+  ]);
 
   const exportParams = new URLSearchParams();
   exportParams.set("asOf", asOfStr);
@@ -41,8 +47,10 @@ export default async function MerchandiseInventoryPage({
   if (q) exportParams.set("q", q);
   if (showZero) exportParams.set("zero", "1");
   if (itemClass === "NON_INVENTORY") exportParams.set("class", "NON_INVENTORY");
+  if (condition !== "GOOD") exportParams.set("condition", condition);
 
   const filtersLabel = [
+    condition === "GOOD" ? "Good stock" : CONDITIONS[condition],
     itemClass === "NON_INVENTORY" ? "Non-Inventory (promo materials)" : "Inventory items (merchandise)",
     category ? `Category: ${category}` : "All Categories",
     q ? `Search: "${q}"` : "All Products",
@@ -65,6 +73,12 @@ export default async function MerchandiseInventoryPage({
             <div>
               <label className="label">As of Date</label>
               <input name="asOf" type="date" defaultValue={asOfStr} max={today} className="input" />
+            </div>
+            <div>
+              <label className="label">Condition</label>
+              <select name="condition" defaultValue={condition} className="input max-w-[220px]">
+                {Object.entries(CONDITIONS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              </select>
             </div>
             <div>
               <label className="label">Classification</label>
@@ -123,7 +137,14 @@ export default async function MerchandiseInventoryPage({
             {noConversion > 0 && <span className="text-amber-700"> · {noConversion} product(s) with no conversion ⚠</span>}
           </p>
         </div>
-        <div className="card py-3"><p className="text-xs text-gray-500">Total Inventory Value</p><p className="text-lg font-bold text-emerald-800">{peso(report.totalValue)}</p></div>
+        <div className="card py-3"><p className="text-xs text-gray-500">Total Inventory Value — {condition === "GOOD" ? "good stock" : CONDITIONS[condition].toLowerCase()}</p><p className="text-lg font-bold text-emerald-800">{peso(report.totalValue)}</p></div>
+      </div>
+      {/* every condition at the same date, so the schedule's buckets read side by side: good stock by category, obsolete, others */}
+      <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-5">
+        {(Object.keys(CONDITIONS) as (keyof typeof CONDITIONS)[]).map((c) => (
+          <div key={c} className={`card py-2 ${c === condition ? "border-emerald-300" : ""}`}><p className="text-[11px] text-gray-500">{CONDITIONS[c]}</p><p className="text-sm font-semibold">{peso(conditionTotals[c] ?? 0)}</p></div>
+        ))}
+        <div className="card py-2 border-gray-300"><p className="text-[11px] text-gray-500">All conditions</p><p className="text-sm font-bold">{peso(Object.values(conditionTotals).reduce((s, v) => s + v, 0))}</p></div>
       </div>
 
       <table className="w-full text-sm">

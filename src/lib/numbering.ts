@@ -12,6 +12,7 @@ const PREFIX: Record<string, string> = {
   CR: "CR", // other receipt (money in that is not a customer collection)
   TR: "TR", // account transfer (money moved between own cash/bank accounts)
   JV: "JV", // journal voucher (general journal)
+  RS: "RS", // stock reclassification (good ↔ obsolete / relabel / at supplier)
 };
 
 /**
@@ -23,7 +24,7 @@ const PREFIX: Record<string, string> = {
  * would hand it a January number and break the sequence at every year end.
  */
 export async function nextDocNumber(
-  docType: "SO" | "DR" | "SR" | "PO" | "GRN" | "PR" | "CM" | "RF" | "CR" | "TR" | "JV",
+  docType: "SO" | "DR" | "SR" | "PO" | "GRN" | "PR" | "CM" | "RF" | "CR" | "TR" | "JV" | "RS",
   companyId: string,
   docDate?: Date | null
 ): Promise<string> {

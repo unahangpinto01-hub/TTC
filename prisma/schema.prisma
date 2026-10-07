@@ -44,6 +44,7 @@ model User {
   transfersCreated AccountTransfer[]     @relation("TransferCreated")
   jvPrepared       JournalVoucher[]      @relation("JVPrepared")
   jvPosted         JournalVoucher[]      @relation("JVPosted")
+  reclassesCreated StockReclass[]        @relation("ReclassCreated")
   appSettings      AppSetting[]
   periodChanges    AccountingPeriod[]
   billsCreated     SupplierBill[]        @relation("BillCreated")
@@ -205,6 +206,8 @@ model Product {
   createdAt         DateTime  @default(now())
 
   stockMoves         StockMovement[]
+  stockBuckets       StockBucket[]
+  stockReclasses     StockReclass[]
   incomingOrderLines IncomingOrderLine[]
   salesOrderLines    SalesOrderLine[]
   drLines            DRLine[]
@@ -1101,6 +1104,7 @@ model Company {
   otherReceipts     OtherReceipt[]
   accountTransfers  AccountTransfer[]
   journalVouchers   JournalVoucher[]
+  stockReclasses    StockReclass[]
   notifications     Notification[]
 
   @@map("CompanySetting")
@@ -1506,6 +1510,52 @@ model OtherReceiptLine {
   description String
   amount      Float
   sortOrder   Int          @default(0)
+}
+
+/// Stock conditions: besides GOOD stock (Product.stockQty, moved by receipts and deliveries), a
+/// product may hold stock that is obsolete, waiting for relabelling, or sitting at the supplier for
+/// reformulation. Each such bucket keeps its own quantity and cost basis — obsolete stock is valued
+/// at the cost it was bought at, not at today's unit cost — and maps to its own ledger account
+/// (131100 Obsolete, 137000 Others), mirroring the books. Good stock cannot leave for these buckets
+/// except through a Stock Reclassification, and those buckets never feed a delivery.
+model StockBucket {
+  id        String   @id @default(cuid())
+  productId String
+  product   Product  @relation(fields: [productId], references: [id])
+  condition String // OBSOLETE | RELABEL | AT_SUPPLIER
+  qty       Int      @default(0)
+  unitCost  Float    @default(0) // moving-average cost basis of this bucket
+  updatedAt DateTime @updatedAt
+
+  @@unique([productId, condition])
+}
+
+/// A stock reclassification: a quantity moved between conditions at cost, with a reason — stock
+/// declared obsolete, sent to the supplier for reformulation, brought back as good, or an opening
+/// load into a bucket (fromCondition OPENING, no ledger entry). Posted on creation; void reverses it.
+model StockReclass {
+  id            String   @id @default(cuid())
+  companyId     String
+  company       Company  @relation(fields: [companyId], references: [id])
+  rsNumber      String // RS-2026-00001, per company
+  productId     String
+  product       Product  @relation(fields: [productId], references: [id])
+  date          DateTime
+  fromCondition String // GOOD | OBSOLETE | RELABEL | AT_SUPPLIER | OPENING
+  toCondition   String // GOOD | OBSOLETE | RELABEL | AT_SUPPLIER
+  qty           Int
+  unitCost      Float // the cost basis moved per piece
+  amount        Float // qty × unitCost — what the ledger moves between the two accounts
+  reason        String
+  remarks       String?
+  status        String   @default("Posted") // Posted | Void
+  voidReason    String?
+  createdById   String?
+  createdBy     User?    @relation("ReclassCreated", fields: [createdById], references: [id])
+  createdAt     DateTime @default(now())
+
+  @@unique([companyId, rsNumber])
+  @@index([productId, date])
 }
 
 /// General Journal: a journal voucher for what no other document can carry — an accrual, a

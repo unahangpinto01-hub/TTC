@@ -7,6 +7,8 @@ import { unitDealerPrice, CARTON, displayCartonSize, ctnLabel, ctnLooseLabel, co
 import { PageHeader, StatusBadge, stockStatus } from "@/components/ui";
 import { ProductEditForm } from "./product-edit-form";
 import { AdjustStockForm } from "./adjust-stock-form";
+import { ReclassStockForm } from "./reclass-form";
+import { CONDITIONS, type Condition } from "@/lib/stock-conditions";
 import { getActiveCompany } from "@/lib/company";
 import { getCategoryNames } from "@/lib/categories";
 import { CtnEquiv } from "@/components/qty";
@@ -26,6 +28,10 @@ export default async function ProductDetailPage({ params, searchParams }: { para
     take: 100,
     include: { user: { select: { name: true } } },
   });
+  // stock in other conditions: obsolete, for relabelling, at the supplier — each at its own cost basis
+  const buckets = await prisma.stockBucket.findMany({ where: { productId: product.id } });
+  const bucketOf = (c: string) => buckets.find((b) => b.condition === c);
+  const available: Record<string, number> = { GOOD: product.stockQty, OBSOLETE: bucketOf("OBSOLETE")?.qty ?? 0, RELABEL: bucketOf("RELABEL")?.qty ?? 0, AT_SUPPLIER: bucketOf("AT_SUPPLIER")?.qty ?? 0 };
   const parentOptions = (
     await prisma.product.findMany({
       where: { companyId: company.id, parentItem: { not: null } },
@@ -180,6 +186,29 @@ export default async function ProductDetailPage({ params, searchParams }: { para
       )}
 
       {canEdit && <AdjustStockForm productId={product.id} hasCarton={!!product.piecesPerCarton} />}
+
+      {searchParams.error && !["negative", "nocarton", "noreason"].includes(searchParams.error) && (
+        <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">⚠ {searchParams.error}</p>
+      )}
+      {(buckets.some((b) => b.qty !== 0) || canEdit) && (
+        <>
+          <h2 className="mb-2 text-lg font-semibold">Stock by Condition</h2>
+          <div className="mb-3 grid grid-cols-2 gap-3 md:grid-cols-4">
+            {(Object.keys(CONDITIONS) as Condition[]).map((c) => {
+              const b = c === "GOOD" ? { qty: product.stockQty, unitCost: product.unitCost } : bucketOf(c);
+              const qty = b?.qty ?? 0;
+              return (
+                <div key={c} className={`card py-3 ${c === "GOOD" ? "" : qty ? "border-amber-200 bg-amber-50/40" : "opacity-60"}`}>
+                  <p className="text-xs text-gray-500">{CONDITIONS[c]}</p>
+                  <p className="text-sm font-semibold">{qty.toLocaleString()} PCS</p>
+                  <p className="text-xs text-gray-500">{qty ? `at ${peso(b?.unitCost ?? 0)} = ${peso(qty * (b?.unitCost ?? 0))}` : "—"}</p>
+                </div>
+              );
+            })}
+          </div>
+          {canEdit && product.itemClass !== "NON_INVENTORY" && <ReclassStockForm productId={product.id} available={available} />}
+        </>
+      )}
 
       <h2 className="mb-2 text-lg font-semibold">
         Stock Card

@@ -7,6 +7,8 @@ import { requirePermWrite } from "@/lib/auth";
 import { notifyRole } from "@/lib/notify";
 import { convertToBaseUnit, parseUnit, UnitError } from "@/lib/units";
 import { getActiveCompany } from "@/lib/company";
+import { parseEffectiveDate } from "@/lib/stock";
+import { isCondition, reclassifyStock, voidReclass } from "@/lib/stock-conditions";
 
 /** Unit cost per PCS at FULL precision: entered directly, or derived as carton cost ÷ pieces per carton.
     Never round the stored cost — 2 decimals are for display only. */
@@ -227,4 +229,39 @@ export async function adjustStock(formData: FormData) {
   }
   revalidatePath(`/inventory/${productId}`);
   redirect(`/inventory/${productId}`);
+}
+
+/** Move pieces between stock conditions (good ↔ obsolete / for relabelling / at supplier) at cost. */
+export async function reclassStock(formData: FormData) {
+  const user = await requirePermWrite("inventory");
+  const company = await getActiveCompany(user);
+  const productId = String(formData.get("productId"));
+  const from = String(formData.get("from") || ""), to = String(formData.get("to") || "");
+  if (!isCondition(from) || !isCondition(to)) redirect(`/inventory/${productId}?error=${encodeURIComponent("Pick valid conditions.")}`);
+  const effective = parseEffectiveDate(String(formData.get("date") || ""));
+  try {
+    await reclassifyStock({ companyId: company.id, productId, date: effective, from, to, qty: Number(formData.get("qty")) || 0, reason: String(formData.get("reason") || ""), actor: user });
+  } catch (e) {
+    if (e instanceof UnitError) redirect(`/inventory/${productId}?error=negative`);
+    redirect(`/inventory/${productId}?error=${encodeURIComponent(e instanceof Error ? e.message : "Reclassification failed.")}`);
+  }
+  revalidatePath(`/inventory/${productId}`);
+  revalidatePath("/inventory/reclass");
+  redirect(`/inventory/${productId}`);
+}
+
+export async function voidReclassAction(formData: FormData) {
+  const user = await requirePermWrite("inventory");
+  const company = await getActiveCompany(user);
+  const id = String(formData.get("id"));
+  const rs = await prisma.stockReclass.findUniqueOrThrow({ where: { id } });
+  if (rs.companyId !== company.id) redirect("/denied");
+  try {
+    await voidReclass(id, String(formData.get("reason") || "").trim(), user);
+  } catch (e) {
+    redirect(`/inventory/reclass?error=${encodeURIComponent(e instanceof Error ? e.message : "Voiding failed.")}`);
+  }
+  revalidatePath("/inventory/reclass");
+  revalidatePath(`/inventory/${rs.productId}`);
+  redirect("/inventory/reclass");
 }

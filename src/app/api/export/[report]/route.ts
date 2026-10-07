@@ -400,7 +400,7 @@ export async function GET(req: NextRequest, { params }: { params: { report: stri
       const q = sp.q || "";
       const showZero = sp.zero === "1";
       const itemClass = sp.class === "NON_INVENTORY" ? "NON_INVENTORY" : "INVENTORY";
-      const r = await getMerchandiseInventory({ companyIds: scope.ids, asOf: new Date(asOfStr), category, q, showZero, itemClass });
+      const r = await getMerchandiseInventory({ companyIds: scope.ids, asOf: new Date(asOfStr), category, q, showZero, itemClass, condition: sp.condition || "GOOD" });
       const HEADER_ROW = 4; // 0-based index of the column-header row below
       const rows: (string | number)[][] = [
         ["MERCHANDISE INVENTORY — Valuation at Cost"],

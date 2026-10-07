@@ -2,6 +2,7 @@ import { prisma } from "./db";
 import { LIVE_BILL_STATUSES } from "./bills";
 import { BOOKED_DV_STATUSES } from "./dv";
 import { pairJournalLines } from "./journal";
+import { BUCKETS, CONDITIONS, bucketBalancesAt, glCodeFor, isBucket, type Condition } from "./stock-conditions";
 import { componentsOf, sumComponents, type SalesComponents } from "./sales-components";
 import { lineCartonSize } from "./units";
 
@@ -347,9 +348,12 @@ export async function getMerchandiseInventory(opts: {
   showZero?: boolean;
   /** "INVENTORY" (default — merchandise only) or "NON_INVENTORY" (promo materials, valued separately) */
   itemClass?: string;
+  /** GOOD (default — the stock card) or a bucket: OBSOLETE | RELABEL | AT_SUPPLIER, valued at the bucket's own cost basis */
+  condition?: string;
 }): Promise<MerchandiseInventoryReport> {
   const where: any = { companyId: { in: opts.companyIds } };
   where.itemClass = opts.itemClass === "NON_INVENTORY" ? "NON_INVENTORY" : "INVENTORY";
+  const condition = opts.condition && isBucket(opts.condition) ? opts.condition : "GOOD";
   if (opts.category) where.category = opts.category;
   if (opts.q) {
     where.OR = [
@@ -370,7 +374,20 @@ export async function getMerchandiseInventory(opts: {
   }
 
   let stockOf: (p: (typeof products)[number]) => number;
-  if (asOfEnd) {
+  let costOf: (p: (typeof products)[number]) => number = (p) => p.unitCost;
+  if (condition !== "GOOD") {
+    // a bucket: its own quantity and cost basis, live from StockBucket or replayed to the date
+    if (asOfEnd) {
+      const at = await bucketBalancesAt(opts.companyIds, asOfEnd);
+      stockOf = (p) => at.get(p.id)?.[condition]?.qty ?? 0;
+      costOf = (p) => at.get(p.id)?.[condition]?.unitCost ?? 0;
+    } else {
+      const buckets = await prisma.stockBucket.findMany({ where: { condition, product: { companyId: { in: opts.companyIds } } }, select: { productId: true, qty: true, unitCost: true } });
+      const map = new Map(buckets.map((b) => [b.productId, b]));
+      stockOf = (p) => map.get(p.id)?.qty ?? 0;
+      costOf = (p) => map.get(p.id)?.unitCost ?? 0;
+    }
+  } else if (asOfEnd) {
     const balances = await prisma.$queryRaw<{ productId: string; balanceAfter: number }[]>`
       SELECT DISTINCT ON ("productId") "productId", "balanceAfter"
       FROM "StockMovement"
@@ -384,6 +401,7 @@ export async function getMerchandiseInventory(opts: {
 
   let rows: MerchandiseInventoryRow[] = products.map((p) => {
     const stock = stockOf(p);
+    const unitCost = costOf(p);
     return {
       id: p.id,
       company: p.company.companyName,
@@ -392,10 +410,10 @@ export async function getMerchandiseInventory(opts: {
       packSize: p.packSize,
       category: p.category,
       piecesPerCarton: p.piecesPerCarton,
-      unitCost: p.unitCost,
+      unitCost,
       stock,
       // full precision — rounding to 2 decimals happens only at display time
-      amount: stock * p.unitCost,
+      amount: stock * unitCost,
     };
   });
   // zero stock hidden by default; negative stock is always shown (never silently dropped)
@@ -409,6 +427,15 @@ export async function getMerchandiseInventory(opts: {
     totalValue: round2(rows.reduce((s, r) => s + r.amount, 0)),
     historical: !!asOfEnd,
   };
+}
+
+/** The value held in every stock condition at a date, for the report's summary cards. */
+export async function getStockConditionTotals(companyIds: string[], asOf?: Date | null): Promise<Record<string, number>> {
+  const out: Record<string, number> = { GOOD: 0, OBSOLETE: 0, RELABEL: 0, AT_SUPPLIER: 0 };
+  const good = await getMerchandiseInventory({ companyIds, asOf, showZero: false });
+  out.GOOD = good.totalValue;
+  for (const c of BUCKETS) out[c] = (await getMerchandiseInventory({ companyIds, asOf, showZero: false, condition: c })).totalValue;
+  return out;
 }
 
 export async function getMovements({ from, to }: Range, companyIds: string[]) {
@@ -438,7 +465,7 @@ export async function getDeliveryPerformance({ from, to }: Range, companyIds: st
 
 /** Journal-style ledger entries derived from sales, purchases, bills, vouchers, payments and collections. */
 export async function getLedger({ from, to }: Range, companyIds: string[]) {
-  const [srs, payments, poIns, bills, supplierPayments, directDvs, receipts, otherReceipts, journals] = await Promise.all([
+  const [srs, payments, poIns, bills, supplierPayments, directDvs, receipts, otherReceipts, journals, reclasses, stockAccounts] = await Promise.all([
     prisma.salesReceipt.findMany({
       where: { companyId: { in: companyIds }, kind: "SALE", status: { not: "Void" }, invoiceDate: { gte: from, lte: to } },
       include: {
@@ -522,7 +549,14 @@ export async function getLedger({ from, to }: Range, companyIds: string[]) {
         lines: { select: { description: true, debit: true, credit: true, glAccount: { select: { code: true, description: true } } }, orderBy: { sortOrder: "asc" } },
       },
     }),
+    // stock moved between conditions at cost: good stock ↔ obsolete / for relabelling / at the supplier (an opening load books nothing)
+    prisma.stockReclass.findMany({
+      where: { companyId: { in: companyIds }, status: "Posted", fromCondition: { not: "OPENING" }, date: { gte: from, lte: to } },
+      select: { rsNumber: true, date: true, fromCondition: true, toCondition: true, qty: true, amount: true, reason: true, company: { select: { companyName: true } }, product: { select: { name: true, category: true, itemClass: true } } },
+    }),
+    prisma.gLAccount.findMany({ where: { code: { in: ["131000", "132000", "133000", "134000", "135000", "136000", "137000", "131100"] } }, select: { code: true, description: true } }),
   ]);
+  const stockAcct = (code: string) => { const a = stockAccounts.find((x) => x.code === code); return a ? `${a.code} ${a.description}` : `${code} (account not in chart)`; };
   const acctOf = (a: { code: string; description: string } | null, fallback: string) => (a ? `${a.code} ${a.description}` : fallback);
   const cashOf = (c: { name: string; glAccount: { code: string; description: string } | null } | null | undefined) => (c ? acctOf(c.glAccount, c.name) : "Cash");
   // An invoice is not one credit to "Sales": the products, the freight and any other
@@ -662,6 +696,11 @@ export async function getLedger({ from, to }: Range, companyIds: string[]) {
       description: `${l.description || l.glAccount.description} — ${r.payor} (${r.method})`,
       debit: cashOf(r.cashAccount), credit: `${l.glAccount.code} ${l.glAccount.description}`, amount: round2(l.amount),
     }))),
+    ...reclasses.map((r) => ({
+      date: r.date, company: r.company.companyName, ref: r.rsNumber,
+      description: `Stock reclassified ${CONDITIONS[r.fromCondition as Condition]} → ${CONDITIONS[r.toCondition as Condition]} — ${r.product.name} × ${r.qty.toLocaleString()} PCS (${r.reason})`,
+      debit: stockAcct(glCodeFor(r.toCondition as Condition, r.product)), credit: stockAcct(glCodeFor(r.fromCondition as Condition, r.product)), amount: round2(r.amount),
+    })),
     ...journals.flatMap((v) => pairJournalLines(v.lines).map((pr) => ({
       date: v.date, company: v.company.companyName, ref: v.jvNumber,
       description: pr.debit.description === pr.credit.description ? pr.debit.description || v.memo : `${pr.debit.description || v.memo} / ${pr.credit.description || v.memo}`,
