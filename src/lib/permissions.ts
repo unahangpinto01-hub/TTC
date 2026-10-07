@@ -28,6 +28,7 @@ export const FUNCTIONS = [
   ["coa", "Chart of Accounts"],
   ["expenses", "Expenses"],
   ["ledger", "Ledger"],
+  ["journal", "General Journal (journal vouchers)"],
   ["reports", "Reports"],
   ["priorPeriod", "Prior-Period Adjustment"],
   ["hr", "HR (Employees / Payroll / Evaluations)"],
@@ -51,7 +52,7 @@ export const ROLE_DEFAULTS: Record<string, Record<FnKey, PermLevel>> = {
     dashboard: RW, notifications: RW, orders: RW, salesOrders: RW, schedule: RW,
     deliveries: RW, invoicing: NO, invoices: RO, forecast: RO, customers: RW,
     inventory: RO, purchaseOrders: RO, suppliers: RO, bills: NO, ap: NO, dv: NO, payBills: NO, ar: NO, receivePayments: NO, paymentDiscounts: NO, ppdOverride: NO, otherReceipts: NO, refundsCredits: NO, coa: NO, expenses: NO,
-    ledger: NO, reports: NO, priorPeriod: NO, hr: NO, users: NO, company: NO,
+    ledger: NO, journal: NO, reports: NO, priorPeriod: NO, hr: NO, users: NO, company: NO,
   },
 };
 

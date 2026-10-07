@@ -42,6 +42,8 @@ model User {
   rcCreated        RefundCredit[]        @relation("RCCreated")
   rcApproved       RefundCredit[]        @relation("RCApproved")
   transfersCreated AccountTransfer[]     @relation("TransferCreated")
+  jvPrepared       JournalVoucher[]      @relation("JVPrepared")
+  jvPosted         JournalVoucher[]      @relation("JVPosted")
   appSettings      AppSetting[]
   periodChanges    AccountingPeriod[]
   billsCreated     SupplierBill[]        @relation("BillCreated")
@@ -458,6 +460,7 @@ model CashAccount {
   transfersIn      AccountTransfer[] @relation("TransferTo")
   /// the company (if any) that receives mirrored affiliate collections on this account
   heldFor          Company[]         @relation("AffiliateHeld")
+  journalLines     JournalLine[]
 }
 
 /// Money moved between two of the company's own cash/bank accounts — depositing cash
@@ -824,6 +827,7 @@ model GLAccount {
   customerAdvancesFor     Company[]                 @relation("GLCustomerAdvances")
   affiliateAdvancesFor    Company[]                 @relation("GLAffiliateAdvances")
   otherReceiptLines       OtherReceiptLine[]
+  journalLines            JournalLine[]
   SupplierBillExpenseLine SupplierBillExpenseLine[]
   accountLines            DVAccountLine[]
   dvItems                 DVItem[]
@@ -1096,6 +1100,7 @@ model Company {
   supplierPayments  SupplierPayment[]
   otherReceipts     OtherReceipt[]
   accountTransfers  AccountTransfer[]
+  journalVouchers   JournalVoucher[]
   notifications     Notification[]
 
   @@map("CompanySetting")
@@ -1501,4 +1506,50 @@ model OtherReceiptLine {
   description String
   amount      Float
   sortOrder   Int          @default(0)
+}
+
+/// General Journal: a journal voucher for what no other document can carry — an accrual, a
+/// depreciation run, a bank charge or autodebit, dividends applied, an intercompany settlement,
+/// a reclassification. Balanced debit and credit lines on Chart of Accounts entries. Draft →
+/// Pending Approval → Posted; only Posted reaches the ledger. A line that moves a physical
+/// cash/bank account names it, so the bank balance and register carry the voucher too.
+model JournalVoucher {
+  id           String    @id @default(cuid())
+  companyId    String
+  company      Company   @relation(fields: [companyId], references: [id])
+  jvNumber     String // JV-2026-00001, per company
+  date         DateTime
+  /// the bookkeeper's own number (GJV 2026-159) or any outside reference
+  refNo        String?
+  memo         String
+  status       String    @default("Draft") // Draft | Pending Approval | Posted | Cancelled | Void
+  voidReason   String?
+  /// MANUAL = typed in; IMPORT = loaded from the books by script
+  source       String    @default("MANUAL")
+  preparedById String?
+  preparedBy   User?     @relation("JVPrepared", fields: [preparedById], references: [id])
+  postedById   String?
+  postedBy     User?     @relation("JVPosted", fields: [postedById], references: [id])
+  postedAt     DateTime?
+  createdAt    DateTime  @default(now())
+
+  lines JournalLine[]
+
+  @@unique([companyId, jvNumber])
+  @@index([companyId, status, date])
+}
+
+model JournalLine {
+  id            String         @id @default(cuid())
+  voucherId     String
+  voucher       JournalVoucher @relation(fields: [voucherId], references: [id], onDelete: Cascade)
+  glAccountId   String
+  glAccount     GLAccount      @relation(fields: [glAccountId], references: [id])
+  /// set when the line moves one of the company's cash/bank accounts (debit = money in, credit = out)
+  cashAccountId String?
+  cashAccount   CashAccount?   @relation(fields: [cashAccountId], references: [id])
+  description   String
+  debit         Float          @default(0)
+  credit        Float          @default(0)
+  sortOrder     Int            @default(0)
 }

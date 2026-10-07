@@ -33,6 +33,7 @@ export default async function CashAccountsPage({ searchParams }: { searchParams:
                   <th className="table-th text-right">Customer In</th>
                   <th className="table-th text-right">Other In</th>
                   <th className="table-th text-right">Transfers ±</th>
+                  <th className="table-th text-right">Journal ±</th>
                   <th className="table-th text-right">Refunds Out</th>
                   <th className="table-th text-right">Cheques Out</th>
                   <th className="table-th text-right">Balance</th>
@@ -57,20 +58,25 @@ export default async function CashAccountsPage({ searchParams }: { searchParams:
                         </span>
                       ) : "—"}
                     </td>
+                    <td className="table-td text-right">
+                      {a.journalIn || a.journalOut ? (
+                        <span className={a.journalIn - a.journalOut >= 0 ? "" : "text-red-600"}>{peso(a.journalIn - a.journalOut)}</span>
+                      ) : "—"}
+                    </td>
                     <td className="table-td text-right text-red-600">{a.refundsOut ? `(${peso(a.refundsOut)})` : "—"}</td>
                     <td className="table-td text-right text-red-600">{a.chequesOut ? `(${peso(a.chequesOut)})` : "—"}</td>
                     <td className={`table-td text-right font-bold ${a.balance < 0 ? "text-red-600" : "text-emerald-800"}`}>{peso(a.balance)}</td>
                   </tr>
                 ))}
                 {!accounts.length && (
-                  <tr><td colSpan={9} className="p-8 text-center text-sm text-gray-500">No accounts yet — add Cash on Hand and your bank accounts.</td></tr>
+                  <tr><td colSpan={10} className="p-8 text-center text-sm text-gray-500">No accounts yet — add Cash on Hand and your bank accounts.</td></tr>
                 )}
               </tbody>
             </table>
           </div>
           <p className="mt-2 text-xs text-gray-500">
-            Balance = opening + Posted customer payments, other receipts and transfers in − Posted customer refunds,
-            supplier cheques/payments and transfers out. Every posted money document is counted; voiding one removes
+            Balance = opening + Posted customer payments, other receipts, transfers in and journal debits − Posted customer refunds,
+            supplier cheques/payments, transfers out and journal credits. Every posted money document is counted; voiding one removes
             its effect again.
           </p>
           {accounts.some((a) => a.balance < 0) && (

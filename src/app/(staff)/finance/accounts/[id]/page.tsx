@@ -52,7 +52,7 @@ export default async function CashAccountPage({ params, searchParams }: { params
         <div className="card py-3"><p className="text-xs text-gray-500">Balance now</p><p className={`text-lg font-bold ${balance < 0 ? "text-red-600" : "text-emerald-800"}`}>{peso(balance)}</p><p className="text-xs text-gray-500">{totals.documents} posted document{totals.documents === 1 ? "" : "s"}</p></div>
       </div>
       <div className="mb-4 grid grid-cols-2 gap-3 text-xs md:grid-cols-6">
-        {([["Customer payments in", totals.customerIn], ["Other receipts in", totals.otherIn], ["Transfers in", totals.transfersIn], ["Supplier cheques out", totals.chequesOut], ["Customer refunds out", totals.refundsOut], ["Transfers out", totals.transfersOut]] as [string, number][]).map(([k, v]) => (
+        {([["Customer payments in", totals.customerIn], ["Other receipts in", totals.otherIn], ["Transfers in", totals.transfersIn], ["Journal debits in", totals.journalIn], ["Supplier cheques out", totals.chequesOut], ["Customer refunds out", totals.refundsOut], ["Transfers out", totals.transfersOut], ["Journal credits out", totals.journalOut]] as [string, number][]).map(([k, v]) => (
           <div key={k} className="card py-2"><p className="text-gray-500">{k}</p><p className="font-semibold">{v ? peso(v) : "—"}</p></div>
         ))}
       </div>

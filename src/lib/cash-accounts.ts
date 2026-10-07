@@ -13,7 +13,7 @@ export type RegisterRow = {
   date: Date;
   docNo: string;
   href: string;
-  kind: "Customer payment" | "Other receipt" | "Transfer in" | "Transfer out" | "Supplier cheque / payment" | "Customer refund";
+  kind: "Customer payment" | "Other receipt" | "Transfer in" | "Transfer out" | "Supplier cheque / payment" | "Customer refund" | "Journal voucher";
   party: string;
   detail: string;
   inflow: number;
@@ -33,9 +33,11 @@ export async function cashAccountRegister(accountId: string, range?: { from?: Da
       transfersOut: { where: { status: "Posted" }, select: { id: true, trNumber: true, date: true, amount: true, refNo: true, remarks: true, toAccount: { select: { name: true } } } },
       supplierPayments: { where: { status: "Posted" }, select: { id: true, paymentNo: true, date: true, amount: true, method: true, checkNo: true, refNo: true, payee: true, supplier: { select: { name: true } }, dv: { select: { dvNo: true, padRef: true } } } },
       refundCredits: { where: { status: "Posted", type: "Refund" }, select: { id: true, rcNumber: true, date: true, amount: true, refundMethod: true, refundRefNo: true, customer: { select: { businessName: true } } } },
+      journalLines: { where: { voucher: { status: "Posted" } }, select: { id: true, debit: true, credit: true, description: true, voucher: { select: { id: true, jvNumber: true, date: true, memo: true, refNo: true } } } },
     },
   });
   const rows: Omit<RegisterRow, "balance">[] = [
+    ...a.journalLines.map((l) => ({ date: l.voucher.date, docNo: l.voucher.jvNumber, href: `/finance/journal/${l.voucher.id}`, kind: "Journal voucher" as const, party: l.voucher.memo, detail: [l.description, l.voucher.refNo].filter(Boolean).join(" · "), inflow: l.debit, outflow: l.credit })),
     ...a.payments.map((p) => ({ date: p.date, docNo: p.prNumber, href: `/payments/${p.id}`, kind: "Customer payment" as const, party: p.customer.businessName, detail: [p.method, p.refNo, p.checkNo ? `cheque ${p.checkNo}` : ""].filter(Boolean).join(" · "), inflow: p.amount, outflow: 0 })),
     ...a.otherReceipts.map((r) => ({ date: r.date, docNo: r.crNumber, href: `/other-receipts/${r.id}`, kind: "Other receipt" as const, party: r.payor, detail: [r.method, r.refNo].filter(Boolean).join(" · "), inflow: r.amount, outflow: 0 })),
     ...a.transfersIn.map((t) => ({ date: t.date, docNo: t.trNumber, href: `/finance/transfers`, kind: "Transfer in" as const, party: `from ${t.fromAccount.name}`, detail: [t.refNo, t.remarks].filter(Boolean).join(" · "), inflow: t.amount, outflow: 0 })),
@@ -59,6 +61,8 @@ export async function cashAccountRegister(accountId: string, range?: { from?: Da
     transfersOut: round2(a.transfersOut.reduce((s, p) => s + p.amount, 0)),
     chequesOut: round2(a.supplierPayments.reduce((s, p) => s + p.amount, 0)),
     refundsOut: round2(a.refundCredits.reduce((s, p) => s + p.amount, 0)),
+    journalIn: round2(a.journalLines.reduce((s, l) => s + l.debit, 0)),
+    journalOut: round2(a.journalLines.reduce((s, l) => s + l.credit, 0)),
     documents: all.length,
   };
   return { account: a, rows: shown, broughtForward, balance, totals, earliest: all[0]?.date ?? null };

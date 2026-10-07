@@ -429,6 +429,8 @@ export async function cashAccountBalances(companyId: string) {
       supplierPayments: { where: { status: "Posted" }, select: { amount: true } },
       transfersIn: { where: { status: "Posted" }, select: { amount: true } },
       transfersOut: { where: { status: "Posted" }, select: { amount: true } },
+      // journal vouchers that name this account: a debit is money in, a credit money out
+      journalLines: { where: { voucher: { status: "Posted" } }, select: { debit: true, credit: true } },
       glAccount: { select: { code: true, description: true } },
     },
     orderBy: { name: "asc" },
@@ -441,8 +443,10 @@ export async function cashAccountBalances(companyId: string) {
     const refundsOut = sum(a.refundCredits);
     const chequesOut = sum(a.supplierPayments);
     const transfersOut = sum(a.transfersOut);
-    const inflows = round2(customerIn + otherIn + transfersIn);
-    const outflows = round2(refundsOut + chequesOut + transfersOut);
+    const journalIn = round2(a.journalLines.reduce((s, l) => s + l.debit, 0));
+    const journalOut = round2(a.journalLines.reduce((s, l) => s + l.credit, 0));
+    const inflows = round2(customerIn + otherIn + transfersIn + journalIn);
+    const outflows = round2(refundsOut + chequesOut + transfersOut + journalOut);
     return {
       id: a.id,
       name: a.name,
@@ -458,6 +462,8 @@ export async function cashAccountBalances(companyId: string) {
       refundsOut,
       chequesOut,
       transfersOut,
+      journalIn,
+      journalOut,
       inflows,
       outflows,
       balance: round2(a.openingBalance + inflows - outflows),

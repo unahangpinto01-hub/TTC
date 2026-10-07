@@ -1,6 +1,7 @@
 import { prisma } from "./db";
 import { LIVE_BILL_STATUSES } from "./bills";
 import { BOOKED_DV_STATUSES } from "./dv";
+import { pairJournalLines } from "./journal";
 import { componentsOf, sumComponents, type SalesComponents } from "./sales-components";
 import { lineCartonSize } from "./units";
 
@@ -437,7 +438,7 @@ export async function getDeliveryPerformance({ from, to }: Range, companyIds: st
 
 /** Journal-style ledger entries derived from sales, purchases, bills, vouchers, payments and collections. */
 export async function getLedger({ from, to }: Range, companyIds: string[]) {
-  const [srs, payments, poIns, bills, supplierPayments, directDvs, receipts, otherReceipts] = await Promise.all([
+  const [srs, payments, poIns, bills, supplierPayments, directDvs, receipts, otherReceipts, journals] = await Promise.all([
     prisma.salesReceipt.findMany({
       where: { companyId: { in: companyIds }, kind: "SALE", status: { not: "Void" }, invoiceDate: { gte: from, lte: to } },
       include: {
@@ -511,6 +512,14 @@ export async function getLedger({ from, to }: Range, companyIds: string[]) {
         crNumber: true, date: true, payor: true, method: true,
         company: { select: { companyName: true } }, cashAccount: { select: { name: true, glAccount: { select: { code: true, description: true } } } },
         lines: { select: { description: true, amount: true, glAccount: { select: { code: true, description: true } } }, orderBy: { sortOrder: "asc" } },
+      },
+    }),
+    // journal vouchers: what no other document carries, each debit paired with its credit
+    prisma.journalVoucher.findMany({
+      where: { companyId: { in: companyIds }, status: "Posted", date: { gte: from, lte: to } },
+      select: {
+        jvNumber: true, date: true, memo: true, company: { select: { companyName: true } },
+        lines: { select: { description: true, debit: true, credit: true, glAccount: { select: { code: true, description: true } } }, orderBy: { sortOrder: "asc" } },
       },
     }),
   ]);
@@ -652,6 +661,11 @@ export async function getLedger({ from, to }: Range, companyIds: string[]) {
       date: r.date, company: r.company.companyName, ref: r.crNumber,
       description: `${l.description || l.glAccount.description} — ${r.payor} (${r.method})`,
       debit: cashOf(r.cashAccount), credit: `${l.glAccount.code} ${l.glAccount.description}`, amount: round2(l.amount),
+    }))),
+    ...journals.flatMap((v) => pairJournalLines(v.lines).map((pr) => ({
+      date: v.date, company: v.company.companyName, ref: v.jvNumber,
+      description: pr.debit.description === pr.credit.description ? pr.debit.description || v.memo : `${pr.debit.description || v.memo} / ${pr.credit.description || v.memo}`,
+      debit: `${pr.debit.glAccount.code} ${pr.debit.glAccount.description}`, credit: `${pr.credit.glAccount.code} ${pr.credit.glAccount.description}`, amount: pr.amount,
     }))),
   ];
   return entries.sort((a, b) => b.date.getTime() - a.date.getTime());
