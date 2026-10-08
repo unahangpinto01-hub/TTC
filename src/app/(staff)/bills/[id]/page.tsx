@@ -29,6 +29,7 @@ const ERRORS: Record<string, string> = {
   voidblocked: "This bill cannot be voided — it is already void, or a payment has been made against it.",
   voidreason: "Give a reason for voiding (at least 5 characters).",
   stock: "The stock this bill added has since been delivered, so it cannot be taken back out. Adjust stock first.",
+  received: "A posted receipt already put these goods into stock, so posting this bill would count them twice. Cancel it and raise the bill from that receipt (Receive Inventory → Enter Bill).",
 };
 
 const ymd = (d: Date | null) => (d ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}` : "");

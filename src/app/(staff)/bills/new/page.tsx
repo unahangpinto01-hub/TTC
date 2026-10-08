@@ -14,6 +14,7 @@ const ERRORS: Record<string, string> = {
   grnbilled: "That receipt already has a bill.",
   po: "That purchase order could not be found for this company.",
   postatus: "A draft or cancelled purchase order cannot be billed.",
+  poreceived: "This purchase order already has a posted receipt, so its goods are in stock. Raise the bill from the receipt instead, or the stock will be counted twice.",
 };
 
 export default async function NewBillPage({ searchParams }: { searchParams: { error?: string; ref?: string; grn?: string } }) {

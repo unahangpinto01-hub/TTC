@@ -128,6 +128,11 @@ export async function createBill(formData: FormData) {
     const po = await prisma.purchaseOrder.findUnique({ where: { id: poIdRaw }, include: { lines: true } });
     if (!po || po.companyId !== company.id) redirect("/bills/new?error=po");
     if (["Draft", "Cancelled"].includes(po.status)) redirect("/bills/new?error=postatus");
+    // a bill straight off the purchase order IS the receiving: once a receipt has been posted
+    // for this order the goods are on the shelf already, and the bill must be raised from that
+    // receipt or the stock is counted twice
+    const received = await prisma.goodsReceipt.findFirst({ where: { purchaseOrderId: po.id, status: "Posted" }, select: { grnNumber: true } });
+    if (received) redirect(`/bills/new?error=poreceived&ref=${encodeURIComponent(received.grnNumber)}`);
     supplierId = po.supplierId;
     purchaseOrderId = po.id;
     lines = po.lines
@@ -411,6 +416,23 @@ export async function postBill(formData: FormData) {
 
   const grn = bill.goodsReceipt;
   const alreadyStocked = !!grn?.stockedAt;
+  // the guard: a line that is not tied to a receipt will put its pieces into stock on posting.
+  // If a posted receipt already stocked that purchase-order line, posting would count the
+  // goods twice — refuse, and send the user to bill the receipt instead
+  if (!isExpense) {
+    for (const line of bill.lines) {
+      if (line.grnLineId) continue;
+      const stockedByReceipt = line.poLineId
+        ? await prisma.gRNLine.findFirst({ where: { poLineId: line.poLineId, goodsReceipt: { status: "Posted", stockedAt: { not: null } } }, select: { goodsReceipt: { select: { grnNumber: true } } } })
+        : bill.purchaseOrderId
+          ? await prisma.gRNLine.findFirst({ where: { productId: line.productId, goodsReceipt: { purchaseOrderId: bill.purchaseOrderId, status: "Posted", stockedAt: { not: null } } }, select: { goodsReceipt: { select: { grnNumber: true } } } })
+          : null;
+      if (stockedByReceipt) {
+        await logAudit({ entity: "SupplierBill", entityId: id, action: "BLOCKED", detail: `${bill.billNo} not posted: ${line.product.name} was already put into stock by receipt ${stockedByReceipt.goodsReceipt.grnNumber}; the bill must be raised from that receipt`, actorName: user.name, actorEmail: user.email, companyId: company.id });
+        redirect(`/bills/${id}?error=received`);
+      }
+    }
+  }
   const at = effectiveDate(bill.billDate);
   const backdated = at.getTime() < Date.now() - 60 * 1000;
   const { year, month } = periodOf(bill.billDate);
