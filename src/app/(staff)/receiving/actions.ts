@@ -9,6 +9,7 @@ import { nextDocNumber } from "@/lib/numbering";
 import { parseEffectiveDate, recomputeStockChain } from "@/lib/stock";
 import { notifyRole } from "@/lib/notify";
 import { logAudit } from "@/lib/salespeople";
+import { recordCost } from "@/lib/costs";
 
 // Draft is the only editable state; Posted and Void are terminal. A "use server" file may
 // only export async functions, so this stays module-private.
@@ -265,6 +266,7 @@ export async function postGRN(formData: FormData) {
         where: { id: line.productId },
         data: { stockQty: newStock, unitCost: newAvgCost },
       });
+      await recordCost(tx, { productId: line.productId, unitCost: newAvgCost, effectiveFrom: grn.receivedDate, source: "RECEIPT", note: `${grn.grnNumber}: ${basePcs} PCS received at ₱${receivedCostPerPcs.toFixed(4)}` });
       await tx.stockMovement.create({
         data: {
           productId: line.productId,

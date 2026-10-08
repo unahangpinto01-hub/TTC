@@ -208,6 +208,7 @@ model Product {
   stockMoves         StockMovement[]
   stockBuckets       StockBucket[]
   stockReclasses     StockReclass[]
+  costs              ProductCost[]
   incomingOrderLines IncomingOrderLine[]
   salesOrderLines    SalesOrderLine[]
   drLines            DRLine[]
@@ -1602,4 +1603,22 @@ model JournalLine {
   debit         Float          @default(0)
   credit        Float          @default(0)
   sortOrder     Int            @default(0)
+}
+
+/// A product's unit cost as it stood from a date: the books' monthly cost for past months (loaded
+/// from the inventory schedules), then every re-costing a bill, receipt or edit makes. The
+/// merchandise inventory report values an as-of date at the cost in force on that date.
+model ProductCost {
+  id            String   @id @default(cuid())
+  productId     String
+  product       Product  @relation(fields: [productId], references: [id])
+  effectiveFrom DateTime
+  unitCost      Float
+  /// IMPORT = loaded from the books' schedule; BILL | RECEIPT | EDIT = made by the module named
+  source        String
+  note          String?
+  createdAt     DateTime @default(now())
+
+  @@unique([productId, effectiveFrom])
+  @@index([productId, effectiveFrom])
 }

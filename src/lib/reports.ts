@@ -3,6 +3,7 @@ import { LIVE_BILL_STATUSES } from "./bills";
 import { BOOKED_DV_STATUSES } from "./dv";
 import { pairJournalLines } from "./journal";
 import { BUCKETS, CONDITIONS, bucketBalancesAt, glCodeFor, isBucket, type Condition } from "./stock-conditions";
+import { costsAt } from "./costs";
 import { componentsOf, sumComponents, type SalesComponents } from "./sales-components";
 import { lineCartonSize } from "./units";
 
@@ -395,6 +396,9 @@ export async function getMerchandiseInventory(opts: {
       ORDER BY "productId", "date" DESC, "id" DESC`;
     const map = new Map(balances.map((b) => [b.productId, b.balanceAfter]));
     stockOf = (p) => map.get(p.id) ?? 0;
+    // valued at the cost in force on that date (the books' monthly cost for past months), else the current cost
+    const costs = await costsAt(products.map((p) => p.id), asOfEnd);
+    costOf = (p) => costs.get(p.id) ?? p.unitCost;
   } else {
     stockOf = (p) => p.stockQty;
   }

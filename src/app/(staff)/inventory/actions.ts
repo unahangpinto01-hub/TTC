@@ -8,6 +8,7 @@ import { notifyRole } from "@/lib/notify";
 import { convertToBaseUnit, parseUnit, UnitError } from "@/lib/units";
 import { getActiveCompany } from "@/lib/company";
 import { parseEffectiveDate } from "@/lib/stock";
+import { recordCost } from "@/lib/costs";
 import { isCondition, reclassifyStock, voidReclass } from "@/lib/stock-conditions";
 
 /** Unit cost per PCS at FULL precision: entered directly, or derived as carton cost ÷ pieces per carton.
@@ -130,6 +131,9 @@ export async function updateProduct(formData: FormData) {
         : {}),
     },
   });
+  // a hand-set cost starts a new cost period from today, so past dates keep the cost they had
+  const newCost = resolveUnitCost(formData);
+  if (Math.abs(newCost - target.unitCost) >= 0.00005) await recordCost(prisma, { productId, unitCost: newCost, effectiveFrom: new Date(), source: "EDIT", note: `${user.name}: unit cost ₱${target.unitCost.toFixed(4)} → ₱${newCost.toFixed(4)}` });
   revalidatePath("/inventory");
   revalidatePath(`/inventory/${productId}`);
   redirect(`/inventory/${productId}`);

@@ -9,6 +9,7 @@ import { notifyRole } from "@/lib/notify";
 import { convertToBaseUnit, parseUnit, UnitError, CARTON } from "@/lib/units";
 import { getActiveCompany } from "@/lib/company";
 import { recomputeStockChain, parseEffectiveDate } from "@/lib/stock";
+import { recordCost } from "@/lib/costs";
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
@@ -125,6 +126,7 @@ export async function receivePO(formData: FormData) {
     await prisma.$transaction(async (tx) => {
       await tx.pOLine.update({ where: { id: line.id }, data: { receivedQty: line.receivedQty + qty } });
       await tx.product.update({ where: { id: line.productId }, data: { stockQty: newStock, unitCost: newAvgCost } });
+      await recordCost(tx, { productId: line.productId, unitCost: newAvgCost, effectiveFrom: receivedAt, source: "RECEIPT", note: `${po.poNumber}: ${basePcs} PCS received at ₱${receivedCostPerPcs.toFixed(4)}` });
       await tx.stockMovement.create({
         data: {
           productId: line.productId, type: "IN", qty: basePcs, balanceAfter: newStock,

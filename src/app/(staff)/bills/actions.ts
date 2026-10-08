@@ -17,6 +17,7 @@ import {
 } from "@/lib/bills";
 import { requireStaff } from "@/lib/auth";
 import { matchBillLines, refreshInvoiceStatus, unbilledOnReceipt } from "@/lib/bill-matching";
+import { recordCost } from "@/lib/costs";
 
 const POSTERS = ["SUPER_ADMIN", "ADMIN"];
 
@@ -456,6 +457,7 @@ export async function postBill(formData: FormData) {
           if (Math.abs(delta) >= 0.01 && product.stockQty > 0) {
             const newAvg = Math.max(0, (product.stockQty * product.unitCost + delta) / product.stockQty);
             await tx.product.update({ where: { id: product.id }, data: { unitCost: newAvg } });
+            await recordCost(tx, { productId: product.id, unitCost: newAvg, effectiveFrom: bill.billDate, source: "BILL", note: `${bill.billNo}: billed cost applied to pieces received on ${grn?.grnNumber ?? "the receipt"}` });
             notes.push(`${product.name}: re-costed by ₱${delta.toFixed(2)} (avg ${product.unitCost.toFixed(4)} → ${newAvg.toFixed(4)})`);
           } else if (Math.abs(delta) >= 0.01) {
             notes.push(`${product.name}: ₱${delta.toFixed(2)} cost difference not applied — no stock on hand`);
@@ -469,6 +471,7 @@ export async function postBill(formData: FormData) {
         const newAvg = oldQty > 0 ? (oldQty * product.unitCost + basePcs * costPerPcs) / (oldQty + basePcs) : costPerPcs;
         const newStock = product.stockQty + basePcs;
         await tx.product.update({ where: { id: product.id }, data: { stockQty: newStock, unitCost: newAvg } });
+        await recordCost(tx, { productId: product.id, unitCost: newAvg, effectiveFrom: bill.billDate, source: "BILL", note: `${bill.billNo}: ${basePcs} PCS received at ₱${costPerPcs.toFixed(4)}` });
         await tx.stockMovement.create({
           data: {
             productId: product.id,
