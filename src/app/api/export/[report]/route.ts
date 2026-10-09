@@ -20,6 +20,7 @@ import { checkRegisterWhere } from "@/lib/check-register";
 import { voucherAccountTotals } from "@/lib/dv-account-totals";
 import { getPpdReport, getOtherDiscountReport, getCustomerDiscounts } from "@/lib/discount-reports";
 import { getCashReceiptsJournal } from "@/lib/cash-receipts";
+import { getIncomeStatement, incomeStatementRows, parseMonth } from "@/lib/income-statement";
 import { reportByExportKey } from "@/lib/report-registry";
 import { canExportReport, reportPerm } from "@/lib/report-access";
 
@@ -288,6 +289,12 @@ export async function GET(req: NextRequest, { params }: { params: { report: stri
         ["NET INCOME", r.netIncome],
       ];
       return sheetResponse(rows, "P&L", `income-statement-${tag}.xlsx`);
+    }
+    case "income-statement": {
+      const { year, month } = parseMonth(sp.month);
+      const s = await getIncomeStatement(year, month, scope.ids);
+      const ym = `${year}-${String(month).padStart(2, "0")}`;
+      return sheetResponse(incomeStatementRows(s, scope.label.toUpperCase()), "Income Statement", `income-statement-${ym}.xlsx`, { colWidths: [44, 10, 46, 18], numFmts: [{ col: 3, fmt: PESO_FMT, fromRow: 4 }, { col: 4, fmt: PESO_FMT, fromRow: 4 }] });
     }
     case "ar-aging": {
       const { rows: aging, totals } = await getArAging(scope.ids);

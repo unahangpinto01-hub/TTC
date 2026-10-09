@@ -56,6 +56,8 @@ export const REPORTS: ReportDef[] = [
   // ---------------------------------------------------------------- Finance
   { key: "pnl", title: "Income Statement (P&L)", module: "Finance", fn: "reports", exportKey: "pnl",
     href: "/reports/pnl", desc: "Revenue, COGS, expenses, net income" },
+  { key: "income-statement", title: "Income Statement (monthly, books format)", module: "Finance", fn: "reports", exportKey: "income-statement",
+    href: "/reports/income-statement", desc: "One month in the general ledger's own layout: sales less discounts, cost of sales from beginning stock, purchases and ending stock, every expense account, other income and expense" },
   { key: "ar-aging", title: "AR Aging", module: "Finance", fn: "ar", exportKey: "ar-aging",
     href: "/finance/ar", desc: "Receivables by days past due" },
   { key: "collections", title: "Collections", module: "Finance", fn: "ar", exportKey: "collections",

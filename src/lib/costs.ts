@@ -14,7 +14,18 @@ export async function costsAt(productIds: string[], asOf: Date): Promise<Map<str
     FROM "ProductCost"
     WHERE "productId" = ANY(${productIds}) AND "effectiveFrom" <= ${asOf}
     ORDER BY "productId", "effectiveFrom" DESC, "createdAt" DESC`;
-  return new Map(rows.map((r) => [r.productId, r.unitCost]));
+  const map = new Map(rows.map((r) => [r.productId, r.unitCost]));
+  // before a product's first recorded cost, use that first cost: the books carried it into the year at the price of its earliest month
+  const missing = productIds.filter((id) => !map.has(id));
+  if (missing.length) {
+    const first = await prisma.$queryRaw<{ productId: string; unitCost: number }[]>`
+      SELECT DISTINCT ON ("productId") "productId", "unitCost"
+      FROM "ProductCost"
+      WHERE "productId" = ANY(${missing})
+      ORDER BY "productId", "effectiveFrom" ASC, "createdAt" ASC`;
+    for (const r of first) map.set(r.productId, r.unitCost);
+  }
+  return map;
 }
 
 /**

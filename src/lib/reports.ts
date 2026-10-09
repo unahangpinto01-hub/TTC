@@ -370,7 +370,7 @@ export async function getMerchandiseInventory(opts: {
   let asOfEnd: Date | null = null;
   if (opts.asOf) {
     asOfEnd = new Date(opts.asOf);
-    asOfEnd.setHours(23, 59, 59, 999);
+    asOfEnd.setUTCHours(23, 59, 59, 999); // document dates are stored at UTC end of day, whatever the server's zone
     if (asOfEnd.getTime() >= Date.now()) asOfEnd = null;
   }
 
